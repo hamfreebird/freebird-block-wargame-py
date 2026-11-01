@@ -463,22 +463,22 @@ bash packaging/build_linux.sh                # Linux / macOS
 
 # ② 零依赖便携版（只用标准库，任何环境都能构建）
 python packaging/make_portable.py
-#   → packaging/dist/方块兵棋-portable.pyz   单文件，双击即用
+#   → packaging/dist/fangkuai-bingqi-portable.pyz   单文件，双击即用
 #     （目标机器需已装 Python 3.10+ 与 pygame-ce）
 
 # ③ 源码包（与 ② 同一次构建产出）
-python packaging/make_portable.py      # → 方块兵棋-source.zip
+python packaging/make_portable.py      # → fangkuai-bingqi-source.zip
 ```
 
 产物说明：
 
 | 产物 | 平台 | 说明 |
 |---|---|---|
-| `方块兵棋-windows-x64.zip` | Windows | PyInstaller onedir，解压即玩，含图标与文档 |
-| `方块兵棋-linux-x86_64.tar.gz` | Linux | PyInstaller onefile + `run.sh` + 桌面快捷方式 |
-| `方块兵棋-linux-x86_64.AppImage` | Linux | 需要 `appimagetool`，脚本自动检测并生成 |
-| `方块兵棋-portable.pyz` | 全平台 | 零依赖单文件；启动时自动把数据释放到用户目录 |
-| `方块兵棋-source.zip` | 全平台 | 源码 + 数据 + 图标 + 工具链 |
+| `fangkuai-bingqi-windows-x64.zip` | Windows | PyInstaller onedir，解压即玩，含图标与文档 |
+| `fangkuai-bingqi-linux-x86_64.tar.gz` | Linux | PyInstaller onefile + `run.sh` + 桌面快捷方式 |
+| `fangkuai-bingqi-linux-x86_64.AppImage` | Linux | 需要 `appimagetool`，脚本自动检测并生成 |
+| `fangkuai-bingqi-portable.pyz` | 全平台 | 零依赖单文件；启动时自动把数据释放到用户目录 |
+| `fangkuai-bingqi-source.zip` | 全平台 | 源码 + 数据 + 图标 + 工具链 |
 
 **路径约定**：`core/paths.py` 统一解析资源位置——源码运行用项目根目录，PyInstaller 用 `_MEIPASS`，
 zipapp 则把 `data/` 与 `assets/` 释放到用户数据目录（Windows `%LOCALAPPDATA%\BlockWargame`，

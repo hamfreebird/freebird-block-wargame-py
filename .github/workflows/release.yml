@@ -71,10 +71,10 @@ jobs:
 
             | 附件 | 平台 | 说明 |
             |---|---|---|
-            | `方块兵棋-windows-x64.zip` | Windows | 免安装，解压即玩 |
-            | `方块兵棋-linux-x86_64.tar.gz` | Linux | 解压后运行 `run.sh` |
-            | `方块兵棋-portable.pyz` | 全平台 | 零依赖便携版（需系统已装 Python 与 pygame） |
-            | `方块兵棋-source.zip` | 全平台 | 源码包 |
+            | `fangkuai-bingqi-windows-x64.zip` | Windows | 免安装，解压即玩 |
+            | `fangkuai-bingqi-linux-x86_64.tar.gz` | Linux | 解压后运行 `run.sh` |
+            | `fangkuai-bingqi-portable.pyz` | 全平台 | 零依赖便携版（需系统已装 Python 与 pygame） |
+            | `fangkuai-bingqi-source.zip` | 全平台 | 源码包 |
 
             ### 运行要求
             - 免安装版：Windows 10+ / 主流 x86_64 Linux 桌面

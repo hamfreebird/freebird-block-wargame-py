@@ -1,15 +1,16 @@
 @echo off
-REM Windows 打包快捷入口（双击即可）
+REM Windows packaging launcher (double-click to run).
+REM NOTE: keep this file ASCII-only - cmd.exe reads .bat files with the
+REM       console OEM code page, so non-ASCII text may render as garbage.
 setlocal
-chcp 65001 >nul
 cd /d "%~dp0.."
 powershell -ExecutionPolicy Bypass -File "packaging\build_windows.ps1" %*
 if errorlevel 1 (
   echo.
-  echo 打包失败，请查看上方日志。
+  echo Build failed. See the log above.
   pause
   exit /b 1
 )
 echo.
-echo 打包完成，产物位于 packaging\dist\
+echo Build finished. Artifacts are in packaging\dist\
 pause

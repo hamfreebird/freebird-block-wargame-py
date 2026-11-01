@@ -6,8 +6,8 @@
     python packaging/make_portable.py
 
 产物（输出到 packaging/dist/）：
-    方块兵棋-portable.pyz     zipapp 单文件，双击/命令行均可运行
-    方块兵棋-source.zip       源码包（含数据与图标）
+    fangkuai-bingqi-portable.pyz   zipapp 单文件，双击/命令行均可运行
+    fangkuai-bingqi-source.zip    源码包（含数据与图标）
 
 zipapp 需要目标机器已安装 Python 3.10+ 与 pygame-ce；
 免安装可执行文件请用 PyInstaller（见 packaging/build_windows.ps1 / build_linux.sh）。
@@ -32,7 +32,7 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "packaging", "dist")
-NAME = "方块兵棋"
+NAME = "fangkuai-bingqi"
 ENTRY = "main.py"
 
 # 便携版需要打进去的包与资源
