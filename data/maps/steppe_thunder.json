@@ -1,0 +1,365 @@
+{
+ "id": "steppe_thunder",
+ "name": "草原雷霆 · 2027",
+ "description": "红方装甲集群沿河谷向北突贯，蓝方以远程火力与武装无人机迟滞其进攻。开阔地形使侦察与反炮兵成为胜负关键。",
+ "size": [
+  36,
+  36
+ ],
+ "tile_km": 12,
+ "turn_limit": 16,
+ "terrain": [
+  "pppppddddddddddpwwspppppppppppppffpp",
+  "pppppdddhhhddddppwwsppppppppppppfppp",
+  "ppppphhhhhhhhhpppfwwsppppppppppppppp",
+  "pppphhhhhhhhhhhppfwwsfpppppppppppppp",
+  "ppphhhhmmmmmhhhhffwwsfpppppppppppppp",
+  "fffhhhhmmmmmhhhhffwwsppppppppppppppp",
+  "ppfhhhhmmmmmhhhhppwwspffpppppppppppp",
+  "ppffhhhhhhhhhhhppcccppffpppppppppppp",
+  "pfffphhhhhhhhhfffwwsfpppfffffppppppp",
+  "fffppppphhhffffffwwsffpppppppppppppp",
+  "fffpppppppppfffffwwsfppppppppppppppp",
+  "ffppppddppppfffppwwspppppdddpppfffpp",
+  "pppppddddpppffpppwwsppppuuuddppppffp",
+  "pppppdduuupppppppwwsppppuuuddppppffp",
+  "pppppdduuupppfpppwwsppppuuuddppppffp",
+  "pppppdduuuppfffpwwsffpppdddddpppppfp",
+  "ppfppddddpppffwwspfffpppdddddpppppfp",
+  "ppppppdddpppfwwsppfffpppdddddppppppp",
+  "ppppppdddpppfcccpppppfppdddddppppfpp",
+  "ffppppddppppwwsffppppfppdddddppppfpp",
+  "ffppppddpppuwwsffppppfppdddddppppfpp",
+  "fffpppppppuuuwwspppppppppdddpppppfpp",
+  "ffffpppppuuuuwwsppppppppppppppppffpp",
+  "ffffffffppuuupwwspppppppppuuupppfppp",
+  "fffppffffppuddwwspppppppppuuuppppppp",
+  "ffppppffffppdddwwsppppppppuuuppppppp",
+  "ffpppppfffpddddwwspppppppppppppppppp",
+  "ffpppppfffpddddwwsppppppppphhhhhhhpp",
+  "fffpppppfppddddwwspppppppphhhhhhhhhp",
+  "ppfffppppppddddcccpppppppphhhmmmhhhp",
+  "ffpppppppppddddwwspppppppphhhmmmhhhp",
+  "ffppppppppddddddwwsppppppphhhmmmhhhp",
+  "ffpppppppdddddddpwwspppppphhhhhhhhhp",
+  "ffppppppddddddddppwwsfppppphhhhhhhfp",
+  "fffppppddddddddppppwwspppppppppffffp",
+  "ppppppdddddddddppppwwspppppppppfffff"
+ ],
+ "elevation": {
+  "rows": [
+   "332223333333333200122222222222223322",
+   "332223335553333220012222222222223222",
+   "333225665555552334001222222222222222",
+   "333266666556666334002322222222222223",
+   "333666688888666644002322222222222223",
+   "334665588888666533001222222222222223",
+   "224665588888666522001233222222222223",
+   "224465555555666221112233222222222223",
+   "234435555555664330013222333332222222",
+   "334333225553343330024322233333322222",
+   "334333332222333330024222233333322222",
+   "332223443222333220023222344422233323",
+   "222223444222332220012333333332222343",
+   "222223433222222220012333333332222343",
+   "222223432222232220012333332332222343",
+   "222223322222333200144222333332222243",
+   "223223333222340012444222333332222243",
+   "222222333222300122344222333332222233",
+   "222222333222321122222333333332222333",
+   "332222332222001332222333433332222333",
+   "332222332222001332222333433332222333",
+   "443222222222300122222222233323222323",
+   "443323332222300122222222222233323322",
+   "443334442222330012222222222233323222",
+   "443223333222440012222222222222222222",
+   "442222333433443001222222222222222222",
+   "442222233434443001222222222222223222",
+   "432222233434333001222222222555555522",
+   "333222223333333001222222225555555552",
+   "223332222333333111222222225558885552",
+   "332222222223333001222222225559985552",
+   "332222222233344400122233225569996652",
+   "332222222333444430012233225566666652",
+   "432222223333344432001333222566666632",
+   "443222233333333222200133222222244443",
+   "332222333333333222200133222222234444"
+  ]
+ },
+ "facilities": [
+  {
+   "x": 11,
+   "y": 22,
+   "facility": "city",
+   "owner": "BLUE",
+   "hp": 100
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "facility": "depot",
+   "owner": "BLUE",
+   "hp": 90
+  },
+  {
+   "x": 7,
+   "y": 15,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 120
+  },
+  {
+   "x": 25,
+   "y": 13,
+   "facility": "city",
+   "owner": "RED",
+   "hp": 100
+  },
+  {
+   "x": 27,
+   "y": 24,
+   "facility": "hq",
+   "owner": "RED",
+   "hp": 100
+  },
+  {
+   "x": 30,
+   "y": 11,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 120
+  }
+ ],
+ "forts": [
+  {
+   "x": 11,
+   "y": 22,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 17,
+   "y": 18,
+   "level": 1,
+   "owner": "BLUE"
+  },
+  {
+   "x": 25,
+   "y": 13,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 27,
+   "y": 24,
+   "level": 1,
+   "owner": "RED"
+  },
+  {
+   "x": 18,
+   "y": 17,
+   "level": 1,
+   "owner": "RED"
+  },
+  {
+   "x": 19,
+   "y": 18,
+   "level": 1,
+   "owner": "RED"
+  }
+ ],
+ "objectives": [
+  {
+   "x": 11,
+   "y": 22,
+   "name": "河谷城",
+   "kind": "hold",
+   "side": "BLUE",
+   "value": 4,
+   "owner": "BLUE"
+  },
+  {
+   "x": 25,
+   "y": 13,
+   "name": "北岸枢纽",
+   "kind": "capture",
+   "side": "RED",
+   "value": 4,
+   "owner": "RED"
+  },
+  {
+   "x": 18,
+   "y": 18,
+   "name": "河川渡口",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 6,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 8,
+   "y": 14,
+   "name": "蓝方后勤枢纽",
+   "kind": "hold",
+   "side": "BLUE",
+   "value": 3,
+   "owner": "BLUE"
+  }
+ ],
+ "deployments": {
+  "BLUE": [
+   {
+    "template": "m1a2",
+    "x": 9,
+    "y": 20
+   },
+   {
+    "template": "m1a2",
+    "x": 10,
+    "y": 24
+   },
+   {
+    "template": "bradley",
+    "x": 12,
+    "y": 22
+   },
+   {
+    "template": "inf_light",
+    "x": 11,
+    "y": 21
+   },
+   {
+    "template": "usmc",
+    "x": 13,
+    "y": 24
+   },
+   {
+    "template": "paladin",
+    "x": 8,
+    "y": 18
+   },
+   {
+    "template": "himars",
+    "x": 7,
+    "y": 22
+   },
+   {
+    "template": "nasams",
+    "x": 11,
+    "y": 19
+   },
+   {
+    "template": "patriot",
+    "x": 10,
+    "y": 17
+   },
+   {
+    "template": "thaad",
+    "x": 9,
+    "y": 16
+   },
+   {
+    "template": "ew_us",
+    "x": 6,
+    "y": 16
+   },
+   {
+    "template": "mq9",
+    "x": 13,
+    "y": 16,
+    "altitude": "low"
+   },
+   {
+    "template": "f15e",
+    "x": 7,
+    "y": 15,
+    "altitude": "med"
+   },
+   {
+    "template": "f35",
+    "x": 7,
+    "y": 14,
+    "altitude": "med"
+   },
+   {
+    "template": "sat_blue",
+    "x": 0,
+    "y": 0
+   }
+  ],
+  "RED": [
+   {
+    "template": "t90m",
+    "x": 25,
+    "y": 18
+   },
+   {
+    "template": "t90m",
+    "x": 26,
+    "y": 16
+   },
+   {
+    "template": "bmp3",
+    "x": 25,
+    "y": 20
+   },
+   {
+    "template": "inf_motor",
+    "x": 24,
+    "y": 19
+   },
+   {
+    "template": "naval_inf",
+    "x": 22,
+    "y": 16
+   },
+   {
+    "template": "msta",
+    "x": 28,
+    "y": 18
+   },
+   {
+    "template": "smerch",
+    "x": 29,
+    "y": 16
+   },
+   {
+    "template": "pantsir",
+    "x": 27,
+    "y": 21
+   },
+   {
+    "template": "ew_ru",
+    "x": 29,
+    "y": 22
+   },
+   {
+    "template": "iskander",
+    "x": 30,
+    "y": 20
+   },
+   {
+    "template": "s400",
+    "x": 28,
+    "y": 16
+   },
+   {
+    "template": "su34",
+    "x": 30,
+    "y": 11,
+    "altitude": "med"
+   },
+   {
+    "template": "sat_red",
+    "x": 35,
+    "y": 0
+   }
+  ]
+ }
+}

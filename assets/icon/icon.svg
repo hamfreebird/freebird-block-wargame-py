@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#101826"/><stop offset="1" stop-color="#06090f"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="1018" height="1018" rx="225" ry="225" fill="url(#bg)"
+        stroke="#1f2e42" stroke-width="6"/>
+  <g fill="#16212f">
+    <circle cx="102" cy="102" r="4"/>
+    <circle cx="102" cy="204" r="4"/>
+    <circle cx="102" cy="306" r="4"/>
+    <circle cx="102" cy="408" r="4"/>
+    <circle cx="102" cy="510" r="4"/>
+    <circle cx="102" cy="612" r="4"/>
+    <circle cx="102" cy="714" r="4"/>
+    <circle cx="102" cy="816" r="4"/>
+    <circle cx="102" cy="918" r="4"/>
+    <circle cx="204" cy="102" r="4"/>
+    <circle cx="204" cy="204" r="4"/>
+    <circle cx="204" cy="306" r="4"/>
+    <circle cx="204" cy="408" r="4"/>
+    <circle cx="204" cy="510" r="4"/>
+    <circle cx="204" cy="612" r="4"/>
+    <circle cx="204" cy="714" r="4"/>
+    <circle cx="204" cy="816" r="4"/>
+    <circle cx="204" cy="918" r="4"/>
+    <circle cx="306" cy="102" r="4"/>
+    <circle cx="306" cy="204" r="4"/>
+    <circle cx="306" cy="306" r="4"/>
+    <circle cx="306" cy="408" r="4"/>
+    <circle cx="306" cy="510" r="4"/>
+    <circle cx="306" cy="612" r="4"/>
+    <circle cx="306" cy="714" r="4"/>
+    <circle cx="306" cy="816" r="4"/>
+    <circle cx="306" cy="918" r="4"/>
+    <circle cx="408" cy="102" r="4"/>
+    <circle cx="408" cy="204" r="4"/>
+    <circle cx="408" cy="306" r="4"/>
+    <circle cx="408" cy="408" r="4"/>
+    <circle cx="408" cy="510" r="4"/>
+    <circle cx="408" cy="612" r="4"/>
+    <circle cx="408" cy="714" r="4"/>
+    <circle cx="408" cy="816" r="4"/>
+    <circle cx="408" cy="918" r="4"/>
+    <circle cx="510" cy="102" r="4"/>
+    <circle cx="510" cy="204" r="4"/>
+    <circle cx="510" cy="306" r="4"/>
+    <circle cx="510" cy="408" r="4"/>
+    <circle cx="510" cy="510" r="4"/>
+    <circle cx="510" cy="612" r="4"/>
+    <circle cx="510" cy="714" r="4"/>
+    <circle cx="510" cy="816" r="4"/>
+    <circle cx="510" cy="918" r="4"/>
+    <circle cx="612" cy="102" r="4"/>
+    <circle cx="612" cy="204" r="4"/>
+    <circle cx="612" cy="306" r="4"/>
+    <circle cx="612" cy="408" r="4"/>
+    <circle cx="612" cy="510" r="4"/>
+    <circle cx="612" cy="612" r="4"/>
+    <circle cx="612" cy="714" r="4"/>
+    <circle cx="612" cy="816" r="4"/>
+    <circle cx="612" cy="918" r="4"/>
+    <circle cx="714" cy="102" r="4"/>
+    <circle cx="714" cy="204" r="4"/>
+    <circle cx="714" cy="306" r="4"/>
+    <circle cx="714" cy="408" r="4"/>
+    <circle cx="714" cy="510" r="4"/>
+    <circle cx="714" cy="612" r="4"/>
+    <circle cx="714" cy="714" r="4"/>
+    <circle cx="714" cy="816" r="4"/>
+    <circle cx="714" cy="918" r="4"/>
+    <circle cx="816" cy="102" r="4"/>
+    <circle cx="816" cy="204" r="4"/>
+    <circle cx="816" cy="306" r="4"/>
+    <circle cx="816" cy="408" r="4"/>
+    <circle cx="816" cy="510" r="4"/>
+    <circle cx="816" cy="612" r="4"/>
+    <circle cx="816" cy="714" r="4"/>
+    <circle cx="816" cy="816" r="4"/>
+    <circle cx="816" cy="918" r="4"/>
+    <circle cx="918" cy="102" r="4"/>
+    <circle cx="918" cy="204" r="4"/>
+    <circle cx="918" cy="306" r="4"/>
+    <circle cx="918" cy="408" r="4"/>
+    <circle cx="918" cy="510" r="4"/>
+    <circle cx="918" cy="612" r="4"/>
+    <circle cx="918" cy="714" r="4"/>
+    <circle cx="918" cy="816" r="4"/>
+    <circle cx="918" cy="918" r="4"/>
+  </g>
+  <rect x="205" y="474" width="307" height="307" rx="55" ry="55" fill="#1a3a60" opacity="0.45"/>
+  <rect x="216" y="485" width="285" height="285" rx="48" ry="48" fill="#4e9cff"/>
+  <rect x="240" y="510" width="237" height="32" rx="16" ry="16" fill="#ffffff" opacity="0.18"/>
+  <rect x="512" y="194" width="307" height="307" rx="55" ry="55" fill="#602228" opacity="0.45"/>
+  <rect x="523" y="205" width="285" height="285" rx="48" ry="48" fill="#ff6a6a"/>
+  <rect x="547" y="230" width="237" height="32" rx="16" ry="16" fill="#ffffff" opacity="0.18"/>
+  <g stroke="#ffc45c" stroke-width="74" stroke-linecap="round" fill="none">
+    <path d="M389 359 L573 512"/><path d="M389 665 L573 512"/>
+  </g>
+  <path d="M533 425 L665 512 L533 599 Z" fill="#ffc45c"/>
+  <g stroke="#ffc45c" stroke-width="28" stroke-linecap="round">
+    <path d="M819 143 L850 174"/><path d="M819 281 L850 250"/>
+    <path d="M728 118 L743 157"/><path d="M910 118 L895 157"/>
+  </g>
+  <circle cx="819" cy="212" r="24" fill="#f4faff"/>
+</svg>

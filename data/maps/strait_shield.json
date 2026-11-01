@@ -1,0 +1,486 @@
+{
+ "id": "strait_shield",
+ "name": "海峡屏障 · 2027",
+ "description": "蓝方第 3 舰队依托西岸基地群阻止红方突破海峡；红方以 S-400 与岸基反舰导弹构建拒止区。制电磁权与制空权决定海峡控制权。",
+ "size": [
+  40,
+  40
+ ],
+ "tile_km": 12,
+ "turn_limit": 18,
+ "terrain": [
+  "pppppppppppccwwwwwwwwwwwwcpppppppppppppp",
+  "ppppppppppppccwwwwwwwwwwwccppppppppppppp",
+  "ppppppppppfffccwwwwwwwwwwwcppppppppppppp",
+  "fppppppppppppccwwwwwwwwwwwccfppppppppppp",
+  "ffpppppppppppccwwwwwwwwwwwwccffppppppppp",
+  "pfpppppppppppcwwwwwwwwwwwwwwcfffpppppppp",
+  "pppppppppppppcwwcpcwwwwwwwwwccffpppppppp",
+  "ppppppppppppccwwpppwwwwwwwwwccfppppppppp",
+  "ppppppppppppcwwwcpcwwwwwwwwwcpppppphhhhh",
+  "ppppppppppppcwwwwwwwwwwwwwwwcpppppphhhhh",
+  "pppppuuuppppcwwwwwwwwwwwwwwccppppphhmmmh",
+  "pppppuuupppppcwwwwwwwwwwwwwwcppppphhmmmh",
+  "pppppuuupppppcwwwwcppcwwwwwwccpppphhmmmh",
+  "pppppppppppppcwwwcppppcwwwwwwccppphhmmmh",
+  "pppppppppppppcwwwwcppcwwwwwwwwccpphhmmmh",
+  "pppppppppppppcwwwwwwwwwwwwwwwwwccpphhhhh",
+  "ppppppppppppccwwwwwwwwwwwwwwwwwwccphhhhh",
+  "ppppppppupfccwwwwwwwwwwwwwwwwwwwwcppfppp",
+  "pppppppuuuccwwwwwwwwwcwwwwwwwwwwwcppffpp",
+  "ppppppuuuuwwwwwwwwwwcpcwwwwwwwwwccpppppp",
+  "pppppppuuwwwwwwwwwwuuwpcwwwwwwwwuppppppp",
+  "ppppfffcuwwwwwwwwwwupppcwwwwwwwuuupppppp",
+  "pppppfccwwwwwwwwwwwwcpcwwwwwwwwuuppppppp",
+  "ppppppccwwwwwwwwwwwwwcwwwwwwwwcupppppppp",
+  "pppppppccwwwwwwwwwwwwwwwwwwwwwwcpppppppp",
+  "pppppppccwwwwwwwwwwwwwwwwwwwwwwccppppppp",
+  "ppfffpppccwwwwwwwcccwwwwwwwwwwwccppppppp",
+  "ppfffppppccwwwwwcpppcwwwwwwwwwwccppppppp",
+  "ppfffppppccwwwwwcfppcwwwwwwwwwwccuuupppp",
+  "pppppppfffcwwwwwwcccwwwwwwwwwwccpuuupppp",
+  "ppppppfffscwwwwwwwwwwwwwwwwwwcccpuuupppp",
+  "pppppffffscwwwwwwwwwwwwwwwwwwcpppppppppp",
+  "pppfffffsscwwwwwwwwwwwcppcwwcppppppppppp",
+  "fffffffpppcwwwwwwwwwwwcppcwcpppppppppppp",
+  "ffffppppppcwwwwwwwwwwwcppcccpppppppppppp",
+  "ffffppppppcwwwwwwwwwwwwwwwcppppppppppppp",
+  "ffffpppppppcwwwwwwwwwwwwwwccpppppppppppp",
+  "ffffppppppppcwwwwwwwwwwwwwwcpppppppppppp",
+  "ffffpppppppppcwwwwwwwwwwwwwccppppppppppp",
+  "fffpppppppppppcwwwwwwwwwwwwccppppppppppp"
+ ],
+ "elevation": {
+  "rows": [
+   "3333333322211000000000000222233322222233",
+   "3333333322221100000000000112233322222233",
+   "3333333322344110000000000012222222222223",
+   "4333333333333210000000000011322223333322",
+   "4433333333333210000000000001133222233322",
+   "2333333333333100000000000000144422223322",
+   "2233333333322100122000000000124422223322",
+   "2223333333221100222000000000124222223222",
+   "2222233322221000121000000000122222255555",
+   "2222233322221000000000000000122223355555",
+   "2222223222221000000000000001122223658885",
+   "2222222222222100000000000000222223658896",
+   "2222222222233100001221000000212233658996",
+   "2222222222222100012222100000011233658896",
+   "2222222222222100001221000000002233668885",
+   "2223322222222100000000000000000223365555",
+   "2223322222221100000000000000000021255555",
+   "2222233322322000000000000000000001223333",
+   "2222233322120000000001000000000001223433",
+   "2222233322000000000012100000000011222233",
+   "2222233320000000000320210000000033222223",
+   "2222344220000000000322210000000333322222",
+   "2222232100000000000012100000000333322222",
+   "2222221100000000000001000000002333322222",
+   "2222222110000000000000000000000233332222",
+   "2222222110000000000000000000000223322222",
+   "2244322211000000011100000000000112222233",
+   "2244422221100000222210000000000112222233",
+   "2234322221100000132210000000000112222222",
+   "2222222333100000012100000000001122222222",
+   "2222223331100000000000000000021122223222",
+   "2222234442200000000000000000023222222222",
+   "3323344422200000000000122100233333222223",
+   "4444444333200000000000122102333333322233",
+   "4444332333200000000000122111333332222222",
+   "4444322222100000000000000012233322222222",
+   "3444322222210000000000000011233322222222",
+   "4444322222221000000000000001233322222222",
+   "4444322223222100000000000001122233322222",
+   "4443322223322220000000000001122233333333"
+  ]
+ },
+ "facilities": [
+  {
+   "x": 8,
+   "y": 19,
+   "facility": "port",
+   "owner": "BLUE",
+   "hp": 110
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 120
+  },
+  {
+   "x": 5,
+   "y": 14,
+   "facility": "radar_site",
+   "owner": "BLUE",
+   "hp": 80
+  },
+  {
+   "x": 7,
+   "y": 25,
+   "facility": "depot",
+   "owner": "BLUE",
+   "hp": 90
+  },
+  {
+   "x": 31,
+   "y": 21,
+   "facility": "port",
+   "owner": "RED",
+   "hp": 110
+  },
+  {
+   "x": 33,
+   "y": 12,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 120
+  },
+  {
+   "x": 35,
+   "y": 14,
+   "facility": "radar_site",
+   "owner": "RED",
+   "hp": 80
+  },
+  {
+   "x": 33,
+   "y": 24,
+   "facility": "sam_site",
+   "owner": "RED",
+   "hp": 90
+  }
+ ],
+ "forts": [
+  {
+   "x": 8,
+   "y": 19,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 9,
+   "y": 18,
+   "level": 1,
+   "owner": "BLUE"
+  },
+  {
+   "x": 7,
+   "y": 25,
+   "level": 1,
+   "owner": "BLUE"
+  },
+  {
+   "x": 31,
+   "y": 21,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 34,
+   "y": 29,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 32,
+   "y": 22,
+   "level": 1,
+   "owner": "RED"
+  },
+  {
+   "x": 33,
+   "y": 23,
+   "level": 1,
+   "owner": "RED"
+  }
+ ],
+ "objectives": [
+  {
+   "x": 8,
+   "y": 19,
+   "name": "西港",
+   "kind": "hold",
+   "side": "BLUE",
+   "value": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 6,
+   "y": 11,
+   "name": "西岸空军基地",
+   "kind": "hold",
+   "side": "BLUE",
+   "value": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 31,
+   "y": 21,
+   "name": "东港",
+   "kind": "capture",
+   "side": "RED",
+   "value": 4,
+   "owner": "RED"
+  },
+  {
+   "x": 34,
+   "y": 29,
+   "name": "东岸空军基地",
+   "kind": "capture",
+   "side": "RED",
+   "value": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 19,
+   "y": 13,
+   "name": "北岛雷达高地",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 5,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 21,
+   "y": 20,
+   "name": "中央锚地",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 5,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 18,
+   "y": 28,
+   "name": "南岛机场",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 4,
+   "owner": "NEUTRAL"
+  }
+ ],
+ "deployments": {
+  "BLUE": [
+   {
+    "template": "sat_blue",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "template": "e3",
+    "x": 4,
+    "y": 4,
+    "altitude": "high"
+   },
+   {
+    "template": "f35",
+    "x": 6,
+    "y": 11,
+    "altitude": "med"
+   },
+   {
+    "template": "f15e",
+    "x": 5,
+    "y": 9,
+    "altitude": "med"
+   },
+   {
+    "template": "b1b",
+    "x": 6,
+    "y": 10,
+    "altitude": "med"
+   },
+   {
+    "template": "mq9",
+    "x": 10,
+    "y": 13,
+    "altitude": "low"
+   },
+   {
+    "template": "radar_tpy2",
+    "x": 5,
+    "y": 14
+   },
+   {
+    "template": "m1a2",
+    "x": 9,
+    "y": 18
+   },
+   {
+    "template": "m1a2",
+    "x": 10,
+    "y": 18
+   },
+   {
+    "template": "inf_motor",
+    "x": 11,
+    "y": 18
+   },
+   {
+    "template": "bradley",
+    "x": 9,
+    "y": 19
+   },
+   {
+    "template": "usmc",
+    "x": 10,
+    "y": 17
+   },
+   {
+    "template": "inf_light",
+    "x": 11,
+    "y": 17
+   },
+   {
+    "template": "paladin",
+    "x": 8,
+    "y": 21
+   },
+   {
+    "template": "himars",
+    "x": 7,
+    "y": 23
+   },
+   {
+    "template": "patriot",
+    "x": 10,
+    "y": 16
+   },
+   {
+    "template": "nasams",
+    "x": 8,
+    "y": 20
+   },
+   {
+    "template": "ew_us",
+    "x": 6,
+    "y": 24
+   },
+   {
+    "template": "ddg_burke",
+    "x": 14,
+    "y": 20
+   },
+   {
+    "template": "cvn",
+    "x": 15,
+    "y": 26
+   },
+   {
+    "template": "ssn_va",
+    "x": 18,
+    "y": 33
+   }
+  ],
+  "RED": [
+   {
+    "template": "sat_red",
+    "x": 39,
+    "y": 0
+   },
+   {
+    "template": "a50",
+    "x": 36,
+    "y": 6,
+    "altitude": "high"
+   },
+   {
+    "template": "su35",
+    "x": 35,
+    "y": 11,
+    "altitude": "med"
+   },
+   {
+    "template": "su34",
+    "x": 36,
+    "y": 9,
+    "altitude": "med"
+   },
+   {
+    "template": "mig31k",
+    "x": 34,
+    "y": 13,
+    "altitude": "high"
+   },
+   {
+    "template": "tu22m3",
+    "x": 37,
+    "y": 8,
+    "altitude": "high"
+   },
+   {
+    "template": "radar_container",
+    "x": 35,
+    "y": 14
+   },
+   {
+    "template": "s400",
+    "x": 33,
+    "y": 17
+   },
+   {
+    "template": "pantsir",
+    "x": 32,
+    "y": 22
+   },
+   {
+    "template": "t90m",
+    "x": 31,
+    "y": 21
+   },
+   {
+    "template": "bmp3",
+    "x": 31,
+    "y": 23
+   },
+   {
+    "template": "naval_inf",
+    "x": 30,
+    "y": 23
+   },
+   {
+    "template": "inf_motor",
+    "x": 31,
+    "y": 22
+   },
+   {
+    "template": "msta",
+    "x": 33,
+    "y": 19
+   },
+   {
+    "template": "smerch",
+    "x": 34,
+    "y": 22
+   },
+   {
+    "template": "iskander",
+    "x": 34,
+    "y": 25
+   },
+   {
+    "template": "ew_ru",
+    "x": 33,
+    "y": 26
+   },
+   {
+    "template": "slava",
+    "x": 26,
+    "y": 18
+   },
+   {
+    "template": "kilo",
+    "x": 24,
+    "y": 30
+   }
+  ]
+ }
+}

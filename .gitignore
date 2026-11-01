@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.spec.bak
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 运行期产物
+saves/
+.shots/
+*.bak
+*.log
+
+# 打包中间产物
+packaging/build/
+packaging/dist/
+packaging/*.zip
+packaging/*.tar.gz
+packaging/*.pyz
+packaging/*.AppImage
+
+# 代理工作区（不属于项目代码）
+.workbuddy/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

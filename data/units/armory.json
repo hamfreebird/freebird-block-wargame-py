@@ -1,0 +1,3312 @@
+{
+  "meta": {
+    "name": "联合兵种武器库 · Combined Arms Armory",
+    "version": "1.0",
+    "scale": "1 格 = 12 km，1 回合 = 1 小时",
+    "note": "range 为游戏内平衡射程（格），real_range_km 为现实公开射程，仅作参照展示。"
+  },
+  "sensors": [
+    {
+      "id": "ir_thermal",
+      "kind": "ir",
+      "range": 2.5,
+      "strength": 0.6,
+      "note": "车长/炮长热像仪"
+    },
+    {
+      "id": "ir_pod",
+      "kind": "ir",
+      "range": 3.2,
+      "strength": 0.7,
+      "note": "机载光电吊舱"
+    },
+    {
+      "id": "optical_uav",
+      "kind": "optical",
+      "range": 5.0,
+      "strength": 0.8,
+      "note": "无人机光电侦察"
+    },
+    {
+      "id": "radar_apg81",
+      "kind": "radar",
+      "range": 8.0,
+      "strength": 1.15,
+      "note": "AN/APG-81 AESA",
+      "counter_stealth": 0.1
+    },
+    {
+      "id": "radar_apg70",
+      "kind": "radar",
+      "range": 7.0,
+      "strength": 1.0,
+      "note": "AN/APG-70"
+    },
+    {
+      "id": "radar_patriot",
+      "kind": "radar",
+      "range": 10.0,
+      "strength": 1.2,
+      "note": "AN/MPQ-65",
+      "counter_stealth": 0.15
+    },
+    {
+      "id": "radar_sentinel",
+      "kind": "radar",
+      "range": 5.0,
+      "strength": 0.9,
+      "note": "AN/MPQ-64"
+    },
+    {
+      "id": "radar_tpy2",
+      "kind": "radar",
+      "range": 16.0,
+      "strength": 1.35,
+      "note": "AN/TPY-2 反导预警",
+      "counter_stealth": 0.25
+    },
+    {
+      "id": "radar_aegis",
+      "kind": "radar",
+      "range": 12.0,
+      "strength": 1.2,
+      "note": "SPY-1D 相控阵",
+      "counter_stealth": 0.12
+    },
+    {
+      "id": "radar_e3",
+      "kind": "radar",
+      "range": 22.0,
+      "strength": 1.4,
+      "note": "AN/APY-2 预警雷达",
+      "counter_stealth": 0.22
+    },
+    {
+      "id": "radar_s400",
+      "kind": "radar",
+      "range": 16.0,
+      "strength": 1.3,
+      "note": "91N6E 大鸟",
+      "counter_stealth": 0.18
+    },
+    {
+      "id": "radar_pantsir",
+      "kind": "radar",
+      "range": 4.0,
+      "strength": 0.85,
+      "note": "1RS2-1E"
+    },
+    {
+      "id": "radar_irbis",
+      "kind": "radar",
+      "range": 12.0,
+      "strength": 1.25,
+      "note": "N035 雪豹-E",
+      "counter_stealth": 0.15
+    },
+    {
+      "id": "radar_a50",
+      "kind": "radar",
+      "range": 26.0,
+      "strength": 1.45,
+      "note": "Shmel-M",
+      "counter_stealth": 0.3
+    },
+    {
+      "id": "radar_top_pair",
+      "kind": "radar",
+      "range": 11.0,
+      "strength": 1.1,
+      "note": "顶板雷达",
+      "counter_stealth": 0.12
+    },
+    {
+      "id": "radar_container",
+      "kind": "radar",
+      "range": 22.0,
+      "strength": 1.35,
+      "note": "集装箱超视距雷达",
+      "counter_stealth": 0.65
+    },
+    {
+      "id": "esm_std",
+      "kind": "esm",
+      "range": 7.0,
+      "strength": 0.9,
+      "note": "机载/舰载电子支援"
+    },
+    {
+      "id": "esm_adv",
+      "kind": "esm",
+      "range": 11.0,
+      "strength": 1.05,
+      "note": "战略电子侦察"
+    },
+    {
+      "id": "sonar_hull",
+      "kind": "sonar",
+      "range": 5.0,
+      "strength": 0.9,
+      "note": "舰壳声呐"
+    },
+    {
+      "id": "sonar_sub",
+      "kind": "sonar",
+      "range": 7.0,
+      "strength": 1.05,
+      "note": "拖曳/艇载声呐"
+    },
+    {
+      "id": "radar_klj7a",
+      "kind": "radar",
+      "range": 9.0,
+      "strength": 1.18,
+      "counter_stealth": 0.12,
+      "note": "KLJ-7A 有源相控阵（歼-20 火控雷达）"
+    },
+    {
+      "id": "radar_kj500",
+      "kind": "radar",
+      "range": 24.0,
+      "strength": 1.45,
+      "counter_stealth": 0.33,
+      "note": "KJ-500 数字阵列预警雷达"
+    },
+    {
+      "id": "radar_346b",
+      "kind": "radar",
+      "range": 15.0,
+      "strength": 1.28,
+      "counter_stealth": 0.2,
+      "note": "346B 海之星有源相控阵（055/052D）"
+    },
+    {
+      "id": "radar_381",
+      "kind": "radar",
+      "range": 10.0,
+      "strength": 1.05,
+      "counter_stealth": 0.1,
+      "note": "381 三坐标对空搜索雷达（054A）"
+    },
+    {
+      "id": "radar_vhf",
+      "kind": "radar",
+      "range": 18.0,
+      "strength": 1.25,
+      "counter_stealth": 0.6,
+      "note": "VHF 米波反隐身雷达：波长长，隐身外形失效"
+    },
+    {
+      "id": "ir_irst",
+      "kind": "ir",
+      "range": 6.5,
+      "strength": 1.15,
+      "counter_stealth": 0.05,
+      "note": "机载红外搜索跟踪（IRST）：被动探测，不受雷达干扰"
+    },
+    {
+      "id": "esm_elint",
+      "kind": "esm",
+      "range": 15.0,
+      "strength": 1.2,
+      "note": "战略电子情报侦察"
+    },
+    {
+      "id": "sonar_towed",
+      "kind": "sonar",
+      "range": 9.0,
+      "strength": 1.1,
+      "note": "拖曳线列阵声呐"
+    }
+  ],
+  "weapons": [
+    {
+      "id": "m256_120",
+      "name": "120mm M256 滑膛炮",
+      "kind": "gun",
+      "range_min": 0.4,
+      "range_max": 1.3,
+      "pk": 0.58,
+      "damage": 58,
+      "ammo": 8,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "real_range_km": "3 km（直瞄）",
+      "note": "M829A4 尾翼稳定脱壳穿甲弹",
+      "max_salvo": 3
+    },
+    {
+      "id": "m242_25",
+      "name": "25mm M242 机关炮",
+      "kind": "gun",
+      "range_min": 0.3,
+      "range_max": 1.0,
+      "pk": 0.45,
+      "damage": 26,
+      "ammo": 10,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "real_range_km": "2 km",
+      "max_salvo": 3
+    },
+    {
+      "id": "tow2b",
+      "name": "BGM-71F 陶式 IIB",
+      "kind": "atgm",
+      "range_min": 0.5,
+      "range_max": 2.2,
+      "pk": 0.62,
+      "damage": 62,
+      "ammo": 4,
+      "guidance": "wire",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "interceptable": false,
+      "speed": 8.0,
+      "real_range_km": "3.75 km",
+      "note": "攻顶模式，免疫多数硬杀伤拦截",
+      "max_salvo": 2
+    },
+    {
+      "id": "m777_155",
+      "name": "155mm M777A2 榴弹炮",
+      "kind": "artillery",
+      "range_min": 1.2,
+      "range_max": 4.0,
+      "pk": 0.42,
+      "damage": 46,
+      "ammo": 5,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "salvo": 2,
+      "min_detection": "classified",
+      "speed": 6.0,
+      "real_range_km": "30 km（M982 神剑 40 km）",
+      "note": "可对识别级目标实施面压制",
+      "max_salvo": 2
+    },
+    {
+      "id": "gmmlrs",
+      "name": "M31 GMLRS 制导火箭",
+      "kind": "mlrs",
+      "range_min": 1.2,
+      "range_max": 4.2,
+      "pk": 0.6,
+      "damage": 46,
+      "ammo": 6,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "salvo": 2,
+      "min_detection": "classified",
+      "speed": 5.0,
+      "real_range_km": "80 km",
+      "note": "6 联装，齐射覆盖",
+      "max_salvo": 3
+    },
+    {
+      "id": "prsm",
+      "name": "PrSM 精确打击导弹",
+      "kind": "land_attack",
+      "range_min": 1.5,
+      "range_max": 6.5,
+      "pk": 0.66,
+      "damage": 62,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "evasion": 0.3,
+      "speed": 6.0,
+      "real_range_km": "500 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "pac3",
+      "name": "PAC-3 MSE 拦截弹",
+      "kind": "sam",
+      "range_min": 0.6,
+      "range_max": 6.0,
+      "pk": 0.74,
+      "damage": 95,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "real_range_km": "35 km（反导 60 km）",
+      "note": "直接碰撞杀伤",
+      "max_salvo": 2
+    },
+    {
+      "id": "amraam_nsams",
+      "name": "AIM-120C NASAMS",
+      "kind": "sam",
+      "range_min": 0.4,
+      "range_max": 3.4,
+      "pk": 0.62,
+      "damage": 70,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 7.0,
+      "real_range_km": "25 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "aim120d",
+      "name": "AIM-120D AMRAAM",
+      "kind": "aam",
+      "range_min": 0.5,
+      "range_max": 4.2,
+      "pk": 0.62,
+      "damage": 72,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "real_range_km": "160 km",
+      "note": "发射后不管",
+      "max_salvo": 2
+    },
+    {
+      "id": "aim9x",
+      "name": "AIM-9X 响尾蛇",
+      "kind": "aam",
+      "range_min": 0.2,
+      "range_max": 1.6,
+      "pk": 0.55,
+      "damage": 55,
+      "ammo": 2,
+      "guidance": "ir",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "real_range_km": "35 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "jassm",
+      "name": "AGM-158B JASSM-ER",
+      "kind": "land_attack",
+      "range_min": 2.0,
+      "range_max": 9.0,
+      "pk": 0.68,
+      "damage": 68,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.45,
+      "speed": 4.0,
+      "real_range_km": "900 km",
+      "note": "隐身防区外导弹",
+      "max_salvo": 2
+    },
+    {
+      "id": "tomahawk",
+      "name": "BGM-109 战斧 Block V",
+      "kind": "land_attack",
+      "range_min": 2.0,
+      "range_max": 10.0,
+      "pk": 0.65,
+      "damage": 62,
+      "ammo": 4,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.35,
+      "speed": 3.0,
+      "real_range_km": "1600 km",
+      "note": "低空亚音速突防",
+      "max_salvo": 2
+    },
+    {
+      "id": "sm6",
+      "name": "RIM-174 SM-6",
+      "kind": "sam",
+      "range_min": 1.0,
+      "range_max": 7.0,
+      "pk": 0.7,
+      "damage": 85,
+      "ammo": 8,
+      "guidance": "radar_active",
+      "targets": [
+        "air",
+        "sea"
+      ],
+      "speed": 8.0,
+      "real_range_km": "240 km",
+      "note": "兼顾反舰与末段反导",
+      "max_salvo": 2
+    },
+    {
+      "id": "mk45_127",
+      "name": "127mm Mk45 舰炮",
+      "kind": "gun",
+      "range_min": 0.4,
+      "range_max": 1.6,
+      "pk": 0.5,
+      "damage": 40,
+      "ammo": 6,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "speed": 8.0,
+      "real_range_km": "24 km",
+      "max_salvo": 3
+    },
+    {
+      "id": "mk48",
+      "name": "Mk48 Mod7 重型鱼雷",
+      "kind": "torpedo",
+      "range_min": 0.4,
+      "range_max": 3.0,
+      "pk": 0.6,
+      "damage": 90,
+      "ammo": 4,
+      "guidance": "sonar",
+      "targets": [
+        "sub",
+        "sea"
+      ],
+      "interceptable": false,
+      "speed": 5.0,
+      "real_range_km": "50 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "hellfire",
+      "name": "AGM-114R 海尔法",
+      "kind": "atgm",
+      "range_min": 0.3,
+      "range_max": 2.0,
+      "pk": 0.65,
+      "damage": 52,
+      "ammo": 4,
+      "guidance": "laser",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "speed": 8.0,
+      "real_range_km": "8 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "jdam",
+      "name": "GBU-31 JDAM",
+      "kind": "bomb",
+      "range_min": 0.2,
+      "range_max": 1.2,
+      "pk": 0.78,
+      "damage": 82,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 9.0,
+      "real_range_km": "28 km（滑翔）",
+      "max_salvo": 2
+    },
+    {
+      "id": "agm88",
+      "name": "AGM-88G AARGM-ER",
+      "kind": "arm",
+      "range_min": 0.8,
+      "range_max": 5.5,
+      "pk": 0.7,
+      "damage": 70,
+      "ammo": 2,
+      "guidance": "anti_radiation",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "evasion": 0.4,
+      "speed": 8.0,
+      "real_range_km": "150 km",
+      "note": "被动雷达寻的：只能攻击正在辐射的雷达",
+      "max_salvo": 2
+    },
+    {
+      "id": "carrier_airwing",
+      "name": "舰载机联队突击",
+      "kind": "land_attack",
+      "range_min": 1.0,
+      "range_max": 5.0,
+      "pk": 0.55,
+      "damage": 48,
+      "ammo": 5,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "salvo": 2,
+      "speed": 6.0,
+      "real_range_km": "作战半径 700 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "2a46_125",
+      "name": "125mm 2A46M-5 滑膛炮",
+      "kind": "gun",
+      "range_min": 0.4,
+      "range_max": 1.3,
+      "pk": 0.55,
+      "damage": 55,
+      "ammo": 8,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "real_range_km": "3 km（9M119 炮射导弹 5 km）",
+      "max_salvo": 3
+    },
+    {
+      "id": "9m119",
+      "name": "9M119M 反射炮射导弹",
+      "kind": "atgm",
+      "range_min": 0.5,
+      "range_max": 2.0,
+      "pk": 0.6,
+      "damage": 58,
+      "ammo": 3,
+      "guidance": "laser",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "interceptable": false,
+      "speed": 8.0,
+      "real_range_km": "5 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "2a42_30",
+      "name": "30mm 2A42 机关炮",
+      "kind": "gun",
+      "range_min": 0.3,
+      "range_max": 1.0,
+      "pk": 0.42,
+      "damage": 24,
+      "ammo": 10,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "max_salvo": 3
+    },
+    {
+      "id": "9m117",
+      "name": "9M117M 棱堡炮射导弹",
+      "kind": "atgm",
+      "range_min": 0.5,
+      "range_max": 1.8,
+      "pk": 0.55,
+      "damage": 48,
+      "ammo": 3,
+      "guidance": "laser",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "interceptable": false,
+      "speed": 8.0,
+      "max_salvo": 2
+    },
+    {
+      "id": "2s19_152",
+      "name": "152mm 2A64 榴弹炮",
+      "kind": "artillery",
+      "range_min": 1.2,
+      "range_max": 3.8,
+      "pk": 0.42,
+      "damage": 48,
+      "ammo": 5,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "salvo": 2,
+      "min_detection": "classified",
+      "speed": 6.0,
+      "real_range_km": "29 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "9m55_smerch",
+      "name": "BM-30 龙卷风 300mm",
+      "kind": "mlrs",
+      "range_min": 1.2,
+      "range_max": 4.5,
+      "pk": 0.38,
+      "damage": 52,
+      "ammo": 4,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "salvo": 3,
+      "min_detection": "classified",
+      "speed": 5.0,
+      "real_range_km": "90 km",
+      "note": "面杀伤，单发精度低但齐射威力大",
+      "max_salvo": 3
+    },
+    {
+      "id": "9m723",
+      "name": "9M723 伊斯坎德尔-M",
+      "kind": "land_attack",
+      "range_min": 1.5,
+      "range_max": 6.0,
+      "pk": 0.7,
+      "damage": 74,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.55,
+      "speed": 8.0,
+      "real_range_km": "500 km",
+      "note": "准弹道机动，末段 6-7 马赫",
+      "max_salvo": 2,
+      "ballistic": true,
+      "interceptable": true
+    },
+    {
+      "id": "kh47m2",
+      "name": "Kh-47M2 匕首高超音速导弹",
+      "kind": "land_attack",
+      "range_min": 2.0,
+      "range_max": 7.0,
+      "pk": 0.76,
+      "damage": 88,
+      "ammo": 1,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "evasion": 0.85,
+      "hypersonic": true,
+      "speed": 9.0,
+      "real_range_km": "2000 km / 10 马赫",
+      "note": "高超音速滑翔机动，现役防空系统拦截概率极低",
+      "max_salvo": 1,
+      "ballistic": true,
+      "interceptable": true
+    },
+    {
+      "id": "40n6",
+      "name": "S-400 40N6 远程弹",
+      "kind": "sam",
+      "range_min": 1.0,
+      "range_max": 9.0,
+      "pk": 0.74,
+      "damage": 95,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "real_range_km": "400 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "48n6dm",
+      "name": "S-400 48N6DM",
+      "kind": "sam",
+      "range_min": 0.8,
+      "range_max": 7.5,
+      "pk": 0.68,
+      "damage": 85,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "real_range_km": "250 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "57e6",
+      "name": "铠甲-S1 57E6",
+      "kind": "sam",
+      "range_min": 0.2,
+      "range_max": 2.6,
+      "pk": 0.6,
+      "damage": 62,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "real_range_km": "20 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "r77_1",
+      "name": "R-77-1 主动弹",
+      "kind": "aam",
+      "range_min": 0.5,
+      "range_max": 3.6,
+      "pk": 0.58,
+      "damage": 68,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "real_range_km": "110 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "r37m",
+      "name": "R-37M 超远程空空弹",
+      "kind": "aam",
+      "range_min": 1.2,
+      "range_max": 6.0,
+      "pk": 0.6,
+      "damage": 82,
+      "ammo": 2,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "real_range_km": "300 km",
+      "note": "专打预警机/加油机等高价值目标",
+      "max_salvo": 2
+    },
+    {
+      "id": "kh31p",
+      "name": "Kh-31P 反辐射导弹",
+      "kind": "arm",
+      "range_min": 0.8,
+      "range_max": 4.2,
+      "pk": 0.68,
+      "damage": 66,
+      "ammo": 2,
+      "guidance": "anti_radiation",
+      "targets": [
+        "land",
+        "infra",
+        "sea"
+      ],
+      "evasion": 0.45,
+      "speed": 8.0,
+      "real_range_km": "110 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "kh101",
+      "name": "Kh-101 空射巡航导弹",
+      "kind": "land_attack",
+      "range_min": 2.0,
+      "range_max": 9.0,
+      "pk": 0.65,
+      "damage": 66,
+      "ammo": 4,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.5,
+      "speed": 3.0,
+      "real_range_km": "2500 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "p800",
+      "name": "P-800 缟玛瑙反舰导弹",
+      "kind": "asm",
+      "range_min": 1.2,
+      "range_max": 6.0,
+      "pk": 0.72,
+      "damage": 96,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "evasion": 0.6,
+      "speed": 8.0,
+      "real_range_km": "600 km",
+      "note": "末段 2.5 马赫掠海突防",
+      "max_salvo": 2
+    },
+    {
+      "id": "ugst",
+      "name": "UGST 重型鱼雷",
+      "kind": "torpedo",
+      "range_min": 0.4,
+      "range_max": 3.0,
+      "pk": 0.58,
+      "damage": 86,
+      "ammo": 4,
+      "guidance": "sonar",
+      "targets": [
+        "sub",
+        "sea"
+      ],
+      "interceptable": false,
+      "speed": 5.0,
+      "real_range_km": "50 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "fab500",
+      "name": "FAB-500 航空炸弹",
+      "kind": "bomb",
+      "range_min": 0.2,
+      "range_max": 1.2,
+      "pk": 0.7,
+      "damage": 76,
+      "ammo": 3,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 9.0,
+      "real_range_km": "投掷距离 10 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "kalibr",
+      "name": "3M14 口径巡航导弹",
+      "kind": "land_attack",
+      "range_min": 1.5,
+      "range_max": 8.0,
+      "pk": 0.63,
+      "damage": 60,
+      "ammo": 4,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.4,
+      "speed": 3.0,
+      "real_range_km": "1500 km",
+      "max_salvo": 2
+    },
+    {
+      "id": "9m729",
+      "name": "9M729 巡航导弹",
+      "kind": "land_attack",
+      "range_min": 1.5,
+      "range_max": 7.0,
+      "pk": 0.62,
+      "damage": 58,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "evasion": 0.35,
+      "speed": 4.0,
+      "real_range_km": "2500 km",
+      "max_salvo": 2,
+      "ballistic": true,
+      "interceptable": true
+    },
+    {
+      "id": "sm3_iia",
+      "name": "RIM-161 SM-3 Block IIA",
+      "kind": "sam",
+      "range_min": 1.5,
+      "range_max": 8.0,
+      "pk": 0.34,
+      "damage": 46,
+      "ammo": 1,
+      "guidance": "radar_active",
+      "targets": [
+        "air",
+        "space"
+      ],
+      "speed": 9.0,
+      "interceptable": false,
+      "evasion": 0.0,
+      "real_range_km": "大气层外拦截 2500 km",
+      "note": "海基中段反导拦截弹，具备直接上升式反卫星能力",
+      "max_salvo": 1,
+      "midcourse": true
+    },
+    {
+      "id": "prs1m",
+      "name": "77N6-N 反导拦截弹",
+      "kind": "sam",
+      "range_min": 1.5,
+      "range_max": 8.0,
+      "pk": 0.34,
+      "damage": 46,
+      "ammo": 1,
+      "guidance": "radar_active",
+      "targets": [
+        "air",
+        "space"
+      ],
+      "speed": 9.0,
+      "interceptable": false,
+      "evasion": 0.0,
+      "real_range_km": "A-235 系统，具备反卫星能力",
+      "note": "直接上升式反卫星/中段反导拦截弹",
+      "max_salvo": 1,
+      "midcourse": true
+    },
+    {
+      "id": "thaad_int",
+      "name": "THAAD 拦截弹",
+      "kind": "sam",
+      "range_min": 1.2,
+      "range_max": 7.5,
+      "pk": 0.38,
+      "damage": 80,
+      "ammo": 1,
+      "guidance": "radar_active",
+      "targets": [
+        "air",
+        "space"
+      ],
+      "speed": 9.0,
+      "interceptable": false,
+      "evasion": 0.0,
+      "max_salvo": 1,
+      "real_range_km": "拦截高度 40-150 km",
+      "note": "末段高空区域防御，具备有限反卫星能力（大气层外动能拦截）",
+      "midcourse": true
+    },
+    {
+      "id": "javelin",
+      "name": "FGM-148 标枪反坦克导弹",
+      "kind": "atgm",
+      "range_min": 0.3,
+      "range_max": 1.8,
+      "pk": 0.64,
+      "damage": 60,
+      "ammo": 3,
+      "guidance": "ir",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "interceptable": false,
+      "speed": 8.0,
+      "max_salvo": 2,
+      "real_range_km": "4.75 km",
+      "note": "攻顶红外成像制导，步兵班反装甲核心"
+    },
+    {
+      "id": "rpg7",
+      "name": "RPG-7V2 火箭筒",
+      "kind": "atgm",
+      "range_min": 0.2,
+      "range_max": 1.0,
+      "pk": 0.45,
+      "damage": 40,
+      "ammo": 4,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "interceptable": false,
+      "speed": 8.0,
+      "max_salvo": 2,
+      "real_range_km": "300 m",
+      "note": "廉价可靠，近距离反装甲与攻坚"
+    },
+    {
+      "id": "mg_762",
+      "name": "7.62mm 通用机枪",
+      "kind": "gun",
+      "range_min": 0.1,
+      "range_max": 1.0,
+      "pk": 0.28,
+      "damage": 12,
+      "ammo": 12,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "max_salvo": 3,
+      "real_range_km": "1 km",
+      "note": "近距离压制步兵与轻目标，对装甲几乎无效"
+    },
+    {
+      "id": "pl15",
+      "name": "霹雳-15 远程空空导弹",
+      "kind": "aam",
+      "range_min": 1.0,
+      "range_max": 6.5,
+      "pk": 0.62,
+      "damage": 74,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "max_salvo": 2,
+      "real_range_km": "200 km 以上",
+      "note": "双脉冲发动机 + 主动相控阵导引头，专打预警机与加油机"
+    },
+    {
+      "id": "pl10",
+      "name": "霹雳-10 近距格斗弹",
+      "kind": "aam",
+      "range_min": 0.3,
+      "range_max": 2.2,
+      "pk": 0.74,
+      "damage": 56,
+      "ammo": 2,
+      "guidance": "ir",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "max_salvo": 2,
+      "real_range_km": "20 km",
+      "note": "大离轴发射，越肩攻击"
+    },
+    {
+      "id": "yj21",
+      "name": "鹰击-21 高超声速反舰导弹",
+      "kind": "asm",
+      "range_min": 2.0,
+      "range_max": 10.0,
+      "pk": 0.7,
+      "damage": 140,
+      "ammo": 2,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "speed": 12.0,
+      "evasion": 0.85,
+      "hypersonic": true,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "1000-1500 km",
+      "note": "舰载高超声速滑翔弹头，末段 10 马赫，现役防空网几乎无法拦截"
+    },
+    {
+      "id": "yj18",
+      "name": "鹰击-18 反舰导弹",
+      "kind": "asm",
+      "range_min": 1.2,
+      "range_max": 7.0,
+      "pk": 0.7,
+      "damage": 96,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "speed": 9.0,
+      "evasion": 0.62,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "540 km",
+      "note": "亚超结合：巡航亚音速、末段 3 马赫突防"
+    },
+    {
+      "id": "yj83k",
+      "name": "鹰击-83K 空射反舰导弹",
+      "kind": "asm",
+      "range_min": 1.0,
+      "range_max": 5.0,
+      "pk": 0.66,
+      "damage": 80,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "infra"
+      ],
+      "speed": 8.0,
+      "evasion": 0.45,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "250 km",
+      "note": "歼-16/轰-6 的标准反舰挂载"
+    },
+    {
+      "id": "yj83",
+      "name": "鹰击-83 舰舰导弹",
+      "kind": "asm",
+      "range_min": 1.0,
+      "range_max": 4.5,
+      "pk": 0.64,
+      "damage": 74,
+      "ammo": 6,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "infra"
+      ],
+      "speed": 8.0,
+      "evasion": 0.4,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "180 km",
+      "note": "护卫舰主力反舰武器"
+    },
+    {
+      "id": "hhq9b",
+      "name": "海红旗-9B 舰空导弹",
+      "kind": "sam",
+      "range_min": 1.0,
+      "range_max": 8.0,
+      "pk": 0.72,
+      "damage": 86,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "max_salvo": 2,
+      "real_range_km": "200 km",
+      "note": "区域防空，兼顾末段反导"
+    },
+    {
+      "id": "hhq16",
+      "name": "海红旗-16 舰空导弹",
+      "kind": "sam",
+      "range_min": 0.8,
+      "range_max": 3.6,
+      "pk": 0.64,
+      "damage": 62,
+      "ammo": 4,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 8.0,
+      "max_salvo": 2,
+      "real_range_km": "40 km",
+      "note": "中程点防御，拦截掠海目标"
+    },
+    {
+      "id": "hpj45_130",
+      "name": "H/PJ-45 130mm 舰炮",
+      "kind": "gun",
+      "range_min": 0.2,
+      "range_max": 1.4,
+      "pk": 0.44,
+      "damage": 46,
+      "ammo": 8,
+      "guidance": "radar_semi",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "needs_los": true,
+      "speed": 10.0,
+      "max_salvo": 3,
+      "vs_facility": true,
+      "real_range_km": "30 km",
+      "note": "对海对陆两用，可执行岸轰"
+    },
+    {
+      "id": "df17",
+      "name": "东风-17 高超声速滑翔弹",
+      "kind": "land_attack",
+      "range_min": 3.0,
+      "range_max": 12.0,
+      "pk": 0.66,
+      "damage": 125,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 14.0,
+      "evasion": 0.88,
+      "hypersonic": true,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "1800-2500 km",
+      "note": "乘波体滑翔弹道，可打击机场与指挥所"
+    },
+    {
+      "id": "ls6",
+      "name": "雷石-6 滑翔制导炸弹",
+      "kind": "bomb",
+      "range_min": 0.5,
+      "range_max": 3.0,
+      "pk": 0.74,
+      "damage": 92,
+      "ammo": 4,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 6.0,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "60 km",
+      "note": "防区外投放，低成本高精度"
+    },
+    {
+      "id": "agm158c",
+      "name": "AGM-158C LRASM 隐身反舰导弹",
+      "kind": "asm",
+      "range_min": 1.5,
+      "range_max": 8.0,
+      "pk": 0.72,
+      "damage": 110,
+      "ammo": 2,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "speed": 7.0,
+      "evasion": 0.55,
+      "stealth": 0.75,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "real_range_km": "560 km",
+      "note": "低可探测外形 + 自主目标识别，可在防空圈外发射"
+    },
+    {
+      "id": "jassm_er",
+      "name": "AGM-158B JASSM-ER 隐身巡航导弹",
+      "kind": "land_attack",
+      "range_min": 2.0,
+      "range_max": 10.0,
+      "pk": 0.7,
+      "damage": 105,
+      "ammo": 2,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 6.0,
+      "evasion": 0.5,
+      "stealth": 0.8,
+      "max_salvo": 2,
+      "vs_facility": true,
+      "anti_fort": 1,
+      "real_range_km": "900 km",
+      "note": "隐身突防巡航导弹，专打纵深高价值目标"
+    },
+    {
+      "id": "df26",
+      "name": "东风-26 中远程弹道导弹",
+      "kind": "asm",
+      "range_min": 3.0,
+      "range_max": 13.0,
+      "pk": 0.62,
+      "damage": 150,
+      "ammo": 1,
+      "guidance": "radar_active",
+      "targets": [
+        "sea",
+        "land",
+        "infra"
+      ],
+      "speed": 10.0,
+      "evasion": 0.75,
+      "interceptable": true,
+      "max_salvo": 1,
+      "vs_facility": true,
+      "real_range_km": "4000 km",
+      "note": "反舰弹道导弹：末段灌顶攻击，现役舰空导弹难以拦截",
+      "ballistic": true
+    },
+    {
+      "id": "df41",
+      "name": "东风-41 洲际弹道导弹",
+      "kind": "land_attack",
+      "range_min": 6.0,
+      "range_max": 20.0,
+      "pk": 0.78,
+      "damage": 320,
+      "ammo": 1,
+      "guidance": "gps_ins",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 16.0,
+      "evasion": 0.9,
+      "hypersonic": true,
+      "interceptable": false,
+      "strategic": true,
+      "max_salvo": 1,
+      "vs_facility": true,
+      "min_detection": "classified",
+      "real_range_km": "12000 km",
+      "note": "战略级打击：装订坐标后场外发射，无法被战术防空拦截",
+      "ballistic": true
+    },
+    {
+      "id": "ciws_1130",
+      "name": "H/PJ-11 11 管 30mm 近防炮",
+      "kind": "ciws",
+      "range_min": 0.2,
+      "range_max": 1.5,
+      "pk": 0.62,
+      "damage": 30,
+      "ammo": 10,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 10.0,
+      "max_salvo": 1,
+      "real_range_km": "3 km",
+      "note": "每分钟万发，末段硬杀伤反舰导弹"
+    },
+    {
+      "id": "ciws_phalanx",
+      "name": "Mk15 密集阵近防炮",
+      "kind": "ciws",
+      "range_min": 0.2,
+      "range_max": 1.4,
+      "pk": 0.58,
+      "damage": 28,
+      "ammo": 10,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 10.0,
+      "max_salvo": 1,
+      "real_range_km": "2 km",
+      "note": "最后一道硬杀伤，对超音速目标窗口很短"
+    },
+    {
+      "id": "ciws_ak630",
+      "name": "AK-630 六管 30mm 近防炮",
+      "kind": "ciws",
+      "range_min": 0.2,
+      "range_max": 1.2,
+      "pk": 0.55,
+      "damage": 26,
+      "ammo": 8,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 10.0,
+      "max_salvo": 1,
+      "real_range_km": "2 km",
+      "note": "俄系舰艇标准近防武器"
+    },
+    {
+      "id": "hq17_missile",
+      "name": "红旗-17A 拦截弹",
+      "kind": "sam",
+      "range_min": 0.5,
+      "range_max": 2.5,
+      "pk": 0.66,
+      "damage": 55,
+      "ammo": 8,
+      "guidance": "radar_active",
+      "targets": [
+        "air"
+      ],
+      "speed": 9.0,
+      "interceptable": false,
+      "max_salvo": 2,
+      "real_range_km": "15 km",
+      "note": "野战近程防空，随伴装甲集群"
+    },
+    {
+      "id": "pf98",
+      "name": "98 式 120mm 火箭筒",
+      "kind": "atgm",
+      "range_min": 0.2,
+      "range_max": 1.2,
+      "pk": 0.52,
+      "damage": 62,
+      "ammo": 3,
+      "guidance": "optical",
+      "targets": [
+        "land",
+        "infra"
+      ],
+      "speed": 10.0,
+      "max_salvo": 2,
+      "anti_fort": 2,
+      "real_range_km": "800 m",
+      "note": "步兵攻坚/破障：对工事与轻装甲特别有效"
+    }
+  ],
+  "units": [
+    {
+      "id": "m1a2",
+      "name": "M1A2 SEPv3 坦克连",
+      "short": "M1A2",
+      "class": "mbt",
+      "domain": "land",
+      "hp": 130,
+      "mp": 3.2,
+      "armor": 0.42,
+      "stealth": 0.06,
+      "evasion": 0.12,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "m256_120",
+          "ammo": 8
+        },
+        {
+          "ref": "tow2b",
+          "ammo": 2
+        }
+      ],
+      "can_capture": true,
+      "cost": 340,
+      "notes": "贫铀复合装甲 + 猎歼式火控，正面交战能力突出"
+    },
+    {
+      "id": "bradley",
+      "name": "M2A3 布雷德利步战车连",
+      "short": "M2A3",
+      "class": "ifv",
+      "domain": "land",
+      "hp": 95,
+      "mp": 3.6,
+      "armor": 0.22,
+      "stealth": 0.05,
+      "evasion": 0.15,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "m242_25",
+          "ammo": 10
+        },
+        {
+          "ref": "tow2b",
+          "ammo": 4
+        }
+      ],
+      "can_capture": true,
+      "cost": 220,
+      "notes": "机械化步兵输送与反装甲支援"
+    },
+    {
+      "id": "usmc",
+      "name": "海军陆战队远征分队",
+      "short": "USMC",
+      "class": "infantry",
+      "domain": "land",
+      "hp": 85,
+      "mp": 3.0,
+      "armor": 0.12,
+      "stealth": 0.06,
+      "evasion": 0.18,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "m242_25",
+          "ammo": 8
+        },
+        {
+          "ref": "tow2b",
+          "ammo": 2
+        }
+      ],
+      "can_capture": true,
+      "amphibious": true,
+      "cost": 280,
+      "notes": "两栖投送能力：可越过海峡夺取岛屿要点，涉水航渡代价较高",
+      "datalink": false,
+      "entrench_bonus": 0.18
+    },
+    {
+      "id": "paladin",
+      "name": "M109A7 帕拉丁自行火炮连",
+      "short": "M109",
+      "class": "arty",
+      "domain": "land",
+      "hp": 85,
+      "mp": 2.6,
+      "armor": 0.12,
+      "stealth": 0.03,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "m777_155",
+          "ammo": 5
+        }
+      ],
+      "cost": 260,
+      "notes": "营属间瞄火力，对识别级目标实施压制"
+    },
+    {
+      "id": "himars",
+      "name": "M142 海马斯火箭炮连",
+      "short": "HIMARS",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 80,
+      "mp": 3.2,
+      "armor": 0.08,
+      "stealth": 0.05,
+      "evasion": 0.2,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "gmmlrs",
+          "ammo": 6
+        },
+        {
+          "ref": "prsm",
+          "ammo": 2
+        }
+      ],
+      "cost": 300,
+      "notes": "高机动、快打快撤；PrSM 可打击 500 km 级纵深目标"
+    },
+    {
+      "id": "patriot",
+      "name": "爱国者 PAC-3 防空连",
+      "short": "PAC3",
+      "class": "sam",
+      "domain": "land",
+      "hp": 90,
+      "mp": 1.6,
+      "armor": 0.1,
+      "sensors": [
+        "radar_patriot"
+      ],
+      "weapons": [
+        {
+          "ref": "pac3",
+          "ammo": 12
+        }
+      ],
+      "interceptors": 5,
+      "intercept_pk": 0.62,
+      "cost": 420,
+      "notes": "区域防空 + 末段反导，是敌方弹道导弹的首要目标"
+    },
+    {
+      "id": "nasams",
+      "name": "NASAMS 防空连",
+      "short": "NSM",
+      "class": "sam",
+      "domain": "land",
+      "hp": 75,
+      "mp": 2.6,
+      "armor": 0.06,
+      "sensors": [
+        "radar_sentinel"
+      ],
+      "weapons": [
+        {
+          "ref": "amraam_nsams",
+          "ammo": 10
+        }
+      ],
+      "interceptors": 3,
+      "intercept_pk": 0.5,
+      "cost": 260,
+      "notes": "中近程要地防空"
+    },
+    {
+      "id": "ew_us",
+      "name": "陆军电子战分队",
+      "short": "EW",
+      "class": "ew",
+      "domain": "land",
+      "hp": 70,
+      "mp": 3.0,
+      "armor": 0.05,
+      "stealth": 0.1,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [],
+      "jam_radius": 4.5,
+      "jam_strength": 0.55,
+      "cost": 240,
+      "notes": "通信与雷达压制；同时削弱敌方卫星导航精度",
+      "decoy_charges": 2
+    },
+    {
+      "id": "radar_tpy2",
+      "name": "AN/TPY-2 远程警戒雷达",
+      "short": "TPY2",
+      "class": "radar",
+      "domain": "infra",
+      "hp": 60,
+      "mp": 0.0,
+      "armor": 0.0,
+      "sensors": [
+        "radar_tpy2",
+        "esm_adv"
+      ],
+      "weapons": [],
+      "is_radar_emitter": true,
+      "cost": 380,
+      "notes": "全战区空情与弹道预警；开机即成为反辐射导弹的靶子"
+    },
+    {
+      "id": "f35",
+      "name": "F-35A 隐身战斗机编队",
+      "short": "F35",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 90,
+      "mp": 9.0,
+      "armor": 0.0,
+      "stealth": 0.7,
+      "evasion": 0.45,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_apg81",
+        "esm_adv"
+      ],
+      "weapons": [
+        {
+          "ref": "aim120d",
+          "ammo": 4
+        },
+        {
+          "ref": "jdam",
+          "ammo": 2
+        },
+        {
+          "ref": "agm88",
+          "ammo": 2
+        }
+      ],
+      "cost": 620,
+      "notes": "低可探测性 + 传感器融合，可先敌发现、先敌发射",
+      "sortie_shots": 2
+    },
+    {
+      "id": "f15e",
+      "name": "F-15E 打击鹰编队",
+      "short": "F15E",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 95,
+      "mp": 8.0,
+      "armor": 0.0,
+      "stealth": 0.15,
+      "evasion": 0.42,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_apg70",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "aim120d",
+          "ammo": 3
+        },
+        {
+          "ref": "jdam",
+          "ammo": 4
+        },
+        {
+          "ref": "jassm",
+          "ammo": 2
+        }
+      ],
+      "cost": 480,
+      "notes": "重载对地打击平台",
+      "sortie_shots": 3
+    },
+    {
+      "id": "mq9",
+      "name": "MQ-9 察打一体无人机",
+      "short": "MQ9",
+      "class": "uav",
+      "domain": "air",
+      "hp": 45,
+      "mp": 6.0,
+      "armor": 0.0,
+      "stealth": 0.22,
+      "evasion": 0.08,
+      "max_altitude": "low",
+      "sensors": [
+        "optical_uav",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "hellfire",
+          "ammo": 4
+        }
+      ],
+      "cost": 180,
+      "notes": "长航时持续监视；面对现代化防空系统生存性低",
+      "sortie_shots": 2
+    },
+    {
+      "id": "e3",
+      "name": "E-3G 预警机",
+      "short": "AWACS",
+      "class": "aew",
+      "domain": "air",
+      "hp": 80,
+      "mp": 6.0,
+      "armor": 0.0,
+      "stealth": 0.0,
+      "evasion": 0.0,
+      "max_altitude": "high",
+      "sensors": [
+        "radar_e3",
+        "esm_adv"
+      ],
+      "weapons": [],
+      "cost": 700,
+      "notes": "空中指挥所：为全战区提供探测与制导支援，高价值目标",
+      "sortie_shots": 1,
+      "one_shot_kill": false
+    },
+    {
+      "id": "b52",
+      "name": "B-52H 战略轰炸机",
+      "short": "B52",
+      "class": "bomber",
+      "domain": "air",
+      "hp": 140,
+      "mp": 6.0,
+      "armor": 0.0,
+      "stealth": 0.05,
+      "evasion": 0.05,
+      "max_altitude": "high",
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "jassm",
+          "ammo": 8
+        }
+      ],
+      "cost": 640,
+      "notes": "防区外弹药投射平台，严禁进入敌方防空包线",
+      "sortie_shots": 2,
+      "one_shot_kill": false
+    },
+    {
+      "id": "ddg_burke",
+      "name": "阿利·伯克级驱逐舰",
+      "short": "DDG",
+      "class": "destroyer",
+      "domain": "sea",
+      "hp": 200,
+      "mp": 5.0,
+      "armor": 0.25,
+      "stealth": 0.2,
+      "evasion": 0.18,
+      "sensors": [
+        "radar_aegis",
+        "sonar_hull",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "sm6",
+          "ammo": 16
+        },
+        {
+          "ref": "tomahawk",
+          "ammo": 6
+        },
+        {
+          "ref": "mk45_127",
+          "ammo": 4
+        },
+        {
+          "ref": "sm3_iia",
+          "ammo": 2
+        },
+        {
+          "ref": "ciws_phalanx",
+          "ammo": 10
+        }
+      ],
+      "interceptors": 8,
+      "intercept_pk": 0.56,
+      "can_capture": true,
+      "cost": 720,
+      "notes": "宙斯盾舰：区域防空 + 对陆纵深打击",
+      "decoy_charges": 1
+    },
+    {
+      "id": "cvn",
+      "name": "核动力航母打击群",
+      "short": "CVN",
+      "class": "carrier",
+      "domain": "sea",
+      "hp": 260,
+      "mp": 4.5,
+      "armor": 0.28,
+      "stealth": 0.05,
+      "evasion": 0.1,
+      "sensors": [
+        "radar_aegis",
+        "sonar_hull",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "carrier_airwing",
+          "ammo": 5
+        },
+        {
+          "ref": "ciws_phalanx",
+          "ammo": 12
+        }
+      ],
+      "interceptors": 6,
+      "intercept_pk": 0.46,
+      "cost": 900,
+      "notes": "力量投送核心；一旦被反舰导弹命中即丧失作战能力",
+      "decoy_charges": 1
+    },
+    {
+      "id": "ssn_va",
+      "name": "弗吉尼亚级攻击核潜艇",
+      "short": "SSN",
+      "class": "sub",
+      "domain": "sub",
+      "hp": 120,
+      "mp": 4.2,
+      "armor": 0.15,
+      "stealth": 0.72,
+      "evasion": 0.3,
+      "sensors": [
+        "sonar_sub",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "mk48",
+          "ammo": 4
+        },
+        {
+          "ref": "tomahawk",
+          "ammo": 6
+        }
+      ],
+      "cost": 700,
+      "notes": "隐蔽突防，可对陆纵深发射巡航导弹",
+      "decoy_charges": 1
+    },
+    {
+      "id": "t90m",
+      "name": "T-90M 突破坦克连",
+      "short": "T90M",
+      "class": "mbt",
+      "domain": "land",
+      "hp": 125,
+      "mp": 3.2,
+      "armor": 0.45,
+      "stealth": 0.05,
+      "evasion": 0.1,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "2a46_125",
+          "ammo": 8
+        },
+        {
+          "ref": "9m119",
+          "ammo": 2
+        }
+      ],
+      "can_capture": true,
+      "cost": 330,
+      "notes": "化石反应装甲 + 主动防护系统",
+      "datalink": false
+    },
+    {
+      "id": "bmp3",
+      "name": "BMP-3 步战车连",
+      "short": "BMP3",
+      "class": "ifv",
+      "domain": "land",
+      "hp": 88,
+      "mp": 3.8,
+      "armor": 0.18,
+      "stealth": 0.04,
+      "evasion": 0.16,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "2a42_30",
+          "ammo": 10
+        },
+        {
+          "ref": "9m117",
+          "ammo": 3
+        }
+      ],
+      "can_capture": true,
+      "cost": 200,
+      "datalink": false
+    },
+    {
+      "id": "naval_inf",
+      "name": "海军步兵连",
+      "short": "NVINF",
+      "class": "infantry",
+      "domain": "land",
+      "hp": 82,
+      "mp": 3.0,
+      "armor": 0.1,
+      "stealth": 0.04,
+      "evasion": 0.18,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "2a42_30",
+          "ammo": 8
+        },
+        {
+          "ref": "9m117",
+          "ammo": 2
+        }
+      ],
+      "can_capture": true,
+      "amphibious": true,
+      "cost": 260,
+      "notes": "两栖投送能力：可越过海峡夺取岛屿要点，涉水航渡代价较高",
+      "datalink": false,
+      "entrench_bonus": 0.18
+    },
+    {
+      "id": "msta",
+      "name": "2S19M2 姆斯塔自行火炮连",
+      "short": "2S19",
+      "class": "arty",
+      "domain": "land",
+      "hp": 82,
+      "mp": 2.6,
+      "armor": 0.1,
+      "stealth": 0.03,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "2s19_152",
+          "ammo": 5
+        }
+      ],
+      "cost": 240,
+      "datalink": false
+    },
+    {
+      "id": "smerch",
+      "name": "BM-30 龙卷风火箭炮连",
+      "short": "BM30",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 78,
+      "mp": 2.9,
+      "armor": 0.06,
+      "stealth": 0.04,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "9m55_smerch",
+          "ammo": 4
+        }
+      ],
+      "cost": 250,
+      "notes": "面杀伤火力，对集结部队威胁极大",
+      "datalink": false
+    },
+    {
+      "id": "s400",
+      "name": "S-400 防空营",
+      "short": "S400",
+      "class": "sam",
+      "domain": "land",
+      "hp": 100,
+      "mp": 1.8,
+      "armor": 0.1,
+      "sensors": [
+        "radar_s400"
+      ],
+      "weapons": [
+        {
+          "ref": "40n6",
+          "ammo": 8
+        },
+        {
+          "ref": "48n6dm",
+          "ammo": 8
+        },
+        {
+          "ref": "prs1m",
+          "ammo": 6
+        }
+      ],
+      "interceptors": 6,
+      "intercept_pk": 0.62,
+      "cost": 480,
+      "notes": "400 km 级区域拒止核心，迫使敌方航空兵远离"
+    },
+    {
+      "id": "pantsir",
+      "name": "铠甲-S1 弹炮结合防空",
+      "short": "PANTSIR",
+      "class": "sam",
+      "domain": "land",
+      "hp": 65,
+      "mp": 3.0,
+      "armor": 0.08,
+      "sensors": [
+        "radar_pantsir",
+        "ir_pod"
+      ],
+      "weapons": [
+        {
+          "ref": "57e6",
+          "ammo": 8
+        },
+        {
+          "ref": "ciws_ak630",
+          "ammo": 6
+        }
+      ],
+      "interceptors": 4,
+      "intercept_pk": 0.38,
+      "cost": 180,
+      "notes": "要地末端防御，专打巡航导弹与无人机",
+      "datalink": false
+    },
+    {
+      "id": "ew_ru",
+      "name": "克拉苏哈-4 电子战系统",
+      "short": "EW",
+      "class": "ew",
+      "domain": "land",
+      "hp": 80,
+      "mp": 3.0,
+      "armor": 0.05,
+      "stealth": 0.08,
+      "sensors": [
+        "esm_adv"
+      ],
+      "weapons": [],
+      "jam_radius": 5.5,
+      "jam_strength": 0.65,
+      "cost": 300,
+      "notes": "宽频段压制，可使敌方雷达与精确制导弹药效能大幅下降",
+      "decoy_charges": 2
+    },
+    {
+      "id": "radar_container",
+      "name": "集装箱超视距雷达",
+      "short": "BOX",
+      "class": "radar",
+      "domain": "infra",
+      "hp": 65,
+      "mp": 0.0,
+      "armor": 0.0,
+      "sensors": [
+        "radar_container",
+        "esm_adv"
+      ],
+      "weapons": [],
+      "is_radar_emitter": true,
+      "cost": 360,
+      "notes": "超视距天波雷达，可发现数百公里外的空中与海面目标"
+    },
+    {
+      "id": "su35",
+      "name": "Su-35S 战斗机编队",
+      "short": "SU35",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 95,
+      "mp": 9.0,
+      "armor": 0.0,
+      "stealth": 0.1,
+      "evasion": 0.45,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_irbis",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "r77_1",
+          "ammo": 4
+        },
+        {
+          "ref": "r37m",
+          "ammo": 2
+        },
+        {
+          "ref": "kh31p",
+          "ammo": 2
+        }
+      ],
+      "cost": 520,
+      "notes": "超机动性 + 超远程空空导弹，专猎预警机",
+      "sortie_shots": 3
+    },
+    {
+      "id": "su34",
+      "name": "Su-34 战斗轰炸机编队",
+      "short": "SU34",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 105,
+      "mp": 8.0,
+      "armor": 0.0,
+      "stealth": 0.08,
+      "evasion": 0.38,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_irbis",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "fab500",
+          "ammo": 4
+        },
+        {
+          "ref": "kh31p",
+          "ammo": 2
+        },
+        {
+          "ref": "r77_1",
+          "ammo": 2
+        }
+      ],
+      "cost": 450,
+      "sortie_shots": 3
+    },
+    {
+      "id": "a50",
+      "name": "A-50U 预警机",
+      "short": "A50",
+      "class": "aew",
+      "domain": "air",
+      "hp": 85,
+      "mp": 6.0,
+      "armor": 0.0,
+      "stealth": 0.0,
+      "evasion": 0.0,
+      "max_altitude": "high",
+      "sensors": [
+        "radar_a50",
+        "esm_adv"
+      ],
+      "weapons": [],
+      "cost": 680,
+      "notes": "空中雷达与指挥节点",
+      "sortie_shots": 1,
+      "one_shot_kill": false
+    },
+    {
+      "id": "tu22m3",
+      "name": "Tu-22M3 逆火轰炸机",
+      "short": "TU22",
+      "class": "bomber",
+      "domain": "air",
+      "hp": 130,
+      "mp": 7.0,
+      "armor": 0.0,
+      "stealth": 0.03,
+      "evasion": 0.08,
+      "max_altitude": "high",
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "kh101",
+          "ammo": 4
+        }
+      ],
+      "cost": 600,
+      "sortie_shots": 2,
+      "one_shot_kill": false
+    },
+    {
+      "id": "iskander",
+      "name": "伊斯坎德尔-M 导弹旅",
+      "short": "ISK",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 75,
+      "mp": 4.0,
+      "armor": 0.05,
+      "stealth": 0.1,
+      "evasion": 0.3,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "9m723",
+          "ammo": 2
+        },
+        {
+          "ref": "9m729",
+          "ammo": 2
+        }
+      ],
+      "cost": 460,
+      "notes": "机动发射车，打击纵深指挥所与机场；发射即需转移",
+      "datalink": false
+    },
+    {
+      "id": "mig31k",
+      "name": "MiG-31K 匕首载机",
+      "short": "MIG31",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 100,
+      "mp": 9.5,
+      "armor": 0.0,
+      "stealth": 0.06,
+      "evasion": 0.35,
+      "max_altitude": "high",
+      "sensors": [
+        "radar_irbis",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "kh47m2",
+          "ammo": 1
+        }
+      ],
+      "cost": 560,
+      "notes": "高空高速发射平台，投放后立即脱离",
+      "sortie_shots": 1
+    },
+    {
+      "id": "slava",
+      "name": "光荣级导弹巡洋舰",
+      "short": "CG",
+      "class": "destroyer",
+      "domain": "sea",
+      "hp": 190,
+      "mp": 4.4,
+      "armor": 0.22,
+      "stealth": 0.08,
+      "evasion": 0.12,
+      "sensors": [
+        "radar_top_pair",
+        "sonar_hull",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "p800",
+          "ammo": 6
+        },
+        {
+          "ref": "48n6dm",
+          "ammo": 8
+        },
+        {
+          "ref": "ciws_ak630",
+          "ammo": 8
+        }
+      ],
+      "interceptors": 4,
+      "intercept_pk": 0.48,
+      "can_capture": true,
+      "cost": 660,
+      "notes": "重型反舰火力平台，P-800 饱和攻击是航母的主要威胁",
+      "decoy_charges": 1
+    },
+    {
+      "id": "kilo",
+      "name": "基洛级常规潜艇",
+      "short": "SSK",
+      "class": "sub",
+      "domain": "sub",
+      "hp": 85,
+      "mp": 3.8,
+      "armor": 0.1,
+      "stealth": 0.62,
+      "evasion": 0.22,
+      "sensors": [
+        "sonar_sub",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "ugst",
+          "ammo": 4
+        },
+        {
+          "ref": "kalibr",
+          "ammo": 3
+        },
+        {
+          "ref": "ciws_ak630",
+          "ammo": 4
+        }
+      ],
+      "cost": 460,
+      "notes": "静音性能优异，适合近岸伏击",
+      "datalink": false,
+      "decoy_charges": 1
+    },
+    {
+      "id": "sat_blue",
+      "name": "蓝方侦察卫星",
+      "short": "SAT",
+      "class": "satellite",
+      "domain": "space",
+      "hp": 30,
+      "mp": 0.0,
+      "armor": 0.0,
+      "stealth": 0.0,
+      "sensors": [],
+      "weapons": [],
+      "cost": 500,
+      "notes": "每 3 回合过顶一次，全图揭示敌方目标（识别级）",
+      "evasion": 0.55
+    },
+    {
+      "id": "sat_red",
+      "name": "红方侦察卫星",
+      "short": "SAT",
+      "class": "satellite",
+      "domain": "space",
+      "hp": 30,
+      "mp": 0.0,
+      "armor": 0.0,
+      "stealth": 0.0,
+      "sensors": [],
+      "weapons": [],
+      "cost": 500,
+      "notes": "每 3 回合过顶一次，全图揭示敌方目标（识别级）",
+      "evasion": 0.55
+    },
+    {
+      "id": "thaad",
+      "name": "THAAD 高空反导连",
+      "short": "THAAD",
+      "class": "sam",
+      "domain": "land",
+      "hp": 85,
+      "mp": 1.4,
+      "armor": 0.08,
+      "stealth": 0.0,
+      "evasion": 0.0,
+      "sensors": [
+        "radar_patriot"
+      ],
+      "weapons": [
+        {
+          "ref": "thaad_int",
+          "ammo": 10
+        }
+      ],
+      "interceptors": 6,
+      "intercept_pk": 0.66,
+      "cost": 520,
+      "notes": "末段高空拦截，兼顾反卫星；对高超音速目标效果有限"
+    },
+    {
+      "id": "inf_light",
+      "name": "轻步兵连",
+      "short": "INF",
+      "class": "infantry",
+      "domain": "land",
+      "hp": 80,
+      "mp": 2.6,
+      "armor": 0.05,
+      "stealth": 0.28,
+      "evasion": 0.26,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "javelin",
+          "ammo": 3
+        },
+        {
+          "ref": "mg_762",
+          "ammo": 12
+        }
+      ],
+      "can_capture": true,
+      "entrench_bonus": 0.2,
+      "datalink": false,
+      "cost": 120,
+      "notes": "徒步步兵：目标小、易隐蔽，驻守可构筑工事；面杀伤火力对其威胁极大"
+    },
+    {
+      "id": "inf_motor",
+      "name": "摩步连",
+      "short": "MOT",
+      "class": "infantry",
+      "domain": "land",
+      "hp": 78,
+      "mp": 3.0,
+      "armor": 0.06,
+      "stealth": 0.24,
+      "evasion": 0.24,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "rpg7",
+          "ammo": 4
+        },
+        {
+          "ref": "mg_762",
+          "ammo": 12
+        }
+      ],
+      "can_capture": true,
+      "entrench_bonus": 0.18,
+      "datalink": false,
+      "cost": 130,
+      "notes": "摩托化步兵：机动性好，城区与林地防御效率高"
+    },
+    {
+      "id": "j20",
+      "name": "歼-20 隐身战斗机编队",
+      "short": "J20",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 95,
+      "mp": 9.0,
+      "armor": 0.0,
+      "stealth": 0.82,
+      "evasion": 0.48,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_klj7a",
+        "esm_adv"
+      ],
+      "weapons": [
+        {
+          "ref": "pl15",
+          "ammo": 4
+        },
+        {
+          "ref": "pl10",
+          "ammo": 2
+        }
+      ],
+      "cost": 680,
+      "sortie_shots": 2,
+      "notes": "低可探测性 + 超视距空战：先敌发现、先敌发射；机腹弹舱限制载弹量"
+    },
+    {
+      "id": "j16",
+      "name": "歼-16 多用途战斗机编队",
+      "short": "J16",
+      "class": "fighter",
+      "domain": "air",
+      "hp": 105,
+      "mp": 8.0,
+      "armor": 0.0,
+      "stealth": 0.08,
+      "evasion": 0.42,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_klj7a",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "pl15",
+          "ammo": 2
+        },
+        {
+          "ref": "pl10",
+          "ammo": 2
+        },
+        {
+          "ref": "yj83k",
+          "ammo": 2
+        }
+      ],
+      "cost": 560,
+      "sortie_shots": 3,
+      "notes": "重型多用途平台：制空、反舰、对地一机通吃，挂架多、可持续输出"
+    },
+    {
+      "id": "kj500",
+      "name": "空警-500 预警机",
+      "short": "KJ500",
+      "class": "aew",
+      "domain": "air",
+      "hp": 120,
+      "mp": 7.0,
+      "armor": 0.0,
+      "stealth": 0.0,
+      "evasion": 0.1,
+      "max_altitude": "high",
+      "sensors": [
+        "radar_kj500",
+        "esm_adv"
+      ],
+      "weapons": [],
+      "cost": 700,
+      "one_shot_kill": false,
+      "sortie_shots": 1,
+      "notes": "数字阵列雷达：为整个战区提供跟踪诸元，是信火一体的核心节点"
+    },
+    {
+      "id": "type055",
+      "name": "055 型驱逐舰",
+      "short": "055",
+      "class": "destroyer",
+      "domain": "sea",
+      "hp": 230,
+      "mp": 5.0,
+      "armor": 0.28,
+      "stealth": 0.18,
+      "evasion": 0.2,
+      "sensors": [
+        "radar_346b",
+        "sonar_hull",
+        "esm_adv"
+      ],
+      "weapons": [
+        {
+          "ref": "yj21",
+          "ammo": 2
+        },
+        {
+          "ref": "yj18",
+          "ammo": 6
+        },
+        {
+          "ref": "hhq9b",
+          "ammo": 8
+        },
+        {
+          "ref": "hpj45_130",
+          "ammo": 2
+        },
+        {
+          "ref": "ciws_1130",
+          "ammo": 10
+        }
+      ],
+      "interceptors": 8,
+      "intercept_pk": 0.6,
+      "can_capture": true,
+      "decoy_charges": 1,
+      "cost": 820,
+      "notes": "万吨大驱：112 单元垂发，反舰/防空/对陆全能，可控制海上要点"
+    },
+    {
+      "id": "type052d",
+      "name": "052D 型驱逐舰",
+      "short": "052D",
+      "class": "destroyer",
+      "domain": "sea",
+      "hp": 185,
+      "mp": 5.0,
+      "armor": 0.24,
+      "stealth": 0.16,
+      "evasion": 0.2,
+      "sensors": [
+        "radar_346b",
+        "sonar_hull",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "yj18",
+          "ammo": 8
+        },
+        {
+          "ref": "hhq9b",
+          "ammo": 8
+        },
+        {
+          "ref": "hpj45_130",
+          "ammo": 1
+        },
+        {
+          "ref": "ciws_1130",
+          "ammo": 8
+        }
+      ],
+      "interceptors": 7,
+      "intercept_pk": 0.55,
+      "can_capture": true,
+      "decoy_charges": 1,
+      "cost": 640,
+      "notes": "通用驱逐舰：以反舰为主，兼顾区域防空"
+    },
+    {
+      "id": "type054a",
+      "name": "054A 型护卫舰",
+      "short": "054A",
+      "class": "frigate",
+      "domain": "sea",
+      "hp": 140,
+      "mp": 5.5,
+      "armor": 0.18,
+      "stealth": 0.12,
+      "evasion": 0.22,
+      "sensors": [
+        "radar_381",
+        "sonar_hull",
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "yj83",
+          "ammo": 6
+        },
+        {
+          "ref": "hhq16",
+          "ammo": 8
+        },
+        {
+          "ref": "hpj45_130",
+          "ammo": 1
+        }
+      ],
+      "interceptors": 5,
+      "intercept_pk": 0.48,
+      "can_capture": true,
+      "cost": 380,
+      "notes": "护航主力：中程防空 + 反舰，适合编队屏卫"
+    },
+    {
+      "id": "df17_bde",
+      "name": "东风-17 高超声速导弹旅",
+      "short": "DF17",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 110,
+      "mp": 2.2,
+      "armor": 0.05,
+      "stealth": 0.12,
+      "evasion": 0.0,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "df17",
+          "ammo": 2
+        }
+      ],
+      "cost": 780,
+      "notes": "陆基高超声速打击：射程覆盖整个战区，几乎无法拦截，但备弹极少"
+    },
+    {
+      "id": "b1b",
+      "name": "B-1B 枪骑兵轰炸机",
+      "short": "B1B",
+      "class": "bomber",
+      "domain": "air",
+      "hp": 150,
+      "mp": 8.0,
+      "armor": 0.0,
+      "stealth": 0.06,
+      "evasion": 0.15,
+      "max_altitude": "med",
+      "sensors": [
+        "radar_apg70",
+        "esm_adv"
+      ],
+      "weapons": [
+        {
+          "ref": "agm158c",
+          "ammo": 8
+        },
+        {
+          "ref": "jassm_er",
+          "ammo": 6
+        }
+      ],
+      "cost": 900,
+      "one_shot_kill": false,
+      "sortie_shots": 2,
+      "notes": "防区外饱和打击平台：一次可投射十余枚隐身巡航导弹"
+    },
+    {
+      "id": "df26_bde",
+      "name": "东风-26 导弹旅",
+      "short": "DF26",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 110,
+      "mp": 2.2,
+      "armor": 0.05,
+      "stealth": 0.14,
+      "evasion": 0.0,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [
+        {
+          "ref": "df26",
+          "ammo": 2
+        }
+      ],
+      "cost": 760,
+      "can_fortify": true,
+      "notes": "反舰弹道导弹：射程覆盖整个战区，可打击海上机动目标"
+    },
+    {
+      "id": "df41_bde",
+      "name": "东风-41 洲际导弹旅",
+      "short": "DF41",
+      "class": "mlrs",
+      "domain": "land",
+      "hp": 120,
+      "mp": 2.0,
+      "armor": 0.06,
+      "stealth": 0.18,
+      "evasion": 0.0,
+      "sensors": [
+        "esm_elint"
+      ],
+      "weapons": [
+        {
+          "ref": "df41",
+          "ammo": 1
+        }
+      ],
+      "cost": 1200,
+      "can_fortify": true,
+      "fort_power": 2,
+      "notes": "战略底牌：一次只能发射一枚，命中即摧毁任何目标"
+    },
+    {
+      "id": "hq17",
+      "name": "红旗-17A 近程防空连",
+      "short": "HQ17",
+      "class": "sam",
+      "domain": "land",
+      "hp": 75,
+      "mp": 3.4,
+      "armor": 0.08,
+      "stealth": 0.1,
+      "evasion": 0.1,
+      "sensors": [
+        "radar_sentinel",
+        "ir_irst"
+      ],
+      "weapons": [
+        {
+          "ref": "hq17_missile",
+          "ammo": 10
+        }
+      ],
+      "interceptors": 6,
+      "intercept_pk": 0.62,
+      "cost": 300,
+      "can_fortify": true,
+      "notes": "随伴防空：专门拦截巡航导弹与精确制导弹药"
+    },
+    {
+      "id": "eng",
+      "name": "战斗工兵连",
+      "short": "ENG",
+      "class": "infantry",
+      "domain": "land",
+      "hp": 85,
+      "mp": 2.8,
+      "armor": 0.06,
+      "stealth": 0.14,
+      "evasion": 0.18,
+      "sensors": [
+        "ir_thermal"
+      ],
+      "weapons": [
+        {
+          "ref": "mg_762",
+          "ammo": 6
+        },
+        {
+          "ref": "pf98",
+          "ammo": 3
+        }
+      ],
+      "can_capture": true,
+      "can_fortify": true,
+      "fort_power": 2,
+      "entrench_bonus": 0.22,
+      "datalink": false,
+      "cost": 160,
+      "notes": "工兵：可在要点快速构筑/修复工事，也能用火箭筒破障攻坚"
+    }
+  ],
+  "presets": {
+    "loadouts": [
+      {
+        "id": "cap_remote",
+        "name": "远程制空",
+        "domain": "air",
+        "desc": "全远程空空挂载，专猎预警机与加油机",
+        "weapons": [
+          {
+            "ref": "pl15",
+            "ammo": 6
+          },
+          {
+            "ref": "pl10",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "cap_west",
+        "name": "制空（美制）",
+        "domain": "air",
+        "desc": "AIM-120D ×6 + AIM-9X ×2",
+        "weapons": [
+          {
+            "ref": "aim120d",
+            "ammo": 6
+          },
+          {
+            "ref": "aim9x",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "strike_multirole",
+        "name": "多用途对地",
+        "domain": "air",
+        "desc": "滑翔炸弹 + 自卫空空弹",
+        "weapons": [
+          {
+            "ref": "ls6",
+            "ammo": 4
+          },
+          {
+            "ref": "pl10",
+            "ammo": 2
+          },
+          {
+            "ref": "pl15",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "anti_ship_air",
+        "name": "航空反舰",
+        "domain": "air",
+        "desc": "空射反舰导弹饱和攻击",
+        "weapons": [
+          {
+            "ref": "yj83k",
+            "ammo": 4
+          },
+          {
+            "ref": "pl10",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "sead",
+        "name": "压制防空（SEAD）",
+        "domain": "air",
+        "desc": "反辐射导弹 + 护航火力",
+        "weapons": [
+          {
+            "ref": "agm88",
+            "ammo": 4
+          },
+          {
+            "ref": "aim120d",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "ddg_asbm",
+        "name": "驱逐舰 · 反舰强化",
+        "domain": "sea",
+        "desc": "高超声速 + 亚超结合双层反舰",
+        "weapons": [
+          {
+            "ref": "yj21",
+            "ammo": 2
+          },
+          {
+            "ref": "yj18",
+            "ammo": 6
+          },
+          {
+            "ref": "hhq9b",
+            "ammo": 4
+          },
+          {
+            "ref": "hpj45_130",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "ddg_airdef",
+        "name": "驱逐舰 · 防空强化",
+        "domain": "sea",
+        "desc": "区域防空弹满载，牺牲部分反舰能力",
+        "weapons": [
+          {
+            "ref": "hhq9b",
+            "ammo": 6
+          },
+          {
+            "ref": "yj18",
+            "ammo": 3
+          },
+          {
+            "ref": "hpj45_130",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "fg_escort",
+        "name": "护卫舰 · 护航",
+        "domain": "sea",
+        "desc": "中程防空 + 反舰，编队屏卫",
+        "weapons": [
+          {
+            "ref": "hhq16",
+            "ammo": 6
+          },
+          {
+            "ref": "yj83",
+            "ammo": 4
+          }
+        ]
+      },
+      {
+        "id": "inf_at",
+        "name": "步兵 · 反装甲",
+        "domain": "land",
+        "desc": "反坦克导弹加量，牺牲压制火力",
+        "weapons": [
+          {
+            "ref": "javelin",
+            "ammo": 4
+          },
+          {
+            "ref": "mg_762",
+            "ammo": 8
+          }
+        ]
+      },
+      {
+        "id": "mech_assault",
+        "name": "装步 · 突击",
+        "domain": "land",
+        "desc": "步战车火力全开",
+        "weapons": [
+          {
+            "ref": "m242_25",
+            "ammo": 10
+          },
+          {
+            "ref": "tow2b",
+            "ammo": 4
+          }
+        ]
+      },
+      {
+        "id": "arty_barrage",
+        "name": "炮兵 · 压制",
+        "domain": "land",
+        "desc": "面杀伤弹药满载",
+        "weapons": [
+          {
+            "ref": "m777_155",
+            "ammo": 6
+          },
+          {
+            "ref": "gmmlrs",
+            "ammo": 3
+          }
+        ]
+      },
+      {
+        "id": "lrasm_strike",
+        "name": "隐身反舰突击",
+        "domain": "air",
+        "desc": "LRASM 防区外饱和攻击",
+        "weapons": [
+          {
+            "ref": "agm158c",
+            "ammo": 8
+          },
+          {
+            "ref": "aim120d",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "jassm_penetrate",
+        "name": "隐身纵深打击",
+        "domain": "air",
+        "desc": "JASSM-ER 突防打指挥所/机场",
+        "weapons": [
+          {
+            "ref": "jassm_er",
+            "ammo": 6
+          },
+          {
+            "ref": "aim120d",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "strategic",
+        "name": "战略打击",
+        "domain": "land",
+        "desc": "洲际导弹 + 反舰弹道导弹",
+        "weapons": [
+          {
+            "ref": "df41",
+            "ammo": 1
+          },
+          {
+            "ref": "df26",
+            "ammo": 2
+          }
+        ]
+      },
+      {
+        "id": "engineer",
+        "name": "工兵破障",
+        "domain": "land",
+        "desc": "机枪压制 + 火箭筒破障",
+        "weapons": [
+          {
+            "ref": "mg_762",
+            "ammo": 6
+          },
+          {
+            "ref": "pf98",
+            "ammo": 4
+          }
+        ]
+      }
+    ],
+    "packs": [
+      {
+        "id": "pla_air",
+        "name": "解放军 · 空军",
+        "units": [
+          "j20",
+          "j16",
+          "kj500"
+        ],
+        "short": "中·空"
+      },
+      {
+        "id": "pla_navy",
+        "name": "解放军 · 海军",
+        "units": [
+          "type055",
+          "type052d",
+          "type054a"
+        ],
+        "short": "中·海"
+      },
+      {
+        "id": "pla_rocket",
+        "name": "解放军 · 火箭军",
+        "units": [
+          "df26_bde",
+          "df41_bde",
+          "df17_bde"
+        ],
+        "short": "中·火"
+      },
+      {
+        "id": "us_air",
+        "name": "美军 · 空中",
+        "units": [
+          "f35",
+          "f15e",
+          "b1b",
+          "e3",
+          "b52",
+          "mq9"
+        ],
+        "short": "美·空"
+      },
+      {
+        "id": "us_sea",
+        "name": "美军 · 海上",
+        "units": [
+          "ddg_burke",
+          "cvn",
+          "ssn_va"
+        ],
+        "short": "美·海"
+      },
+      {
+        "id": "ru_air",
+        "name": "俄军 · 空中",
+        "units": [
+          "su35",
+          "su34",
+          "a50",
+          "tu22m3",
+          "mig31k"
+        ],
+        "short": "俄·空"
+      },
+      {
+        "id": "ru_sea",
+        "name": "俄军 · 海上",
+        "units": [
+          "slava",
+          "kilo"
+        ],
+        "short": "俄·海"
+      },
+      {
+        "id": "ground",
+        "name": "地面与防空",
+        "units": [
+          "m1a2",
+          "bradley",
+          "paladin",
+          "himars",
+          "patriot",
+          "thaad",
+          "eng",
+          "t90m",
+          "bmp3",
+          "msta",
+          "smerch",
+          "s400",
+          "pantsir",
+          "hq17",
+          "inf_light",
+          "inf_motor",
+          "usmc",
+          "naval_inf"
+        ],
+        "short": "地面"
+      },
+      {
+        "id": "support",
+        "name": "支援与特种",
+        "units": [
+          "ew_us",
+          "ew_ru",
+          "radar_tpy2",
+          "radar_container",
+          "iskander"
+        ],
+        "short": "支援"
+      }
+    ]
+  }
+}

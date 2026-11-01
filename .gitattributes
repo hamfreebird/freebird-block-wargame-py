@@ -1,0 +1,7 @@
+# 统一以 LF 存入仓库，Windows 检出时自动转 CRLF
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
