@@ -209,7 +209,25 @@ def check_file(path: str) -> list[tuple[str, int, str]]:
     ck = Checker(path)
     ck.precollect_module(tree)
     ck.visit(tree)
-    # 模块层未定义的名字也报出来
+
+    # __all__ 中列出的名字必须真实存在（对应 ruff F822）
+    defined = set(ck.module.bindings)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                if a.name != "*":
+                    defined.add(a.asname or a.name.split(".")[0])
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+            if isinstance(node.value, (ast.List, ast.Tuple)):
+                for elt in node.value.elts:
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                        if elt.value not in defined:
+                            ck.problems.append((path, getattr(node, "lineno", 0),
+                                                f"__all__ 中的 '{elt.value}' 未定义"))
     return ck.problems
 
 
