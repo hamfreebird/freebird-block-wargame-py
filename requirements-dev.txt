@@ -1,0 +1,4 @@
+# 开发与打包依赖
+# 安装：python -m pip install -r requirements-dev.txt
+pyinstaller>=6.6        # 生成免安装可执行文件（Windows / Linux）
+ruff>=0.5               # 静态检查（CI 使用）

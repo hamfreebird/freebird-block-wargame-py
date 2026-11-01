@@ -1,5 +1,7 @@
 # 方块兵棋 · Block Wargame
 
+<img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
+
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
 设施与控制状态；玩家部署陆、海、空、天不同武器系统，通过**侦察—决策—打击**链条达成作战目标。
 
@@ -392,6 +394,7 @@ core/
   engine.py             回合状态机、交战结算、导弹飞行、后勤补给、反卫星、胜负判定
   ai.py                 对手 AI（威胁评估 + 目标分配 + 距离场机动 + 返场/反卫星/设施打击）
   save.py               存档序列化与反序列化
+  paths.py              资源路径解析（源码 / 冻结 / zipapp 三种形态）
 ui/
   theme.py              配色、字体缓存、文本渲染
   widgets.py            按钮、日志视图、提示框
@@ -404,9 +407,78 @@ data/
 saves/                  存档槽位（运行时生成）
 tools/
   make_maps.py          地图生成脚本（开发用）
+  make_icon.py          图标生成（多尺寸 PNG + ICO + SVG）
   simcheck.py           双 AI 推演诊断脚本（开发用）
-  diag.py               作战逻辑自检：10 条不变量 + 存档往返校验
+  diag.py               作战逻辑自检：11 条不变量 + 存档往返校验
+  smoke_test.py         无界面 UI 冒烟测试（CI 使用）
+assets/icon/            应用图标（PNG / ICO / SVG）
+packaging/              打包流程（PyInstaller + 便携版 + 源码包）
+.github/workflows/      CI 与发布流水线
 ```
+
+---
+
+## 开发与打包
+
+### 开发
+
+```bash
+git clone <repo> && cd freebird-block-wargame-py
+python -m pip install -r requirements.txt
+
+python main.py                 # 运行游戏
+python main.py --check         # 数据校验（地图 + 武器库）
+python main.py --sim 16        # 无界面双 AI 推演
+python tools/diag.py 20        # 作战逻辑自检（11 条不变量）
+python tools/smoke_test.py     # 无界面 UI 冒烟测试（16 项断言）
+```
+
+工作流：`main` 分支受保护 → `feature/<主题>` 分支开发 → PR 触发 CI（多版本 + 多平台）
+→ 合并后打 `v*` 标签触发发布流水线。
+
+### CI 流水线
+
+`.github/workflows/ci.yml` 包含三个作业：
+
+| 作业 | 内容 |
+|---|---|
+| **verify** | Python 3.10–3.13 × Ubuntu/Windows 矩阵：编译检查、ruff 致命错误检查、`--check` 数据校验、`diag` 自检、UI 冒烟测试、双 AI 推演 |
+| **balance** | 5 个随机种子 × 2 张想定，结果写入任务摘要；**一方全胜即判定失衡并让 CI 失败** |
+| **package** | 依赖 verify，调用打包脚本产出安装包并上传制品 |
+
+`.github/workflows/release.yml`：推送 `v*` 标签时构建 Windows / Linux 安装包并创建 GitHub Release。
+
+### 打包
+
+三条路径，按需要选择：
+
+```bash
+# ① 免安装可执行文件（需要先安装 PyInstaller）
+packaging/build_windows.bat                  # Windows（双击或命令行）
+bash packaging/build_linux.sh                # Linux / macOS
+
+# ② 零依赖便携版（只用标准库，任何环境都能构建）
+python packaging/make_portable.py
+#   → packaging/dist/方块兵棋-portable.pyz   单文件，双击即用
+#     （目标机器需已装 Python 3.10+ 与 pygame-ce）
+
+# ③ 源码包（与 ② 同一次构建产出）
+python packaging/make_portable.py      # → 方块兵棋-source.zip
+```
+
+产物说明：
+
+| 产物 | 平台 | 说明 |
+|---|---|---|
+| `方块兵棋-windows-x64.zip` | Windows | PyInstaller onedir，解压即玩，含图标与文档 |
+| `方块兵棋-linux-x86_64.tar.gz` | Linux | PyInstaller onefile + `run.sh` + 桌面快捷方式 |
+| `方块兵棋-linux-x86_64.AppImage` | Linux | 需要 `appimagetool`，脚本自动检测并生成 |
+| `方块兵棋-portable.pyz` | 全平台 | 零依赖单文件；启动时自动把数据释放到用户目录 |
+| `方块兵棋-source.zip` | 全平台 | 源码 + 数据 + 图标 + 工具链 |
+
+**路径约定**：`core/paths.py` 统一解析资源位置——源码运行用项目根目录，PyInstaller 用 `_MEIPASS`，
+zipapp 则把 `data/` 与 `assets/` 释放到用户数据目录（Windows `%LOCALAPPDATA%\BlockWargame`，
+Linux `~/.local/share/blockwargame`），因此便携版的地图编辑器依然可以保存想定。
 
 ---
 

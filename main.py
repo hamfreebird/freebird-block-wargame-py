@@ -20,8 +20,9 @@ if ROOT not in sys.path:
 from core.enums import Side  # noqa: E402
 from core.loader import LoadError, list_maps, load_scenario  # noqa: E402
 
-MAP_DIR = os.path.join(ROOT, "data", "maps")
-ARMORY = os.path.join(ROOT, "data", "units", "armory.json")
+from core import paths as _paths          # 统一资源路径（兼容 zipapp / 冻结版）
+MAP_DIR = _paths.maps_dir()
+ARMORY = _paths.armory_path()
 
 
 def check_data() -> int:

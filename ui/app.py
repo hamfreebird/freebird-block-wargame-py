@@ -28,12 +28,11 @@ from .editor import Editor
 from .mapview import MapView
 from .widgets import Button, LogView
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if getattr(sys, "frozen", False):          # PyInstaller 打包后资源在 _MEIPASS
-    ROOT = getattr(sys, "_MEIPASS", ROOT)
-MAP_DIR = os.path.join(ROOT, "data", "maps")
-ARMORY = os.path.join(ROOT, "data", "units", "armory.json")
-ICON_DIR = os.path.join(ROOT, "assets", "icon")
+from core import paths as _paths          # 统一资源路径（兼容 zipapp / 冻结版）
+ROOT = _paths.data_root()
+MAP_DIR = _paths.maps_dir()
+ARMORY = _paths.armory_path()
+ICON_DIR = _paths.icon_dir()
 
 TOP_H = 50
 BOTTOM_H = 26

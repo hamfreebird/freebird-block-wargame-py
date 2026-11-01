@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 校验 · ${{ matrix.os }} · Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: 语法编译检查
+        run: python -m compileall -q core ui tools main.py
+
+      - name: 静态检查（仅致命错误）
+        run: |
+          python -m pip install ruff
+          ruff check --select E9,F63,F7,F82,F821 .
+
+      - name: 数据校验（地图 + 武器库）
+        run: python main.py --check
+
+      - name: 作战逻辑自检（11 条不变量）
+        run: python tools/diag.py 20
+
+      - name: 无界面 UI 冒烟测试
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/smoke_test.py
+
+      - name: 双 AI 推演
+        run: |
+          python main.py --sim 16 --map 0
+          python main.py --sim 18 --map 1
+
+  balance:
+    name: 平衡性回归（多种子）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: 5 个随机种子 × 2 张想定
+        run: |
+          python - <<'PY' | tee balance.txt
+          import sys
+          sys.path.insert(0, ".")
+          import tools.simcheck as sc
+          from core.enums import Side
+          rows = []
+          for mp, turns in (("steppe_thunder", 16), ("strait_shield", 18)):
+              for seed in (7, 1234, 2024, 555, 999):
+                  st = sc.run(mp, turns, seed)
+                  w = st.winner.value if st.winner else "平局"
+                  rows.append((mp, seed, st.vp[Side.BLUE], st.vp[Side.RED],
+                               st.casualties[Side.BLUE], st.casualties[Side.RED], w))
+          print("| 想定 | 种子 | 蓝VP | 红VP | 蓝损 | 红损 | 胜方 |")
+          print("|---|---|---|---|---|---|---|")
+          for r in rows:
+              print(f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} |")
+          blue = sum(1 for r in rows if r[6] == "BLUE")
+          red = sum(1 for r in rows if r[6] == "RED")
+          print(f"\n蓝方胜 {blue} / 红方胜 {red} / 共 {len(rows)} 局")
+          # 严重失衡（一方全胜）时让 CI 失败，避免平衡回归被忽略
+          if blue == 0 or red == 0:
+              sys.exit("严重失衡：一方全胜，请调整想定或参数")
+          PY
+      - name: 写入任务摘要
+        if: always()
+        run: |
+          {
+            echo "## 平衡性回归"
+            echo ""
+            cat balance.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: 打包（${{ matrix.os }}）
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: 构建安装包
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -ExecutionPolicy Bypass -File packaging/build_windows.ps1
+          else
+            bash packaging/build_linux.sh
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 方块兵棋-${{ matrix.os }}
+          path: |
+            packaging/dist/
+          if-no-files-found: error
