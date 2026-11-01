@@ -2,6 +2,10 @@
 
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
+[![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v1.0.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
+
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
 设施与控制状态；玩家部署陆、海、空、天不同武器系统，通过**侦察—决策—打击**链条达成作战目标。
 
@@ -495,13 +499,32 @@ Linux `~/.local/share/blockwargame`），因此便携版的地图编辑器依然
 
 ## 已知限制
 
-- 卫星以固定坐标表示（渲染时隐藏），反卫星交战的射程按抽象常数计算，未建模真实轨道力学；
+- 卫星轨道为匀速直线地面轨迹，未建模轨道倾角、变轨与真实过顶几何；反卫星按常数距离交战；
 - AI 为启发式规则，长局中可能出现局部僵持；
 - 诱饵按频段区分，但未模拟同一诱饵在不同距离上的信号强度变化；
-- 工事未区分堑壕/掩体/雷场的构筑时间差异。
+- 工事未区分堑壕/掩体/雷场的构筑时间差异；
+- 中段反导只有一次窗口，未模拟多段拦截、动能杀伤与碎片效应；
+- 烟幕为格子级遮蔽，未模拟随风扩散。
+
+完整清单见 [`ROADMAP.md`](ROADMAP.md) 的「已知的机制边界」。
 
 ## 扩展建议
 
 - 新增想定：用编辑器绘制后保存，或复制 `data/maps/*.json` 修改；`--check` 会校验合法性。
 - 新增兵种：在 `data/units/armory.json` 的 `units` 中追加，`class` 决定图标，`notes` 显示在资料栏。
 - 调整平衡：直接改 `pk` / `range_max` / `stealth` / `intercept_pk`，用 `--sim` 快速回归验证。
+
+## 贡献者
+
+| 昵称 | 主页 | 职责 |
+|---|---|---|
+| **[hamfreebird](https://github.com/hamfreebird)** | https://github.com/hamfreebird | 项目作者：玩法设计、核心引擎、AI、界面、编辑器、图标、CI 与打包流程 |
+
+欢迎提 Issue 与 PR。新增机制请同步更新 `GAME_GUIDE.md` 与 `tools/diag.py` 的不变量。
+
+---
+
+<p align="center">
+  <img src="assets/icon/icon.svg" width="96" alt="方块兵棋">
+  <br><sub>方块兵棋 · Block Wargame — 现代战争方块兵棋</sub>
+</p>

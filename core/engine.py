@@ -17,7 +17,7 @@ import random
 from dataclasses import dataclass
 
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
-from .model import Missile, Unit, Weapon
+from .model import Missile, Tile, Unit, Weapon
 from . import rules
 
 
