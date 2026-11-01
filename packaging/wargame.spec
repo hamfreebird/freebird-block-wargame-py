@@ -18,9 +18,11 @@ SPECPATH = os.path.abspath(SPECPATH)          # PyInstaller 注入：spec 所在
 ROOT = os.path.dirname(SPECPATH)
 IS_WIN = sys.platform.startswith("win")
 
-# 图标：Windows 用 .ico，Linux 用 PNG
-icon_path = os.path.join(ROOT, "assets", "icon",
-                          "icon.ico" if IS_WIN else "icon_256.png")
+# 图标：Windows 用 .ico（直接嵌入可执行文件）；
+# Linux/macOS 不在 spec 里嵌图标——PyInstaller 转换 PNG 需要 Pillow，
+# 而窗口图标运行时已由 ui/app.py 用 assets/icon/icon_256.png 设置，
+# 桌面快捷方式另在 build_linux.sh 中引用同一张 PNG。
+icon_path = os.path.join(ROOT, "assets", "icon", "icon.ico") if IS_WIN else None
 
 datas = [
     (os.path.join(ROOT, "data"), "data"),            # 想定与武器库
@@ -65,7 +67,7 @@ exe_kwargs = dict(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_path if os.path.exists(icon_path) else None,
+    icon=icon_path if (icon_path and os.path.exists(icon_path)) else None,
 )
 
 if IS_WIN:
