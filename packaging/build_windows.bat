@@ -1,6 +1,7 @@
 @echo off
 REM Windows 打包快捷入口（双击即可）
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0.."
 powershell -ExecutionPolicy Bypass -File "packaging\build_windows.ps1" %*
 if errorlevel 1 (

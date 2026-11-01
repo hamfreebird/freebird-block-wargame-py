@@ -9,6 +9,12 @@ on:
         description: "版本号（形如 v1.1.0）"
         required: true
 
+env:
+  # Windows 运行器的 stdout 默认是 cp1252 管道，无法输出中文 →
+  # 统一强制 UTF-8（脚本内部也有兜底，此处为双保险）
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
 permissions:
   contents: write
 

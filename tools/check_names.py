@@ -21,6 +21,16 @@ import builtins
 import os
 import sys
 
+
+# Windows 控制台/管道默认编码（cp1252 等）无法输出中文，
+# 统一把标准输出切到 UTF-8，缺失字符以替换符兜底，避免 UnicodeEncodeError。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 BUILTINS = set(dir(builtins)) | {
     "__file__", "__name__", "__doc__", "__package__", "__spec__",
     "__loader__", "__builtins__", "__path__", "__class__", "__debug__",

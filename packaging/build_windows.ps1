@@ -12,6 +12,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# 控制台输出编码设为 UTF-8，保证中文日志在 CI 日志里正常显示
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
