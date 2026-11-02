@@ -901,10 +901,32 @@ def main() -> int:
           f"字号：无小于 {_T2.FS_TINY} 号的正文"
           + (f"（{_too_small[:3]}）" if _too_small else ""))
 
-    # 含中文的文本不应走等宽字体（Consolas 无中文字形）
-    check(_T2.render_text("传感器 5.0", 12, (255, 255, 255), mono=True).get_width()
-          > _T2.fonts().get(12, mono=True).size("传感器 5.0")[0],
-          "字体：含中文的等宽文本自动降级为中文字体")
+    # 含中文的文本不应走等宽字体（Consolas 等无中文字形）。
+    # 断言用**像素级比较**而不是宽度大小——不同平台的等宽字体实现
+    # 宽度关系不同，靠宽度比较会在某些 CI 环境下误判。
+    _s_mono = _T2.render_text("传感器 5.0", 12, (255, 255, 255), mono=True)
+    _s_plain = _T2.render_text("传感器 5.0", 12, (255, 255, 255), mono=False)
+    try:
+        _same = (_s_mono.get_size() == _s_plain.get_size()
+                 and pygame.image.tobytes(_s_mono, "RGB")
+                 == pygame.image.tobytes(_s_plain, "RGB"))
+    except AttributeError:
+        _same = _s_mono.get_size() == _s_plain.get_size()
+    check(_same, "字体：含中文的等宽文本自动降级为中文字体")
+
+    # 系统字体不可用时（Windows 注册表枚举异常等）仍要能取到字体，
+    # 绝不能让字体初始化问题崩掉整个游戏。
+    _T2._SYSFONT_OK = False
+    _T2._FONTS = None
+    try:
+        _f = _T2.fonts().get(14)
+        _fb_ok = _f is not None and _f.get_height() > 0
+    except Exception:
+        _fb_ok = False
+    finally:
+        _T2._SYSFONT_OK = None
+        _T2._FONTS = None
+    check(_fb_ok, "字体：系统字体不可用时仍能降级取字")
 
     # --- 4.2 简报与战斗回顾 ---
     from ui.briefing import (build_briefing, build_debrief, summarize_force)

@@ -350,6 +350,27 @@ def _first_existing(paths: tuple[str, ...]) -> str | None:
     return None
 
 
+_SYSFONT_OK: bool | None = None
+
+
+def _sysfont_available() -> bool:
+    """系统字体表是否可用（只探测一次）。
+
+    `pygame.font.SysFont` 在 Windows 上要枚举字体注册表，遇到以 DWORD
+    登记的字体项会抛 `TypeError: expected str, bytes or os.PathLike
+    object, not int`（pygame-ce 的已知问题）。这个探测把异常挡在门外，
+    之后一律走字体文件或 pygame 默认字体，绝不让字体初始化崩掉整个游戏。
+    """
+    global _SYSFONT_OK
+    if _SYSFONT_OK is None:
+        try:
+            pygame.font.SysFont("arial", 12)
+            _SYSFONT_OK = True
+        except Exception:
+            _SYSFONT_OK = False
+    return _SYSFONT_OK
+
+
 class Fonts:
     """按字号缓存字体对象；找不到中文字体时回退到系统默认字体。"""
 
@@ -365,11 +386,23 @@ class Fonts:
         font: pygame.font.Font | None = None
         if mono:
             # 等宽字体（Consolas 等）**没有中文字形**——直接用会让中文
-            # 渲染成方框或字距错乱。SysFont 可以指定 fallback 链：
-            # 数字走 Consolas，中文回落到雅黑。
-            font = pygame.font.SysFont(
-                "consolas,couriernew,dejavusansmono,monospace,"
-                "microsoftyahei,simhei", size, bold=bold)
+            # 渲染成方框或字距错乱。优先按**文件路径**加载：SysFont 要
+            # 枚举系统注册表，既慢又可能抛异常，而且它的 fallback 链
+            # 并不按字符回退（选中的仍是同一个字体）。
+            path = _first_existing(tuple(_FONT_MONO))
+            if path:
+                try:
+                    font = pygame.font.Font(path, size)
+                except Exception:
+                    font = None
+            if font is None and _sysfont_available():
+                # 文件不在（Linux 上字体包可能没装）→ 退到系统等宽字体
+                try:
+                    font = pygame.font.SysFont(
+                        "consolas,couriernew,dejavusansmono,monospace",
+                        size, bold=bold)
+                except Exception:
+                    font = None
         if font is None:
             path = _first_existing(tuple(_FONT_CANDIDATES_BOLD if bold else _FONT_CANDIDATES_CN))
             if path:
@@ -377,8 +410,14 @@ class Fonts:
                     font = pygame.font.Font(path, size)
                 except Exception:
                     font = None
+        if font is None and _sysfont_available():
+            try:
+                font = pygame.font.SysFont("microsoftyahei,simhei,arial", size, bold=bold)
+            except Exception:
+                font = None
         if font is None:
-            font = pygame.font.SysFont("microsoftyahei,simhei,arial", size, bold=bold)
+            # 最后的兜底：pygame 内置默认字体，永远可用（但没有中文字形）
+            font = pygame.font.Font(None, size)
         self._cache[key] = font
         return font
 

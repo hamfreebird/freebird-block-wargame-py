@@ -121,7 +121,7 @@ python main.py --check          # 数据校验（地图 + 武器库）
 python main.py --sim 16         # 无界面双 AI 推演
 python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档往返）
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
-python tools/smoke_test.py      # 无界面 UI 冒烟测试（168 项断言）
+python tools/smoke_test.py      # 无界面 UI 冒烟测试（169 项断言）
 python tools/test_stack.py      # 同格共存规则测试
 ```
 
