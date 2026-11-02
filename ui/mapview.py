@@ -564,7 +564,9 @@ class MapView:
             visible.append((u, lvl))
 
         visible.sort(key=lambda p: (p[0].domain is Domain.AIR, p[0].side is not st.player_side))
-        # 同一格可能停驻多架航空兵（机场停机坪），做轻微错位并标注数量
+        # 同一格可能停驻多架航空兵（机场停机坪），或地面部队 + 空中支援同处。
+        # 画法：地面单位占主体位置，空中单位错位到右上角，
+        # 数量标注只统计空中单位——「×N」指的是同格几架飞机。
         groups: dict[tuple[int, int], list] = {}
         for u, lvl in visible:
             groups.setdefault((u.x, u.y), []).append((u, lvl))
@@ -572,12 +574,19 @@ class MapView:
             r = self.grid_to_rect(*pos)
             if not self.rect.colliderect(r.inflate(self.tile * 2, self.tile * 2)):
                 continue
-            for i, (u, lvl) in enumerate(items):
-                rr = r.move(i * 2, i * 2) if len(items) > 1 else r
-                self._draw_unit_token(surf, u, rr, lvl, stacked=len(items) > 1)
-            if len(items) > 1:
-                T.draw_text(surf, f"×{len(items)}", (r.right - 1, r.y + 1), 9,
-                            (255, 235, 180), anchor="topright", bold=True)
+            ground_items = [(u, l) for u, l in items if u.domain is not Domain.AIR]
+            air_items = [(u, l) for u, l in items if u.domain is Domain.AIR]
+            # 地面单位：最多一个，居中绘制
+            for i, (u, lvl) in enumerate(ground_items[:1]):
+                self._draw_unit_token(surf, u, r, lvl,
+                                      stacked=len(ground_items) + len(air_items) > 1)
+            # 空中单位：错位到格子右上角
+            for i, (u, lvl) in enumerate(air_items):
+                rr = r.move(-i * 3, -i * 3)
+                self._draw_unit_token(surf, u, rr, lvl, stacked=True)
+            if len(air_items) > 1:
+                T.draw_text(surf, f"×{len(air_items)}", (r.right - 1, r.y + 1), 9,
+                            T.mix(T.AMBER, T.WHITE, 0.4), anchor="topright", bold=True)
 
     def _draw_unit_token(self, surf: pygame.Surface, u: Unit, r: pygame.Rect,
                          lvl: Detection, stacked: bool = False) -> None:

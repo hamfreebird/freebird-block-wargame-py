@@ -23,6 +23,14 @@ class LoadError(Exception):
     """数据文件格式错误。"""
 
 
+# 地图边长上限。128×128 的大型战役想定需要比早期 96 更大的上限；
+# 再往上会让地形预渲染与寻路开销明显上升，因此定在 160。
+MAX_MAP_SIZE = 160
+
+# 同格容量：水面舰每格一艘，潜艇可与水面舰同格（在水面之下）
+SUB_CAPACITY = 2
+
+
 # --------------------------------------------------------------------------- #
 # 工具
 # --------------------------------------------------------------------------- #
@@ -372,8 +380,8 @@ def load_map(path: str) -> MapData:
     where = os.path.basename(path)
 
     w, h = _req(raw, "size", where)
-    if not (4 <= w <= 96 and 4 <= h <= 96):
-        raise LoadError(f"{where}.size: 地图尺寸应在 4..96 之间")
+    if not (4 <= w <= MAX_MAP_SIZE and 4 <= h <= MAX_MAP_SIZE):
+        raise LoadError(f"{where}.size: 地图尺寸应在 4..{MAX_MAP_SIZE} 之间")
 
     terrain_rows = _parse_rows(raw, "terrain", w, h, where)
     elev_cfg = raw.get("elevation", {})
@@ -469,6 +477,9 @@ def load_scenario(map_path: str, armory_path: str) -> Scenario:
     units: list[Unit] = []
     deployed: set[tuple[int, int]] = set()
     air_stack: dict[tuple[int, int], list[str]] = {}
+    ground_stack: dict[tuple[int, int], str] = {}   # 每格至多一支地面部队
+    sea_stack: dict[tuple[int, int], str] = {}       # 每格至多一艘水面舰
+    sub_stack: dict[tuple[int, int], list[str]] = {} # 每格至多 SUB_CAPACITY 艘潜艇
     for side_key, entries in raw.get("deployments", {}).items():
         side = _enum(Side, side_key, "deployments")
         for i, e in enumerate(entries):
@@ -481,17 +492,39 @@ def load_scenario(map_path: str, armory_path: str) -> Scenario:
                 raise LoadError(f"{where}: 坐标越界 ({x},{y})")
             tpl = armory.templates[tid]
             if (x, y) in deployed:
-                # 与部署规则保持一致：航空兵可停驻同一机场（停机坪容量 4 架）
-                tile = md.tiles[(x, y)]
-                same_air = (tpl.domain is Domain.AIR
-                            and tile.facility is Facility.AIRBASE
-                            and tile.owner is side and len(air_stack.get((x, y), ())) < 4)
-                if not same_air:
-                    raise LoadError(f"{where}: 部署位置冲突 ({x},{y})，同格不可叠加部署")
+                # 同格共存规则：
+                #   地面单位 ≤ 1、水面单位 ≤ 1、水下单位 ≤ 2、空中单位 ≤ 4；
+                #   空中单位可与地面部队同格（空中支援地面）；
+                #   水下单位（潜艇）可与水面舰同格——它在水面之下。
+                from .rules import AIRBASE_CAPACITY
+                if tpl.domain is Domain.AIR:
+                    air_n = len(air_stack.get((x, y), ()))
+                    if air_n >= AIRBASE_CAPACITY:
+                        raise LoadError(
+                            f"{where}: ({x},{y}) 同格空中单位已达上限 "
+                            f"{AIRBASE_CAPACITY} 架")
+                elif tpl.domain is Domain.SEA:
+                    if sea_stack.get((x, y)):
+                        raise LoadError(
+                            f"{where}: 部署位置冲突 ({x},{y})，同格不可部署两艘水面舰")
+                elif tpl.domain is Domain.SUB:
+                    sub_n = len(sub_stack.get((x, y), ()))
+                    if sub_n >= SUB_CAPACITY:
+                        raise LoadError(
+                            f"{where}: ({x},{y}) 同格潜艇已达上限 {SUB_CAPACITY} 艘")
+                elif ground_stack.get((x, y)):
+                    raise LoadError(
+                        f"{where}: 部署位置冲突 ({x},{y})，同格不可部署两支地面部队")
             if tpl.domain in (Domain.LAND, Domain.INFRA) and md.tiles[(x, y)].terrain is Terrain.WATER:
                 raise LoadError(f"{where}: {tpl.name} 为陆上单位，不可部署于海域 ({x},{y})")
             if tpl.domain is Domain.AIR:
                 air_stack.setdefault((x, y), []).append(tid)
+            elif tpl.domain is Domain.SEA:
+                sea_stack[(x, y)] = tpl.id
+            elif tpl.domain is Domain.SUB:
+                sub_stack.setdefault((x, y), []).append(tid)
+            else:
+                ground_stack[(x, y)] = tpl.id
             deployed.add((x, y))
             u = Unit(template=tpl, side=side, x=x, y=y)
             if "name" in e:

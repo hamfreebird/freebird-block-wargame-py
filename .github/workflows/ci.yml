@@ -75,10 +75,13 @@ jobs:
         run: python tools/smoke_test.py
 
       - name: 双 AI 推演
+        # 按**地图名**引用而不是序号——新增地图不会打乱既有引用
         run: |
-          python main.py --sim 16 --map 0
-          python main.py --sim 18 --map 1
-          python main.py --sim 8 --map 2
+          python main.py --sim 16 --map steppe_thunder
+          python main.py --sim 18 --map strait_shield
+          python main.py --sim 8 --map training_ground
+          # 大型想定（128×128）：回合数少，只验证能加载并正常推进
+          python main.py --sim 3 --map strait_confrontation
 
   balance:
     name: 平衡性回归（多种子）

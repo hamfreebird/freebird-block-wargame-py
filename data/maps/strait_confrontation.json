@@ -1,0 +1,1348 @@
+{
+ "id": "strait_confrontation",
+ "name": "海峡对决",
+ "description": "架空时间线：中美在东亚大陆架海峡爆发全面战争。美方自西太平洋展开反攻，中方依托大陆纵深与岸线防御体系据守。中央岛链是双方必争的胜负手。",
+ "size": [
+  128,
+  128
+ ],
+ "tile_km": 20,
+ "turn_limit": 20,
+ "terrain": [
+  "ccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcwwwwcpppppppppppppppppppppppppppfppppppddddddddfff",
+  "ccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcwwwwccpppppppppppppppppppppppppppppppppddddddddfff",
+  "ccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpspppppppppppppppppppppppppppppppdddddddffff",
+  "ccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssssspppppppppppppppppppppfffffpdfdddffffff",
+  "ccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssppsppppppppppppppppfffffffffdfffffff",
+  "cccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcwwcwwwwwssssssssspppppppppppppppfffppfffffffffffff",
+  "ccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccwwwwsssssssssppppppppppppppppffppfffffffffffff",
+  "cccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcccccccwwwwsusssssspppppppppppppppppffppffffffffffff",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccwwuussususppppppppppppppppppffppfffffffffffff",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcccccccccuuusuuusupppppppppppppppppppfppfffffffffffff",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcccccccccccuuuupupppppppppppppppppppffppppdffffffffff",
+  "wcccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccccucuusupuppppppppppppppppppfffffpddfffffffff",
+  "wwccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccuccuwusuuspppppppppppppppppffffffpddfffffffff",
+  "wwccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccucuwuuuusspppppppppppppppffffffffddffffffffh",
+  "wwccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccuwuwssususpppppppppppppppffffffffffffffffhhh",
+  "wwwcccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwccccccccwuuuuuussspppppppppppppppfffffffffffffffhhhh",
+  "wwwwwwccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcccwwwwwwuwuuuusssppppppppffppppfffffffffffffffhhhh",
+  "wwwwwwwwccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwussssssspppppppfffppffffffffffffffffhhhh",
+  "wwwwwwwwwcccccccccccccccccccccwwwwwwwpppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssssssssssppppppffffffffffffffffffffhhhhm",
+  "wwwwwwwwwwccccccccccccccccccccwwwwpppppppppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssspppppppfffffffhhhhfffffffhhhhmm",
+  "wwwwwwwwwwwcccccccccccccccccccwwwpphhmmhhpppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssspppppfffffhhhhhhhhffffhhhhmmm",
+  "wwwwwwwwwwwccmmmmmccccccccccccwwwphhmmmmmhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssssppppffffhhhhhhhhhhhhhhhhhmmm",
+  "wwwwwwwwwwwcmmmmmmmcccccccccccwwwphmmmmmmhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssssppppffffhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwcmmmmmmmmmccccccccccwwwphhmmmmmhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssssppppfffffhhhhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwcmmmmmmmmmccccccwwwwwwwpphhmmmhpppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssssppppffffhhhhhhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwcmmmmmmmmmcccccwwwwcwwwwpppppppppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssuspppfffffhhhhhhhhhhhhhhmmmmmmmm",
+  "wwwwwwwwwwwcmmmmmmmcccccccwwccwwwwwwwpppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssssuuspppfffffhhhhhhhhhhhhhhmmmmmmmm",
+  "wwwwwwwwwwwwcmmmmmccccccccwwwcwwwwwwwwwwwwwwwwwwwwwwpppppppwwwwwwwwwwwwwwwwwwwwwwwwwsssssssssuuuspuuffffffhhhhhhhhhhhhhhmmmmmmmm",
+  "wwwwwwwwwwwwwccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwppphhhhhpppwwwwwwwwwwwwwwwwwwwwwwsssssssssussuspupufffffhhhhhhhhhhhhhhmmmmmmmm",
+  "wwwwwwwwwwwwwwwwwcccccwwwwwwwwwwwwwwwwwwwwwwwwwwwppphmmmmmhhppwwwwwwwwwwwwwwwwwwwwsssssssssssuusspupppfffffhhhhhhhhhhhhhmmmmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphmmmmmmmhppwwwwwwwwwwwwwwwwwwwsssssssssssssssuupuuuffffffhhhhfhhhhhhhhhmmmmmm",
+  "wwwwwwwwwwwwwwcwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppphmmmmmhpppwwwwwwwwwwwwwwwwwwwsssssssssssussuuuuupppffffffhhhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwwccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppphhhhhpppwwwwwwwwwwwwwwwwwwwsssssssssspsuuuuppuppppffffffffhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwcccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppppwwwwwwwwwwwwwwwwwwwwsssssssspppppupuuuupuuppffffffffffhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssssssssppppppppuupupupppffffffffffhhhhhuhhhhmmmmm",
+  "wwwwwwwwwchhhhhccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssssssssppppppppppfppppppffffffffffffuhhhhuhhmmmmm",
+  "wwwwwwwchhmmmmmmhcwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssspppppppppppffpppppffffffffffffuhhhuuuhhmmmm",
+  "wwwwwwchmmmmmmmmmhcwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssssssspppppppppppffffpppfffffffffffuffuuuuuhuhhmmm",
+  "wwwwwwhmmmmmmmmmmmhccccccccccwwwwwwwwwwwwwwwwwpppwwwwwwwwwwwwwwwwwwwwwwwwwwssssssssppppppfffpffffffpppfffffffffffufufuufuuuuhhmm",
+  "wwwwwchmmmmmmmmmmmmcccccccccccwwwwwwwwwwwwwwpphhhppwwwwwwwwwwwwwwwwwwwwwwwsssppppsspppppffffffffffffpppffffffffffuuuuuufuuuuhhmm",
+  "wwwwwchmmmmmmmmmmmmcccccccccccwwwwwwwwwwwwwpphmmmhppwwwwwwwwwwwwwwwwwwwwwwsppppppppppppffffffffffffpppppffffffffufuuuufffufuhhmm",
+  "wwwwwchmmmmmmmmmmmmcccccccccccwwwwwwwwwwwwwppmmmmmppwwwwwwwwwwwwwwwwwwwwwsspppppppppppffffffffffffffpppffffffffffuufufuuufuuhhmm",
+  "wwwwwchmmmmmmmmmmmmcccccccccccwwwwwwwwwwwwwpphmmmhppwwwwwwwwwwwwwwwwwwwwssppppppppppppfffffffffffffffppffppffffffuuuuffuuuuhhhmm",
+  "wwwwwwchmmmmmmmmmhccccccccccccwwwwwwwwwwwwwwpphhhppwwwwwwwwwwwwwwwwwwwwspppppppppppffffffffffffffffffpppppppfffffuffufufuhuuhhhm",
+  "wwwwwwwchhmmmmmmhcwwcccwccccccwwwwwwwwwwwwwwwwpppwwwwwwwwwwwwwwwwwwwwwwpppppppfffffffffffffffffffffppppppppppfffffffuuffhuuhhhhm",
+  "wwwwwwwwwchhhhmhcwwwwwwwwcccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppppfffffffffffffffffffffpppppppppppppfffffuufuhuhhhhhm",
+  "wwwwwwwwwwwhmmmmmmcwwwwccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppffffffffffffffffffffffpppppppppppppppfffffuhhhhhhhhh",
+  "wwwwwwwwwwhmmmmmmmhwwwwcccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppppffffffffffffffffffffffpppppsspppppppppffffhhhhhhhhhh",
+  "wwwwwwwwwwhmmmmmmmhwwwwcccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppfffffhfffffffffffffffffpppppssppppppppppffffhhhhhhhhh",
+  "wwwwwwwwwwhmmmmmmmhwwwwcccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppfffffffffffffffffffffffffffpppppssppppppppppfffffhhhhhhhh",
+  "wwwwwwwwwwwhmmmmmmcwwwccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwfffffffffffffffffffhfffffffffppppppsspssspppppppfffffhhhhhhm",
+  "wwwwwwwwwwwwcmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppwwwfffffffffffffffffffhhhhffffffffpppppssssssppppppffffffhhhhhhm",
+  "wwwwwwwwwwwwwcccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhhhpppwffffffffffffffffffhhhhhffffffffpppppsussssppppppfffffffhhhhmm",
+  "wwwwwwwwwwwwccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmhpwfffffhhhffffffffhhhhhhhhffffffpppppuuusussppppppffffffffhhhmm",
+  "wwwwwwwwwwwwwcccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhmhffffhhhfffffffhhhhhhhhhffffffpppupuuusuuusppppppfffffffhhmmm",
+  "wwwwwwwwwcccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhmhffhhhhhffffffffhhhhhhhhffffffppuupuuppssuuppppppffffffhhhmmm",
+  "wwwwwwchhmmmmhccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhmhffhhhhhhffffffhhhhhhhhffffffffppuuupuuuusupppppfffffffhhhmmm",
+  "wwwwwchmmmmmmmmcccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmhphffhhhhffhfffffhhhhhhhffffffffffffupuuupupuupppppffffffhhhmmmm",
+  "cwwwchmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhhhhpphfffhhffhhhfffhhhhhhhhhfffffffffuuuuuuppppuupppppffffffhhhmmmm",
+  "wwwwcmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppwwfffffffffhhhhhhhhfhfhhfffffffffffuuuufuuffupppppfffffhhhhmmmmm",
+  "wwwwcmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwffffffffffhhhffffhhfhhffffffffffffufffffffuupppfffffhhhhhmmmmm",
+  "wwwccmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwfffffffffhhhhffffhhhhhfffffffffffufuufuuffuuppffffffhhhhhmmmmm",
+  "wwcccmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwdddffffffffffffffhhhhhfffffffffffffuuufupuuppffffhhhhhhhhmmmmm",
+  "wcccccmmmmmmmmmcccccccccccccccwwwwwwwwwwwwpppppwwwwwwwwwwwwwwwwwwwwddddpfffffffffffhhhhhfffffffffffffuffpuuuppffffhhhhhhhhmmmmmm",
+  "cccccccmmmmmmmccccccccccccccccwwwwwwwwwwpphmmmhppwwwwwwwwwwwwwwwwwwddddpfffffffffffhhhhhhfffffffffffffffuppppffffhhhhhhhhhmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwphmmmmmhpwwwwwwwwwwwwwwwwwwpdddppffffffffffhhhhhfffffffffffffffffppppffffhhhhhhhhhhmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwphmmmmmhpwwwwwwwwwwwwwwwwwwpppppppfffffffffhhhhfffffffffffffffffffppfffffhhhhhhhhhhmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwphmmmmmhpwwwwwwwwwwwwwwwwwwwpppdppfffffffffhhfffffffffffffffhfffffffffffhhhhhhhhhhmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwpphhmhhppwwwwwwwwwwwwwwwwwwwpppdppffffffffffffffffffffffffffffffffffffffhhhhhhhhhmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwpppppwwwwwwwwwwwwwwwwwwwwwppddppfffffffffffhhhffffffffffffffffffffffffhhhhhhhhmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppdppfffffffffffhhhhfffffffffffffffffffffhhhhhhhhhmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppffffffffffhhhhffffffffffffffffffffhhhhhhhhhhmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppffffffffffhhhhfffffffffffffffffffhhhhhhhhhhhmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppffffffffffhhhhfffffffffffffffffffhhhhhhhhhhmmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppffffffffffhhhhffhhhhfffffffhfffhhhhhhhhhhhhhmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppwwppppppffffffffffhhhhhhhhhhhffffhhhhhhhhhhhhhhhhmmmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhhppwpppfffffffffffffhfffhhhhhhhhhhhhhhhhhhhhhhhhmmmmmmmmmmmmm",
+  "ccccccccccccccccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmhpwpppfffffffffffffffffhhhhhhhhhhhhhhhhmmmhhhhmmmmmmmmmmmmmm",
+  "ccccccmmmmmmmcccccccwcccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpmmmmmhwppfffffffffffffffffhhhhhhhhhhhhhhhmmmmmmmhhmmmmmmmmmmmmmm",
+  "cccccmmmmmmmmmccccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmpwppfffffffffffffffffuuhuhuhhhhhhhhhmmmmmmmmmmmmmmmmmmmmmmm",
+  "ccccmmmmmmmmmmmcccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhhppwwppffffffhfffffffuuuuuuuuffhhhhhhhmmmmmmmmmmmmmmmmmmmmmmm",
+  "cccmmmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppwwwwpfffffffhhfffffufhuhuuuuufhhhhhhhmmmmmmmmmmmmmmmmmmmmmmm",
+  "cccmmmmmmmmmmmmmccccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpfffffffhhhffffuuhuhuuuhuhfhhhhhhhmmmmmmmmmmmmmmmmmmmmmm",
+  "cccmmmmmmmmmmmmmcccwwwccccccccwwwwwwwwwwwwwwwwwwwpppppppwwwwwwwwwwwwwwwwfffffffhhhhhfffffuuuhhhhhufffhhhhhhhmmmmmmmmmmmmmmmmmmmm",
+  "ccccmmmmmmmmmmmccccwwwwcccccccwwwwwwwwwwwwwwwwwwpphhhhhppwwwwwwwwwwwwwwwfffffffhhhhhhhffuffhhuuhfuffffhhhhhhmmmmmmmmmmmmmmmmmmmm",
+  "cccccmmmmmmmmmccwwwwwwwwwcccccwwwwwwwwwwwwwwwwwpphmmmmmhppwwwwwwwwwwwwwwffffffhhhhhhhhfuufuuuuuufufhhhhfhhhhhmmmmmmmmmmmmmmmmmmm",
+  "ccccccmmmmmmmccwwwwwwwwwwwwcwwwwwwwwwwwwwwwwwwwpphmmmmmhppwwwwwwwwwwwwwwffffffhhhhhhhffffffuuufufuffhffffhhhhhmmmmmmmmmmmmmmmmmm",
+  "cccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphmmmmmhppwwwwwwwwwwwwwwffffffhhhhhhhffffuuufufuuuffffffffhhhhmmmmmmmmmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhmhhppwwwwwwwwwwwwwwwffffffhhhhhhffffuuffufufuffffffffffhhhhmmmmmmmmmmmmmmmmm",
+  "cccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppppwwwwwwwwwwwwwwwwppfffffffhhhfffffufuufuuffffffffffffhhhmmmmmmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppfffffffffffffffffuffddffffffffffhhhhhmmmmmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppfffffffffffffdddddddddffffffffffhhhmmmmmmmmmmmmmmmmm",
+  "cccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppffffffffffffddddddddddffffffffffhhmmmmmmmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppfppppdddfffddddddffdffffffffffhhhmmmmmmmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsppppppppppppdddddddddddffffffffffffhhhhummmmmmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssppppppppppppdddddddddpfffffffffffhhhhuuuuummmmmmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwspppppppppsppppppddpppppfffffffffffhuuuhuuuummmmmmmmmmmmmm",
+  "cccccccccwwwwwwwwwwwwwwwwwwwwwwwwpppppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssppppppppssspppppppppppffffffffffffhhuhuummuummmmmmmmmmmmm",
+  "cccccccccwwwwwwwwwwwwwwwwwwwwwwwpphhhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsppppppppssssspppppppppfffffffffffffuuuhuhhummummmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwpphmmmhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwsppppppppssdddsssssppppffffffffffffffuuuuuhuuuuummmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwppmmmmmhpwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppppssdddddssssppppffhfffffffffffuuufhhuhuuummmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwpphmmmhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppppppssddsssssssppppffhhffffffffhhufuuuhhumuummmmmmmmmmmm",
+  "ccccccccccccwwwwwwwwwwwwwwwwwwwwpphhhppwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppppppsdsssssssssspppffhhhhffffhhhhffuhhuhuuuummmmmmmmmmmm",
+  "ccccccccccccwwwwwwwwwwwwwwwwwwwwwpppppwwwwwwwwwwwwwwwwwwwwwwwwwwwwwdpppppssssssssssssssspppffhhhhhhhhhhhhhuuuuhuuuummmmmmmmmmmmm",
+  "ccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppwwwwwddpppppssssssssssssssspppffhhhhhhhhhhhhhuuuuumummmmmmmmmmmmmmm",
+  "cccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphhhhpppwwwddppppppssssssssssssssppfffffhhhhhhhhhhhhuuuuummmmmmmmmmmmmmmm",
+  "ccccccccccwcccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphmmmmmhppwddpppppppssssssssssssspppfffffhhhhhmhhhhhhhhhummmmmmmmmmmmmmmmm",
+  "ccccccccccwccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhpwpppppppppsssssssssssspppffffffhhhhhmmhhhhhhhhmmmmmmmmmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhpfpppppppppssssssssssssppfffffffffhhhmhhhhhhhhhmmmmmmmmmmmmmmmmmm",
+  "cccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwphmmmmmmmhpfppppppppppsssssssssssppfffffffffhhhhhhhhhhhhhmmmmmmmmmmmmmmmmmm",
+  "ccccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpphmmmmmhpmfppppppppppsssssssssspppfffffffffhhhhhhhhhhhhhhhhhmmmmmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppphhhpppfppppppfppppppsppppsspppffffffffffhhhhhhhhhhhhhhhhhhhmmmmmmmmmmmm",
+  "ccccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppppwwppppppffppppppppppppppppffffffffffhhhhhhhhhhhhhhhhhhhmmhmmmmmmmmm",
+  "ccccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwspppppppfppfppppppppppppfffffffffffhhhhhhhhhhhhhhhhhhhhhhhmmmmmmmm",
+  "cccccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsppppppppppffpppppppppppffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhmmmmmm",
+  "wwccccwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssppppppppppppppppppfffpfffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssppppppppppppppppppfffffffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssspppppppppfpppppppfffffffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwdsssppppppppppppppppppppfffffffpppffffffhhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsssppppppffffffpfppppppppffffffpppfffffffhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssspppppfffffffffffppppppffffffppppffffffhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssspppppfffffffffffffppfffffffffppfffffffhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsspppppfffffffffffffffffffffffffffffffffhhhhhhhhhhhhhhhhhhhhhhmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwssppppfffffffffffffffffffffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwppppffffffffffffffffffffffffffffffffhhhhhhhhhmmmmmmmhhhhhhhhmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppfffffffffffffffffhhhhhhhfffffffhhhhhhhhhmmmmmmmmmmmhhhhhmmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpppfffffffffffffffffhhhhhhhhhhhfffhhhhhhhhhmmmmmmmmmmmmmhhmmmmmmm",
+  "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwpfffffffffffffffffhhhhhhhhhhhhhhhhhhhhhhhmmmmmmmmmmmmmmhhmmmmmmm"
+ ],
+ "elevation": {
+  "rows": [
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222233322222223332222222222333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222223322222223333222222222333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222223322222222333333332222333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222223322222222333333333323333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222223322222222333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222223333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222223333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222222333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222222233333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222222233333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222222233333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222222333333323333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222223333333323333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222223333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222222222233333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000002222222222222222222222222222233322233333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000001222222222222222222222222222223332233333333333333333333",
+   "22222222222222222222222222222200000000000000000000000000000000000000000001122222222222222222222222222223333333333333333333333333",
+   "11122222222222222222222222222200000111111000000000000000000000000000000001112222222222222222222222222223333333333333333333333344",
+   "11111122222222222222222222222200011122222110000000000000000000000000000001111111111222222222222222222223333333333333333333333444",
+   "11111122222222333222222222222200112223332211000000000000000000000000000001111111111122222222212222222222333333333333333333333444",
+   "11111111222233444332222222222200112334433221000000000000000000000000000001111111111112222221112222222223333333333333333333334444",
+   "11111111122334444433222222222200122334443321100000000000000000000000000001111111111112222222112222222223333333333333333333334444",
+   "11111111222344444443222222222200112334433221100000000000000000000000000001111111111111222222112222222233333333333333333333344444",
+   "11111111122344444443222222222200112233332211000000000000000000000000000001111111111112222222222222222333333333333333333333444444",
+   "11111111122344444443222222222200011122222110000000000000000000000000000001111111111112222222222222222333333333333333333344444444",
+   "11111111122234444433222222222200000111111100000000000111110000000000000001111111111112222222222222223333333333333333333444444444",
+   "11111111112223333332222222222200000000000000000000011122211100000000000001111111111122222222222222223333333333333333333444444444",
+   "11111111122222222222222222222200000000000000000001122233322211000000000001111111111222222222222222223333333333333333333344444444",
+   "11111111122222222222222222222200000000000000000001123334333211000000000001111111112222222222222222222333333333333333333344444444",
+   "11111111122222222222222222222200000000000000000001223344433221000000000001111111122222222222222222222233333333333333333344444444",
+   "11111111122222222222222222222200000000000000000001123334333211000000000001111111122222222222222222222233333333333333333333444444",
+   "11111111122222222222222222222200000000000000000000122233322110000000000001111111222222222222222222222223333333333333333333344444",
+   "11111111122222222222222222222200000000000000000000011122211100000000000001111112222222222222222222222223333333333333333333444444",
+   "11111111112222222222222222222200000000000000000000000011100000000000000001111122222222222222222232222223333333333333333333444444",
+   "11111111222233322222222222222200000000000000000000000000000000000000000001111122222222222222222333222223333333333333333333344444",
+   "11111112233333332222222222222200000000000000000000000000000000000000000001111222222222222222222333322233333333333333333333334444",
+   "11111122333444433322222222222200000000000000000000000000000000000000000001112222222222222222333333333333333333333333333333333444",
+   "11111223344444443332222222222200000000000000011111000000000000000000000001122222222222223333333333333333333333333333333333333344",
+   "11111233444444444332222222222200000000000000122222100000000000000000000001222222222222333333333333333333333333333333333333333344",
+   "11111233444444444433222222222200000000000001223333210000000000000000000001222222222222333333333333333333333333333333333333333344",
+   "11111233444444444333222222222200000000000001234443210000000000000000000002222222222233333333333333333333333333333333333333333344",
+   "11111223344444443332222222222200000000000001233433210000000000000000000022222222223333333333333333333333333333333333333333333344",
+   "11112223333444433322222222222200000000000000122322110000000000000000000222222233333333333333333333333323322233333333333333333334",
+   "22122222233333332222222222222200000000000000011111000000000000000000000222222333333333333333333333333222222233333333333333333334",
+   "22222222222223332222222222222200000000000000000000000000000000000000002222223333333333333333333333333222222222233333333333333334",
+   "22222222222334443322222222222200000000000000000000000000000000000000002222223333333333333333333333322222222222223333333333333333",
+   "22222222222344444322222222222200000000000000000000000000000000000000022222233333333333333333333333322222222222223333333333333333",
+   "22222222222344444432222222222200000110000000001100000000000000000000022223333333333333333333333333322222222222222333333333333333",
+   "22222222222344444332222222222200000111110000011100000000000000000000333333333333333333333333333333322222222222222233333333333334",
+   "22222222212334444322222222222200001111111111111110000000000011100000333333333333333333333333333333222222222222222233333333333334",
+   "22222221112223333222222222222200011111111111111110000000011111111103333333333333333333333333333333222222222222222233333333333344",
+   "22222211122222222222222222222200111111111111111111000000112222222113333333333333333333333333333333222222222222222233333333333344",
+   "22222111122222222222222222222201111111111111111111110000122333332213333333333333333333333333333333222222222222222233333333333444",
+   "22222111122222222222222222222211111111111111111111110001123344433243333333333333333333333333333333222222222222222223333333333444",
+   "22222211222222222222222222222201111111111111111111100001223444443243333333333333333333333333333333322222222222222223333333333444",
+   "22222222233333222222222222222200011111111111111111100001123344433243333333333333333333333333333333332222222222222233333333333444",
+   "22222233344443322222222222222200011111111111111111100000122333332243333333333333333333333333333333333222222222222233333333334444",
+   "22222334444444432222222222222200001111111111111000100000112222222133333333333333333333333333333333333333232222222233333333334444",
+   "22222344444444433222222222222200000111111111110000100000111122111133333333333333333333333333333333333333333332222333333333344444",
+   "22222344444444443222222222222200000011111111100000100000011111100033333333333333333333333333333333333333333332223333333333344444",
+   "22222344444444433222222222222210000011111111100000000000000000000033333333333333333333333333333333333333333333333333333333344444",
+   "22222334444444433222222332222211000011111111110000000000000000000022333333333333333333333333333333333333333333333333333333444444",
+   "22222233444444332222223332232311100111111112221100000000000000000002223333333333333333333333333333333333332223333333333333444444",
+   "22222223333333322222223333333311100111111223332210000000000000000002222233333333333333333333333333333333332223333333333333444444",
+   "22222222233322222222222333333311111111012234443221000000000000000002222233333333333333333333333333333333322233333333333333344444",
+   "22222222222222222222222233333311111110012334443321000000000000000002222223333333333333333333333333333333333333333333333333444444",
+   "22222222222222222222222223333311111100012234443221000000000000000000222222333333333333333333333333333333333333333333333333444444",
+   "22222222222222222222222223333311111000011223332210000000000000000000222222333333333333333333333333333333333333333333333334444444",
+   "22222222222222222222222222222211111000000112221100000000000000000000222222333333333333333333333333333333333333333333333444444444",
+   "22222222222222222222222222222211100000000001110000000000000000000000022222333333333333333333333333333333333333333333333444444444",
+   "32222222222222222222222222222211000000000000000000000000000000000000022222333333333333333333333333333333333333333333334444444444",
+   "33222222222222222222222222222200000000000000000000000000000000000000022222233333333333333333333333333333333333333333334444444444",
+   "33322222222222222222222222222200000000000000000000000000000000000000002222233333333333333333333333333333333333333333334444444444",
+   "33322222222222222222222222222200000000000000000000000000000000000000002222233333333333333333333333333333333333333333334444444444",
+   "33332222222332222222222222222200000000000000000000000000000000001111102223333333333333333333333333333333333333333333444444444444",
+   "33333222233332222222222222222200000000000000000000000000000000012222210223333333333333333333333333333333333333333344444444444444",
+   "33333333333332222222222222222200000000000000000000000000000000123343321223333333333333333333333333333333334444443344444444444444",
+   "33333334444433222222222222222200000000000000000000000000000000123444321223333333333333333333333333333333344444444444444444444444",
+   "33333444444443322222222222222200000000000000000000000000000000123343321233333333333333333333333333333333344444444444444444444444",
+   "33334444444444332222222222222200000000000000000000000000000000012222210033333333333333333333333333333333444444444444444444444444",
+   "33344444444444432222222222222200000000000000000000000000000000001111100033333333333333333333333333333333444444444444444444444444",
+   "33344444444444432222222222222200000000000000000000011100000000000000000033333333333333333333333333333333344444444444444444444444",
+   "33334444444444432222222222222200000000000000000001122211000000000000000033333333333333333333333333333333333444444444444444444444",
+   "33334444444444332222222222222200000000000000000012223322100000000000000033333333333333333333333333333333333344444444444444444444",
+   "33333444444443322222222222222200000000000000000112334332210000000000000033333333333333333333333333333333333344444444444444444444",
+   "33333333443332222222222222222200000000000000000122344432210000000000000033333333333333333333333333333333333334444444444444444444",
+   "33333333332222222222222222222200000000000000000122334332210000000000000033333333333333333333333333333333333333444444444444444444",
+   "33333222222222221111111112222200000000000000000112233322110000000000000033333333333333333333333333333333333333444444444444444444",
+   "33332222222211111111111111111100000000000000000011122211100000000000000033333333333333333333333333333333333333344444444444444444",
+   "33332222222111111111111111111100000000000000000000111110000000000000000022233333333333333333333333333333333333344444444444444444",
+   "33322222221111111111111111111100000000000000000000000000000000000000000222233333333333333333333333333333333333344444444444444444",
+   "22222222221111111111111111111100000000000000000000000000000000000000000222223333333333333222233333333333333333444444444444444444",
+   "22222222221111111111111111111100000000000000000000000000000000000000000222223322333223333222233333333333333333444444444444444444",
+   "22222222211111111111111111111100000000000000000000000000000000000000002222223322222223332222233333333333333333444444444444444444",
+   "22222222221111111111111111111100000000000000000000000000000000000000002222222222222222222222233333333333333333444444444444444444",
+   "32222222222111111111111111111100000110000000000000000000000000000000002223332222222222222222233333333333333333344444444444444444",
+   "32222222222211111111111111111100111211100000000000000000000000000000022223332222222222222222333333333333333333344444444444444444",
+   "32222222222221111111111111111101122222110000000000000000000000000000022223222222222222222223333333333333333333334444444444444444",
+   "33222222222222211111111111111101223333210000000000000000000000000000222223222222222222222223333333333333333333333444444444444444",
+   "33222222222222221111111111000101234443211000000000000000000000000000222223222222222222222223333333333333333333334444444444444444",
+   "22222222222222221111111111001101223333210000000000000000000000000000222222222222222222222233333333333333333333334444444444444444",
+   "22222222222222221111111111111101122222110000000000000000000000000002222222222222222222222233333333333333333333344444444444444444",
+   "22222222222222221111111111111100111111100000000000000000111100000002222222222222222222222233333333333333333333344444444444444444",
+   "22222222222222221111111111111100000000000000000000000011112111100022222222222222222222222233333333333333333333344444444444444444",
+   "22222222222222222111111111111100000000000000000000000112222222110022222222222222222222222233333333333333333333444444444444444444",
+   "22222222222222222111111111111000000000000000000000001122333332211222222222222222222222222333333333334433333333444444444444444444",
+   "22222222222222222111111111111000000000000000000000001223344433221222222222222222222222223333333333344433333334444444444444444444",
+   "22222222222222221111111111111100000000000000000000001223444443223222222222222222222222223333333333344433333333444444444444444444",
+   "22222222222222211111111111111100000000000000000000001123344433223222222222222222222222233333333333334333333333444444444444444444",
+   "22222222222222211111111111111100000000000000000000001122333332233222233222222222222222233333333333333333333333333344444444444444",
+   "22222222222222111111111110001100000000000000000000000112222222132223333322222222222222233333333333333333333333333334444444444444",
+   "22222222222211111111111100000100000000000000000000000001111111122223333322222222222222333333333333333333333333333333444444444444",
+   "22222222222111111111111000000100000000000000000000000000011100222223333333332222233223333333333333333333333333333333333344444444",
+   "22222222221111111111111000000000000000000000000000000000000000222223333333332222333333333333333333333333333333333333333334444444",
+   "22222222221111111111111100000000000000000000000000000000000000222222222233332222233333333333333333333333333333333333333333344444",
+   "22222222211111111111111110000000000000000000000000000000000000222222222223333222223333333333333333333333333334333333333333334444",
+   "22222222111111111111111110000000000000000000000000000000000000222222222223333222223333333333333333333333333333333333333333334444",
+   "22222222111111111111111000000000000000000000000000000000000000222222222223333332233333333333333333333333333333333333333333334444",
+   "22222222111111111111111000000000000000000000000000000000000000222222223333333333333222333333333333333333333333333333333333344444",
+   "22222221111111111111111000000000000000000000000000000000000000222222223333333333332222333333333233333333333333333333333333344444",
+   "22222211111111111111110000000000000000000000000000000000000000222222233333333333333333333333333333333333333333333333333333334444",
+   "22221111111111111111110000000000000000000000000000000000000000222222233333333333333333333333333333333333333333333333333333334444",
+   "11111111111111111111110000000000000000000000000000000000000000222223333333333333333333333333333333333333333334444444333333344444",
+   "11111111111111111111110000000000000000000000000000000000000000022233333333333333333333333333333333333333333444444444433333344444",
+   "11111111111111111111110000000000000000000000000000000000000000022233333333333333333333333333333333333333334444444444444333444444",
+   "11111111111111111111111100000000000000000000000000000000000000022333333333333333333333333333333333333333334444444444444444444444",
+   "11111111111111111111111100000000000000000000000000000000000000002333333333333333333333333333333333333333344444444444444444444444"
+  ]
+ },
+ "facilities": [
+  {
+   "x": 10,
+   "y": 40,
+   "facility": "port",
+   "owner": "BLUE",
+   "hp": 140
+  },
+  {
+   "x": 12,
+   "y": 44,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 150
+  },
+  {
+   "x": 9,
+   "y": 55,
+   "facility": "port",
+   "owner": "BLUE",
+   "hp": 130
+  },
+  {
+   "x": 14,
+   "y": 36,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 140
+  },
+  {
+   "x": 11,
+   "y": 62,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 130
+  },
+  {
+   "x": 12,
+   "y": 27,
+   "facility": "radar_site",
+   "owner": "BLUE",
+   "hp": 110
+  },
+  {
+   "x": 6,
+   "y": 74,
+   "facility": "port",
+   "owner": "BLUE",
+   "hp": 120
+  },
+  {
+   "x": 12,
+   "y": 87,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 130
+  },
+  {
+   "x": 38,
+   "y": 21,
+   "facility": "airbase",
+   "owner": "BLUE",
+   "hp": 90
+  },
+  {
+   "x": 47,
+   "y": 40,
+   "facility": "sam_site",
+   "owner": "BLUE",
+   "hp": 80
+  },
+  {
+   "x": 55,
+   "y": 29,
+   "facility": "port",
+   "owner": "BLUE",
+   "hp": 85
+  },
+  {
+   "x": 44,
+   "y": 65,
+   "facility": "radar_site",
+   "owner": "NEUTRAL",
+   "hp": 90
+  },
+  {
+   "x": 61,
+   "y": 54,
+   "facility": "port",
+   "owner": "NEUTRAL",
+   "hp": 80
+  },
+  {
+   "x": 80,
+   "y": 36,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 150
+  },
+  {
+   "x": 78,
+   "y": 52,
+   "facility": "port",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 86,
+   "y": 22,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 82,
+   "y": 66,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 88,
+   "y": 96,
+   "facility": "port",
+   "owner": "RED",
+   "hp": 130
+  },
+  {
+   "x": 104,
+   "y": 44,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 150
+  },
+  {
+   "x": 100,
+   "y": 78,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 112,
+   "y": 62,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 92,
+   "y": 10,
+   "facility": "radar_site",
+   "owner": "RED",
+   "hp": 120
+  },
+  {
+   "x": 76,
+   "y": 88,
+   "facility": "port",
+   "owner": "RED",
+   "hp": 120
+  },
+  {
+   "x": 120,
+   "y": 88,
+   "facility": "airbase",
+   "owner": "RED",
+   "hp": 140
+  },
+  {
+   "x": 90,
+   "y": 60,
+   "facility": "sam_site",
+   "owner": "RED",
+   "hp": 100
+  }
+ ],
+ "forts": [
+  {
+   "x": 10,
+   "y": 40,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 12,
+   "y": 44,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 9,
+   "y": 55,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 14,
+   "y": 36,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 11,
+   "y": 62,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 12,
+   "y": 27,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 6,
+   "y": 74,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 12,
+   "y": 87,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 38,
+   "y": 21,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 47,
+   "y": 40,
+   "level": 2,
+   "owner": "BLUE"
+  },
+  {
+   "x": 55,
+   "y": 29,
+   "level": 3,
+   "owner": "BLUE"
+  },
+  {
+   "x": 80,
+   "y": 36,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 78,
+   "y": 52,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 86,
+   "y": 22,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 82,
+   "y": 66,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 88,
+   "y": 96,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 104,
+   "y": 44,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 100,
+   "y": 78,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 112,
+   "y": 62,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 92,
+   "y": 10,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 76,
+   "y": 88,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 120,
+   "y": 88,
+   "level": 3,
+   "owner": "RED"
+  },
+  {
+   "x": 90,
+   "y": 60,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 74,
+   "y": 46,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 78,
+   "y": 70,
+   "level": 2,
+   "owner": "RED"
+  },
+  {
+   "x": 55,
+   "y": 30,
+   "level": 2,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 44,
+   "y": 66,
+   "level": 2,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 52,
+   "y": 86,
+   "level": 2,
+   "owner": "NEUTRAL"
+  }
+ ],
+ "objectives": [
+  {
+   "x": 38,
+   "y": 22,
+   "name": "北屿据点",
+   "kind": "capture",
+   "side": "BLUE",
+   "value": 9,
+   "owner": "BLUE"
+  },
+  {
+   "x": 49,
+   "y": 31,
+   "name": "中央岛锚地",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 12,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 42,
+   "y": 63,
+   "name": "西侧前哨",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 10,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 49,
+   "y": 83,
+   "name": "南方航道",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 10,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 63,
+   "y": 76,
+   "name": "东南礁群",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 7,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 51,
+   "y": 42,
+   "name": "西岸门户",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 11,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 66,
+   "y": 62,
+   "name": "南屿补给点",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 9,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 70,
+   "y": 68,
+   "name": "红方滩头",
+   "kind": "capture",
+   "side": "RED",
+   "value": 8,
+   "owner": "RED"
+  },
+  {
+   "x": 96,
+   "y": 58,
+   "name": "东岸都会",
+   "kind": "capture",
+   "side": "RED",
+   "value": 7,
+   "owner": "RED"
+  },
+  {
+   "x": 108,
+   "y": 34,
+   "name": "北部重镇",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 6,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 100,
+   "y": 100,
+   "name": "南方工业城",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 6,
+   "owner": "NEUTRAL"
+  },
+  {
+   "x": 12,
+   "y": 44,
+   "name": "蓝方前进基地",
+   "kind": "hold",
+   "side": "BLUE",
+   "value": 5,
+   "owner": "BLUE"
+  },
+  {
+   "x": 104,
+   "y": 44,
+   "name": "红方腹地机场",
+   "kind": "hold",
+   "side": "RED",
+   "value": 5,
+   "owner": "RED"
+  }
+ ],
+ "deployments": {
+  "BLUE": [
+   {
+    "template": "sat_blue",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "template": "e3",
+    "x": 16,
+    "y": 34,
+    "altitude": "high"
+   },
+   {
+    "template": "mq9",
+    "x": 22,
+    "y": 46
+   },
+   {
+    "template": "mq9",
+    "x": 26,
+    "y": 60
+   },
+   {
+    "template": "f35",
+    "x": 18,
+    "y": 38,
+    "altitude": "high"
+   },
+   {
+    "template": "f35",
+    "x": 18,
+    "y": 50,
+    "altitude": "high"
+   },
+   {
+    "template": "f16c",
+    "x": 20,
+    "y": 42,
+    "altitude": "high"
+   },
+   {
+    "template": "f16c",
+    "x": 24,
+    "y": 56,
+    "altitude": "high"
+   },
+   {
+    "template": "f18e",
+    "x": 22,
+    "y": 48,
+    "altitude": "high"
+   },
+   {
+    "template": "f15e",
+    "x": 26,
+    "y": 38,
+    "altitude": "high"
+   },
+   {
+    "template": "b52",
+    "x": 30,
+    "y": 34,
+    "altitude": "high"
+   },
+   {
+    "template": "ah64",
+    "x": 16,
+    "y": 40
+   },
+   {
+    "template": "ah64",
+    "x": 20,
+    "y": 52
+   },
+   {
+    "template": "s70",
+    "x": 14,
+    "y": 64
+   },
+   {
+    "template": "ch53",
+    "x": 18,
+    "y": 44
+   },
+   {
+    "template": "c130",
+    "x": 24,
+    "y": 40,
+    "altitude": "high"
+   },
+   {
+    "template": "cvn",
+    "x": 8,
+    "y": 52
+   },
+   {
+    "template": "cvn",
+    "x": 0,
+    "y": 63
+   },
+   {
+    "template": "ddg_burke",
+    "x": 17,
+    "y": 45
+   },
+   {
+    "template": "ddg_burke",
+    "x": 12,
+    "y": 54
+   },
+   {
+    "template": "ddg_burke",
+    "x": 3,
+    "y": 60
+   },
+   {
+    "template": "llsn",
+    "x": 19,
+    "y": 50
+   },
+   {
+    "template": "ssn_va",
+    "x": 4,
+    "y": 44
+   },
+   {
+    "template": "ssn_va",
+    "x": 1,
+    "y": 62
+   },
+   {
+    "template": "m1a2",
+    "x": 38,
+    "y": 23
+   },
+   {
+    "template": "bradley",
+    "x": 39,
+    "y": 24
+   },
+   {
+    "template": "usmc",
+    "x": 37,
+    "y": 24
+   },
+   {
+    "template": "patriot",
+    "x": 48,
+    "y": 41
+   },
+   {
+    "template": "nasams",
+    "x": 40,
+    "y": 20
+   },
+   {
+    "template": "paladin",
+    "x": 38,
+    "y": 25
+   },
+   {
+    "template": "eng",
+    "x": 38,
+    "y": 26
+   },
+   {
+    "template": "m1a2",
+    "x": 12,
+    "y": 46
+   },
+   {
+    "template": "m1a2",
+    "x": 9,
+    "y": 55
+   },
+   {
+    "template": "bradley",
+    "x": 13,
+    "y": 47
+   },
+   {
+    "template": "himars",
+    "x": 11,
+    "y": 38
+   },
+   {
+    "template": "m142_pz",
+    "x": 15,
+    "y": 37
+   },
+   {
+    "template": "patriot",
+    "x": 8,
+    "y": 43
+   },
+   {
+    "template": "nasams",
+    "x": 16,
+    "y": 40
+   },
+   {
+    "template": "ew_us",
+    "x": 10,
+    "y": 48
+   },
+   {
+    "template": "radar_tpy2",
+    "x": 12,
+    "y": 33
+   },
+   {
+    "template": "usmc",
+    "x": 12,
+    "y": 42
+   },
+   {
+    "template": "hq_brigade",
+    "x": 13,
+    "y": 45
+   },
+   {
+    "template": "hq_battalion",
+    "x": 11,
+    "y": 45
+   },
+   {
+    "template": "ew_us",
+    "x": 14,
+    "y": 61
+   },
+   {
+    "template": "patriot",
+    "x": 12,
+    "y": 63
+   },
+   {
+    "template": "paladin",
+    "x": 13,
+    "y": 86
+   }
+  ],
+  "RED": [
+   {
+    "template": "sat_red",
+    "x": 127,
+    "y": 127
+   },
+   {
+    "template": "a50",
+    "x": 96,
+    "y": 40,
+    "altitude": "high"
+   },
+   {
+    "template": "kj500",
+    "x": 100,
+    "y": 60,
+    "altitude": "high"
+   },
+   {
+    "template": "j20",
+    "x": 90,
+    "y": 44,
+    "altitude": "high"
+   },
+   {
+    "template": "j20",
+    "x": 92,
+    "y": 58,
+    "altitude": "high"
+   },
+   {
+    "template": "j16",
+    "x": 88,
+    "y": 50,
+    "altitude": "high"
+   },
+   {
+    "template": "j16",
+    "x": 94,
+    "y": 52,
+    "altitude": "high"
+   },
+   {
+    "template": "su35",
+    "x": 86,
+    "y": 46,
+    "altitude": "high"
+   },
+   {
+    "template": "su34",
+    "x": 98,
+    "y": 66,
+    "altitude": "high"
+   },
+   {
+    "template": "mig31k",
+    "x": 92,
+    "y": 36,
+    "altitude": "high"
+   },
+   {
+    "template": "tu22m3",
+    "x": 104,
+    "y": 46,
+    "altitude": "high"
+   },
+   {
+    "template": "b1b",
+    "x": 108,
+    "y": 62,
+    "altitude": "high"
+   },
+   {
+    "template": "type055",
+    "x": 73,
+    "y": 40
+   },
+   {
+    "template": "type055",
+    "x": 65,
+    "y": 59
+   },
+   {
+    "template": "type052d",
+    "x": 69,
+    "y": 46
+   },
+   {
+    "template": "type054a",
+    "x": 68,
+    "y": 70
+   },
+   {
+    "template": "slava",
+    "x": 70,
+    "y": 44
+   },
+   {
+    "template": "kilo",
+    "x": 69,
+    "y": 46
+   },
+   {
+    "template": "kilo",
+    "x": 66,
+    "y": 63
+   },
+   {
+    "template": "t90m",
+    "x": 76,
+    "y": 47
+   },
+   {
+    "template": "t90m",
+    "x": 77,
+    "y": 48
+   },
+   {
+    "template": "bmp3",
+    "x": 78,
+    "y": 47
+   },
+   {
+    "template": "naval_inf",
+    "x": 79,
+    "y": 48
+   },
+   {
+    "template": "msta",
+    "x": 76,
+    "y": 49
+   },
+   {
+    "template": "smerch",
+    "x": 74,
+    "y": 52
+   },
+   {
+    "template": "s400",
+    "x": 80,
+    "y": 45
+   },
+   {
+    "template": "pantsir",
+    "x": 82,
+    "y": 50
+   },
+   {
+    "template": "hq17",
+    "x": 84,
+    "y": 48
+   },
+   {
+    "template": "ew_ru",
+    "x": 81,
+    "y": 53
+   },
+   {
+    "template": "radar_container",
+    "x": 78,
+    "y": 44
+   },
+   {
+    "template": "msta",
+    "x": 84,
+    "y": 52
+   },
+   {
+    "template": "t90m",
+    "x": 96,
+    "y": 57
+   },
+   {
+    "template": "bmp3",
+    "x": 97,
+    "y": 58
+   },
+   {
+    "template": "naval_inf",
+    "x": 98,
+    "y": 57
+   },
+   {
+    "template": "msta",
+    "x": 96,
+    "y": 60
+   },
+   {
+    "template": "smerch",
+    "x": 100,
+    "y": 62
+   },
+   {
+    "template": "s400",
+    "x": 104,
+    "y": 45
+   },
+   {
+    "template": "hq17",
+    "x": 100,
+    "y": 55
+   },
+   {
+    "template": "pantsir",
+    "x": 92,
+    "y": 60
+   },
+   {
+    "template": "df17_bde",
+    "x": 90,
+    "y": 44
+   },
+   {
+    "template": "df26_bde",
+    "x": 100,
+    "y": 50
+   },
+   {
+    "template": "df41_bde",
+    "x": 110,
+    "y": 40
+   },
+   {
+    "template": "iskander",
+    "x": 86,
+    "y": 54
+   },
+   {
+    "template": "thaad",
+    "x": 94,
+    "y": 48
+   },
+   {
+    "template": "hq_battalion",
+    "x": 88,
+    "y": 52
+   },
+   {
+    "template": "hq_brigade",
+    "x": 96,
+    "y": 54
+   },
+   {
+    "template": "t90m",
+    "x": 87,
+    "y": 21
+   },
+   {
+    "template": "bmp3",
+    "x": 87,
+    "y": 22
+   },
+   {
+    "template": "naval_inf",
+    "x": 88,
+    "y": 21
+   },
+   {
+    "template": "s400",
+    "x": 86,
+    "y": 22
+   },
+   {
+    "template": "msta",
+    "x": 90,
+    "y": 24
+   },
+   {
+    "template": "t90m",
+    "x": 100,
+    "y": 99
+   },
+   {
+    "template": "bmp3",
+    "x": 101,
+    "y": 100
+   },
+   {
+    "template": "naval_inf",
+    "x": 102,
+    "y": 99
+   },
+   {
+    "template": "s400",
+    "x": 96,
+    "y": 97
+   },
+   {
+    "template": "hq_battalion",
+    "x": 89,
+    "y": 97
+   },
+   {
+    "template": "pantsir",
+    "x": 106,
+    "y": 96
+   }
+  ]
+ },
+ "events": [
+  {
+   "turn": 6,
+   "type": "weather",
+   "weather": "rain",
+   "label": "台风外围雨幕",
+   "description": "暴雨笼罩海峡，双方侦察与机动受限"
+  },
+  {
+   "turn": 12,
+   "type": "reinforce",
+   "side": "RED",
+   "unit": "t90m",
+   "x": 96,
+   "y": 57,
+   "label": "红方增援：坦克连",
+   "description": "红方预备队开赴东岸门户"
+  },
+  {
+   "turn": 16,
+   "type": "weather",
+   "weather": "clear",
+   "label": "雨过天晴",
+   "description": "能见度恢复，双方重整旗鼓"
+  },
+  {
+   "turn": 22,
+   "type": "reinforce",
+   "side": "BLUE",
+   "unit": "ddg_burke",
+   "x": 14,
+   "y": 58,
+   "label": "蓝方增援：驱逐舰",
+   "description": "蓝方护航编队抵达西侧"
+  },
+  {
+   "turn": 28,
+   "type": "reinforce",
+   "side": "RED",
+   "unit": "j20",
+   "x": 90,
+   "y": 44,
+   "label": "红方增援：战斗机",
+   "description": "红方航空兵进驻前沿"
+  }
+ ],
+ "meta": {
+  "author": "hamfreebird",
+  "summary": "128×128 大型战役想定：蓝方自西太平洋反攻，红方依托大陆纵深据守，中央岛链决定制海权归属",
+  "difficulty": "epic",
+  "tags": [
+   "大型战役",
+   "海空一体",
+   "岛链争夺",
+   "中美对抗",
+   "纵深打击"
+  ],
+  "recommended_units": [
+   "cvn",
+   "f35",
+   "j20",
+   "df17_bde",
+   "ah64",
+   "type055"
+  ],
+  "recommended_side": "BLUE",
+  "version": "1.5"
+ }
+}

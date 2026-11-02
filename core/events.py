@@ -272,6 +272,8 @@ def _do_reinforce(state: "GameState", ev: ScenarioEvent) -> str:
         if spot is None:
             break
         u.x, u.y = spot
+        if hasattr(state, "invalidate_pos_index"):
+            state.invalidate_pos_index()
         state.units.append(u)
         placed.append(u.name)
     if not placed:

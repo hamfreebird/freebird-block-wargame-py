@@ -136,6 +136,7 @@ def main() -> int:
         land = next((t for t in st.map.iter_tiles()
                      if t.terrain.value != "water" and st.unit_at(t.x, t.y) is None), None)
         inf.x, inf.y = land.x, land.y
+        st.invalidate_pos_index()
         st.refresh_detection()
         app.select_unit(inf)
         app.draw()
@@ -187,15 +188,18 @@ def main() -> int:
     # --- 主菜单：悬停选中不得错位（曾因内层循环覆盖外层索引而错位）---
     _n_scn = len(app.scenarios)
     _ok_hover = True
+    _cols, _cw, _ch, _rh = app._menu_grid()
+    _area = app._menu_cards_area()
+    _vis = max(1, _area.height // _rh)
     for _i in range(_n_scn):
         app.menu_index = -1
-        # 直接把鼠标放到第 i 张卡片中心，模拟悬停
-        _cols, _cw, _ch, _rh = app._menu_grid()
         _row, _col = divmod(_i, _cols)
-        _area = app._menu_cards_area()
-        app.menu_scroll = _row
+        # 滚到该卡片可见的位置（draw 内部会把 scroll 夹到合法范围）
+        app.menu_scroll = max(0, _row - _vis + 1)
+        app.draw()
+        # 按**实际生效**的 scroll 重新计算卡片位置，再把鼠标放上去
         _rect = pygame.Rect(_area.x + _col * (_cw + 16),
-                            _area.y + (_row - _row) * _rh, _cw, _ch)
+                            _area.y + (_row - app.menu_scroll) * _rh, _cw, _ch)
         app.mouse = _rect.center
         app.draw()                      # 绘制时会按悬停位置更新 menu_index
         if app.menu_index != _i:
@@ -506,6 +510,7 @@ def main() -> int:
                      if e.domain.value in ("land", "sea")), None)
         if foe2 is not None:
             foe2.x, foe2.y = sam_blue.x + 2, sam_blue.y
+            st2.invalidate_pos_index()
             st2.refresh_detection()
             net = _rules2.AirDefenseNetwork.build(st2, Side.BLUE, (foe2.x, foe2.y), w_test)
     if net is not None and net.nodes:
@@ -558,6 +563,7 @@ def main() -> int:
                           if e.domain.value == "land"), None)
             if fake is not None:
                 fake.x, fake.y = pt
+                st2.invalidate_pos_index()
                 st2.refresh_detection()
                 ok, msg = st2.register_fire_mission(prep_unit, pt)
                 check(ok, f"火力准备：可登记射界（{msg}）")
@@ -584,6 +590,7 @@ def main() -> int:
         foe = next((e for e in st2.enemies_of(Side.BLUE) if e.alive), None)
         if foe is not None:
             foe.x, foe.y = cmd_unit.x + 2, cmd_unit.y
+            st2.invalidate_pos_index()
             st2.refresh_detection()
             ok, msg = st2.can_issue_order(cmd_unit, "focus_fire", foe)
             check(ok, f"指挥体系：可下达集中火力（{msg}）")

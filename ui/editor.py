@@ -13,7 +13,7 @@ import os
 import pygame
 
 from core.enums import Facility, Side, TERRAIN_CHARS, Terrain
-from core.loader import LoadError, load_scenario
+from core.loader import MAX_MAP_SIZE, LoadError, load_scenario
 from core import pkg as _pkg
 from core import paths as _paths
 
@@ -623,8 +623,8 @@ class Editor:
 
     def resize_map(self, nw: int, nh: int) -> None:
         """调整地图尺寸：扩大时以平原/海拔 2 补边，缩小时裁掉右侧与下方。"""
-        nw = max(8, min(96, nw))
-        nh = max(8, min(96, nh))
+        nw = max(8, min(MAX_MAP_SIZE, nw))
+        nh = max(8, min(MAX_MAP_SIZE, nh))
         if not self.terr:
             return
         old_w, old_h = len(self.terr[0]), len(self.terr)

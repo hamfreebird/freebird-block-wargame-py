@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .enums import Domain, Facility, Side, Terrain, UnitClass
+from .loader import SUB_CAPACITY
+from .rules import AIRBASE_CAPACITY
 
 
 @dataclass
@@ -181,15 +183,30 @@ def _check_units(rep: ValidationReport, scenario) -> None:
         if len(sides) > 1:
             names = "、".join(u.name for u in us)
             rep.add("error", "unit-overlap", f"同格部署了敌对单位：{names}", pos[0], pos[1])
-        else:
-            # 同阵营多单位：机场可叠放航空兵
-            tile = md.at(*pos)
-            air = all(u.domain is Domain.AIR for u in us)
-            f = tile.facility if tile else Facility.NONE
-            if not (air and f is Facility.AIRBASE):
-                rep.add("warn", "unit-stack",
-                        f"同格部署了 {len(us)} 个同阵营单位（仅机场可叠放航空兵）",
-                        pos[0], pos[1])
+            continue
+        # 同阵营多单位：按域分别限制
+        #   地面 ≤ 1、水面 ≤ 1、水下 ≤ SUB_CAPACITY、空中 ≤ AIRBASE_CAPACITY
+        # 空中单位可与地面部队同格（空中支援地面）；
+        # 水下单位（潜艇）可与水面舰同格——它在水面之下。
+        ground = [u for u in us if u.domain in (Domain.LAND, Domain.INFRA)]
+        sea = [u for u in us if u.domain is Domain.SEA]
+        sub = [u for u in us if u.domain is Domain.SUB]
+        air = [u for u in us if u.domain is Domain.AIR]
+        if len(ground) > 1:
+            names = "、".join(u.name for u in ground)
+            rep.add("error", "unit-stack",
+                    f"同格部署了 {len(ground)} 支同阵营地面部队：{names}", pos[0], pos[1])
+        if len(sea) > 1:
+            names = "、".join(u.name for u in sea)
+            rep.add("error", "unit-stack",
+                    f"同格部署了 {len(sea)} 艘同阵营水面舰：{names}", pos[0], pos[1])
+        if len(sub) > SUB_CAPACITY:
+            rep.add("warn", "unit-stack",
+                    f"同格潜艇 {len(sub)} 艘，超过容量 {SUB_CAPACITY}", pos[0], pos[1])
+        if len(air) > AIRBASE_CAPACITY:
+            rep.add("warn", "unit-stack",
+                    f"同格空中单位 {len(air)} 架，超过容量 {AIRBASE_CAPACITY}",
+                    pos[0], pos[1])
 
     # 空阵营
     for side in (Side.BLUE, Side.RED):

@@ -85,6 +85,8 @@ class GameState:
         self.anim = AnimTrack()
         # 音效信号队列（由 UI 层消费）
         self.sfx_events: list[str] = []
+        # 位置索引（格坐标 → 单位列表），惰性重建
+        self._pos_index: dict[tuple[int, int], list[Unit]] | None = None
         self.detection: dict[Side, dict[int, Detection]] = {Side.BLUE: {}, Side.RED: {}}
         self.sat_recon: dict[Side, set[int]] = {Side.BLUE: set(), Side.RED: set()}
         self.sat_track: dict[int, Detection] = {}
@@ -143,13 +145,58 @@ class GameState:
         return self.scenario.raw
 
     def unit_at(self, x: int, y: int) -> Unit | None:
-        for u in self.units:
-            if u.alive and u.x == x and u.y == y:
+        """该格的主要单位。
+
+        同格可能同时有地面单位与空中单位（空中支援地面）。
+        这里**优先返回地面单位**——交战目标、占点判定等以地面部队为主体；
+        要取全部单位用 `units_at`。
+        """
+        ground = None
+        for u in self.units_at(x, y):
+            if u.domain is not Domain.AIR:
                 return u
-        return None
+            if ground is None:
+                ground = u
+        return ground
+
+    def _build_pos_index(self) -> dict[tuple[int, int], list[Unit]]:
+        """构建「格坐标 → 单位列表」索引。
+
+        大地图（128×128）+ 上百单位时，`units_at` 的全表扫描会成为
+        寻路的性能瓶颈——寻路会调用它上百万次。索引把查询变成 O(1)。
+        """
+        idx: dict[tuple[int, int], list[Unit]] = {}
+        for u in self.units:
+            if u.alive:
+                idx.setdefault((u.x, u.y), []).append(u)
+        return idx
+
+    def invalidate_pos_index(self) -> None:
+        """单位位置变化后调用——下次查询时重建索引。
+
+        **约定**：任何改动 `unit.x` / `unit.y` 的地方都要调用它。
+        引擎内部的三处（单位机动、卫星漂移、增援部署）已覆盖；
+        外部代码（编辑器、测试）直接改坐标后也必须调用。
+        """
+        self._pos_index = None
 
     def units_at(self, x: int, y: int) -> list[Unit]:
-        return [u for u in self.units if u.alive and u.x == x and u.y == y]
+        """该格的全部单位（地面 + 空中）。
+
+        走位置索引而不是全表扫描——寻路会调用它上百万次。
+        索引在单位位置变化时失效并惰性重建。
+        """
+        idx = self._pos_index
+        if idx is None:
+            idx = self._pos_index = self._build_pos_index()
+        lst = idx.get((x, y))
+        if not lst:
+            return []
+        return [u for u in lst if u.alive]
+
+    def air_units_at(self, x: int, y: int) -> list[Unit]:
+        """该格的空中单位。"""
+        return [u for u in self.units_at(x, y) if u.domain is Domain.AIR]
 
     def unit_by_uid(self, uid: int) -> Unit | None:
         for u in self.units:
@@ -202,7 +249,11 @@ class GameState:
 
         顺带检测「新发现」——某个敌方目标从不可见变为可见时发出探测提示音，
         这样玩家能第一时间注意到战场变化。
+
+        这里会**重建位置索引**：每回合一次 O(N)，代价可忽略，
+        但能兜住外部代码直接改 `unit.x/y` 造成的索引失效。
         """
+        self.invalidate_pos_index()
         before = dict(self.detection.get(self.player_side, {}))
         rules.build_detection_map(self)
         after = self.detection.get(self.player_side, {})
@@ -313,6 +364,7 @@ class GameState:
 
         start = (unit.x, unit.y)
         unit.x, unit.y = path[-1]
+        self.invalidate_pos_index()
         unit.mp -= cost
         unit.moved = True
         unit.entrench = 0
@@ -1315,6 +1367,7 @@ class GameState:
                 # 轨道推进：斜向地面轨迹，幅宽会横扫整个战区
                 sat.x = ((sat.x + 5) % w) - 4
                 sat.y = ((sat.y + 3) % (self.map.height + 8)) - 4
+                self.invalidate_pos_index()
                 if not self.satellite_overhead(sat):
                     continue
                 got = 0

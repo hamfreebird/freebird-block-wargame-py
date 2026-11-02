@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import os
 import sys
 
@@ -110,15 +112,48 @@ def audit_armory(armory) -> list[str]:
     return out
 
 
-def run_sim(turns: int, map_index: int = 0) -> int:
+def _resolve_map(selector: str) -> str:
+    """把 --map 的取值解析成地图文件路径。
+
+    支持两种写法：
+    * **数字**——按 `list_maps` 的顺序取第 N 张（从 0 开始）；
+    * **名字**——按地图 id / 文件名匹配，如 `strait_shield`。
+
+    用名字的好处：新增地图不会打乱既有脚本里引用的地图。
+    """
+    paths = list_maps(MAP_DIR)
+    sel = (selector or "").strip()
+    if sel.isdigit():
+        idx = int(sel)
+        if idx >= len(paths):
+            raise SystemExit(f"--map {idx} 越界：共 {len(paths)} 张地图")
+        return paths[idx]
+    stem = sel[:-5] if sel.endswith(".json") else sel
+    for p in paths:
+        base = os.path.splitext(os.path.basename(p))[0]
+        if stem in (base, p):
+            return p
+    # 再按想定内部 id 找一次
+    for p in paths:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception:
+            continue
+        if raw.get("id") == stem:
+            return p
+    names = ", ".join(os.path.splitext(os.path.basename(p))[0] for p in paths)
+    raise SystemExit(f"--map 找不到 '{selector}'。可用地图：{names}")
+
+
+def run_sim(turns: int, map_selector: str = "0") -> int:
     """无界面双 AI 推演，用于平衡性测试与回归验证。"""
     import random
     from core.ai import AIPlanner
     from core.engine import GameState
 
     random.seed(1234)
-    paths = list_maps(MAP_DIR)
-    sc = load_scenario(paths[min(map_index, len(paths) - 1)], ARMORY)
+    sc = load_scenario(_resolve_map(map_selector), ARMORY)
     st = GameState(sc, Side.BLUE)
 
     def play(side: Side) -> None:
@@ -159,7 +194,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="方块兵棋 Block Wargame")
     ap.add_argument("--check", action="store_true", help="校验数据文件")
     ap.add_argument("--sim", type=int, metavar="N", help="无界面推演 N 回合")
-    ap.add_argument("--map", type=int, default=0, help="推演使用第 N 张地图（从 0 开始）")
+    ap.add_argument("--map", default="0",
+                    help="推演使用的地图：序号（0 起）或地图名（如 strait_shield）")
     args = ap.parse_args()
 
     if args.check:

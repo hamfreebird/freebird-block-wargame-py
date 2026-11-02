@@ -1103,6 +1103,25 @@ class App:
         else:
             self.reachable = {}
 
+    def _pick_unit_at(self, x: int, y: int, prefer_side: Side | None = None) -> Unit | None:
+        """挑选该格上的单位。
+
+        同格可能同时有地面部队与空中支援，因此不能只取一个：
+        * 优先选**己方**单位（玩家想操作自己的兵）；
+        * 其次选敌方单位（作为交战目标）；
+        * 同阵营内**地面单位优先**——空中单位是支援角色，
+          地面部队才是该格的主体。
+        """
+        us = self.state.units_at(x, y)
+        if not us:
+            return None
+        side = prefer_side if prefer_side is not None else self.side
+        own = [u for u in us if u.side is side]
+        foe = [u for u in us if u.side is not side]
+        pool = own or foe
+        ground = [u for u in pool if u.domain is not Domain.AIR]
+        return (ground or pool)[0]
+
     def bring_into_view(self, gx: int, gy: int) -> None:
         mv = self.mapview
         r = mv.grid_to_rect(gx, gy)
@@ -1506,7 +1525,7 @@ class App:
         grid = self.mapview.screen_to_grid(pos)
         if grid is None:
             return
-        u = st.unit_at(*grid)
+        u = self._pick_unit_at(*grid)
 
         if e.button == 3:
             if st.selected_unit():
@@ -1679,7 +1698,7 @@ class App:
             g = self.mapview.screen_to_grid(self.mouse)
             self.hover_tile = g
             if g:
-                u = st.unit_at(*g)
+                u = self._pick_unit_at(*g)
                 if u and (u.side is self.side or st.known_level(self.side, u).level >= 2):
                     self.hover_unit = u
                     self.hover_card = True

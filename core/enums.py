@@ -251,6 +251,10 @@ class UnitClass(StrEnum):
     TANKER = "tanker"
     SATELLITE = "satellite"
     ENGINEER = "engineer"
+    HELI = "heli"              # 直升机（通用）
+    ATTACK_HELI = "attack_heli"   # 武装直升机
+    TRANSPORT = "transport"    # 运输机 / 运输直升机
+    AMPHIB = "amphib"          # 两栖支援舰
 
     @property
     def label(self) -> str:
@@ -262,6 +266,8 @@ class UnitClass(StrEnum):
             "sub": "潜艇", "fighter": "战斗机", "bomber": "轰炸机",
             "aew": "预警机", "uav": "无人机", "tanker": "加油机",
             "satellite": "卫星", "engineer": "工兵",
+            "heli": "直升机", "attack_heli": "武装直升机",
+            "transport": "运输机", "amphib": "两栖支援舰",
         }[self.value]
 
 

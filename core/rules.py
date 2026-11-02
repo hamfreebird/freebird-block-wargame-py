@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterable
 
 from .enums import Detection, Domain, Facility, SensorKind, Side, Terrain, UnitClass, WeaponKind
+from .loader import SUB_CAPACITY
 from .model import Tile, Unit, Weapon
 from .env import environment_for
 
@@ -1214,22 +1215,51 @@ AIRBASE_CAPACITY = 4
 def can_end_at(state: "GameState", unit: Unit, pos: tuple[int, int]) -> bool:
     """是否可以停留在该地块。
 
-    常规编制不可同格堆叠；但**航空兵可停驻在同一机场**（跑道/停机坪容量 4 架），
-    否则一个基地只能容纳一架飞机，僚机会因无法着陆而耗尽燃油。
+    **同格共存规则**：一个格子里可以有
+
+    * 至多 1 个**地面单位**（坦克 / 步兵 / 防空阵地 / 雷达站 …）；
+    * 至多 1 个**水面单位**（舰艇）；
+    * 至多 2 个**水下单位**（潜艇，在水面之下，可与水面舰同格）；
+    * 至多 4 个**空中单位**（机场容量），可与地面部队同格——空中支援地面
+      是常见战术，空中单位不占地面空间。
+
+    敌对单位同格一律禁止——否则交战目标与占点判定都会出现歧义。
     """
     occ = [u for u in state.units if u.alive and (u.x, u.y) == pos and u is not unit]
     if not occ:
         return True
+    # 敌对单位同格：禁止
+    if any(u.side is not unit.side for u in occ):
+        return False
+    ground_occ = [u for u in occ if u.domain in (Domain.LAND, Domain.INFRA)]
+    sea_occ = [u for u in occ if u.domain is Domain.SEA]
+    sub_occ = [u for u in occ if u.domain is Domain.SUB]
+    air_occ = [u for u in occ if u.domain is Domain.AIR]
+
     if unit.domain is Domain.AIR:
+        # 空中单位：与地面/水面单位共存无妨；与其它空军同格才看容量
+        if ground_occ or sea_occ or sub_occ:
+            return True
         tile = state.map.at(pos[0], pos[1])
         if tile is not None and tile.facility is Facility.AIRBASE and tile.owner is unit.side \
                 and tile.operational:
-            same = [u for u in occ if u.side is unit.side and u.domain is Domain.AIR]
-            return len(same) < AIRBASE_CAPACITY
-        host = [u for u in occ if u.side is unit.side and u.template.unit_class is UnitClass.CARRIER]
+            return len(air_occ) < AIRBASE_CAPACITY
+        host = [u for u in air_occ if u.template.unit_class is UnitClass.CARRIER]
         if host:
             return True
-    return False
+        # 无机场无航母：普通地面上的临时起降，允许少量同格但要受限
+        return len(air_occ) < AIRBASE_CAPACITY
+
+    if unit.domain is Domain.SEA:
+        # 水面舰：不能与另一艘水面舰同格；可与潜艇、空中单位共处
+        return not sea_occ
+
+    if unit.domain is Domain.SUB:
+        # 潜艇：在水面之下，可与水面舰同格
+        return len(sub_occ) < SUB_CAPACITY
+
+    # 地面单位：不能与其它地面单位同格；可与本方飞机、水面舰共处
+    return not ground_occ
 
 
 def tile_move_cost(state: "GameState", unit: Unit, x: int, y: int,
@@ -1237,16 +1267,35 @@ def tile_move_cost(state: "GameState", unit: Unit, x: int, y: int,
     """进入 (x,y) 的机动点消耗；不可进入返回 None。
 
     `block_friendly=False` 用于寻路：允许借道友军占据的格子，但不得停留。
+
+    同格共存（见 `can_end_at`）：空中单位可进入地面部队所在的格子，
+    地面单位也可进入有本方飞机的格子——因此判定要看**同格全部单位**，
+    而不是其中的某一个。
     """
     md = state.map
     t = md.at(x, y)
     if t is None:
         return None
-    occupied = state.unit_at(x, y)
-    if occupied is not None and occupied.side is not unit.side:
-        return None  # 敌方占据格需通过战斗解决
-    if occupied is not None and occupied is not unit and block_friendly:
-        return None  # 己方同格不可堆叠
+    occ_all = state.units_at(x, y)
+    if occ_all:
+        # 敌对单位占据格需通过战斗解决
+        if any(u.side is not unit.side for u in occ_all):
+            return None
+        if block_friendly:
+            others = [u for u in occ_all if u is not unit]
+            if others:
+                # 按域判定：地面单位不与另一支地面部队同格；空中单位可与地面共存
+                if unit.domain is Domain.AIR:
+                    pass
+                elif unit.domain is Domain.SEA:
+                    if any(u.domain is Domain.SEA for u in others):
+                        return None
+                elif unit.domain is Domain.SUB:
+                    if sum(1 for u in others if u.domain is Domain.SUB) >= SUB_CAPACITY:
+                        return None
+                else:
+                    if any(u.domain in (Domain.LAND, Domain.INFRA) for u in others):
+                        return None
 
     dom = unit.domain
     if dom is Domain.AIR:
