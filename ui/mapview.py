@@ -521,8 +521,8 @@ class MapView:
             pygame.draw.line(surf, col, (cx - s, cy), (cx + s, cy), 1)
             pygame.draw.line(surf, col, (cx, cy - s), (cx, cy + s), 1)
             if self.tile >= 20:
-                T.draw_text(surf, "射界" if fm.prepared else "标定",
-                            (cx, cy - rad - 12), 11, col, anchor="midbottom")
+                T.draw_text_center_x(surf, "射界" if fm.prepared else "标定",
+                                cx, cy - rad - 12, 11, col)
 
     def _draw_supply_lines(self, surf: pygame.Surface) -> None:
         """补给线：从后勤枢纽到受补给的部队。
@@ -620,8 +620,8 @@ class MapView:
             pygame.draw.polygon(surf, (250, 250, 250), [(cx, cy - s), (cx + s, cy),
                                                         (cx, cy + s), (cx - s, cy)], 1)
             if self.tile >= 26:
-                T.draw_text(surf, t.objective_name, (cx, r.bottom + 1), 11,
-                            (235, 228, 200), anchor="midtop")
+                T.draw_text_center_x(surf, t.objective_name, cx, r.bottom + 1, 11,
+                                (235, 228, 200))
 
     def _draw_forts(self, surf: pygame.Surface) -> None:
         """野战工事：地块底部的归属色进度条（长度 = 工事等级）。"""
@@ -787,8 +787,8 @@ class MapView:
 
         # 名称（放大后显示）
         if ts >= 34:
-            T.draw_text(surf, u.template.short, (r.centerx, r.bottom + 1), 11,
-                        cols["text"], anchor="midtop")
+            T.draw_text_center_x(surf, u.template.short, r.centerx, r.bottom + 1, 11,
+                                cols["text"])
         # 状态角标
         if u.template.jam_strength > 0 and u.jam_on:
             pygame.draw.circle(surf, T.PURPLE, (body.right - 3, body.y + 3), 2)

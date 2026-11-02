@@ -55,6 +55,9 @@ jobs:
       - name: 打包脚本兼容性检查（编码 / 输出目录）
         run: python tools/check_scripts.py
 
+      - name: 文字锚点静态检查（pygame 只认 9 种锚点）
+        run: python tools/check_anchors.py
+
       - name: UI 布局自检（按钮重叠 / 越界 / 遮挡）
         run: python tools/check_layout.py
 

@@ -35,6 +35,7 @@ import pygame  # noqa: E402
 from core.campaign import (CARRYOVER_ALL, CARRYOVER_NONE, CARRYOVER_VETERANS,
                            CampaignStep, apply_carryover_policy, load_campaign)
 from core.enums import Side  # noqa: E402
+from ui import theme as T
 from ui.editor import Editor  # noqa: E402
 
 FAILS: list[str] = []
@@ -164,8 +165,77 @@ def main() -> int:
     check(all(s["count"] >= 2 for s in vet), "精锐判定依据存活数量")
 
     # -- 绘制 --
+    # 必须在**各种边界状态**下都渲染一遍：空战役、空选择、浮层打开……
+    # 之前只在「有 3 关」的状态下渲染，漏掉了空列表分支，
+    # 结果是 `anchor="mid"` 这种非法锚点直到玩家手动开编辑器才暴露。
+    ce.new_campaign()
+    ce.camp.steps.clear()
+    ce.step_index = 0
     ed.draw(screen)
-    check(True, "战役编辑器可渲染")
+    check(True, "空战役可渲染（无关卡提示）")
+
+    ce.add_step()
+    ed.draw(screen)
+    check(True, "单关战役可渲染")
+
+    ce.add_step()
+    ce.add_step()
+    ed.draw(screen)
+    check(True, "多关战役可渲染（难度曲线）")
+
+    # 战役选择浮层（空列表与非空列表都要画）
+    ce._camp_picker_open = True
+    ed.draw(screen)
+    check(True, "战役选择浮层可渲染")
+
+    # 地图选择浮层
+    ce._camp_picker_open = False
+    ce._map_picker_open = True
+    ed.draw(screen)
+    check(True, "地图选择浮层可渲染")
+    ce._map_picker_open = False
+
+    # 未选中任何关卡时的表单
+    ce.camp.steps.clear()
+    ce.step_index = 0
+    ed.draw(screen)
+    check(True, "未选中关卡时可渲染")
+
+    # 锚点合法性：draw_text 必须拒绝非法锚点（否则运行时才炸）
+    # 下面这处故意使用非法锚点 anchor="mid"，用来验证拒绝逻辑
+    try:
+        T.draw_text(screen, "测试", (10, 10), 12, anchor="mid")
+        check(False, "非法锚点应当被拒绝")
+    except ValueError:
+        check(True, "非法锚点被明确拒绝（ValueError 而非 AttributeError）")
+
+    # 曾经写错过的几个锚点：mid / midtop / midbottom / centerx —— 都要被拒绝
+    bad_anchors = ["mid", "midtop", "midbottom", "centerx", "centery", "top", "bottom"]
+    rejected = []
+    for a in bad_anchors:
+        try:
+            T.draw_text(screen, "测试", (10, 10), 12, anchor=a)
+            rejected.append(a)
+        except ValueError:
+            pass
+    check(not rejected, f"历史错误锚点全部被拒绝（漏网：{rejected}）")
+
+    # 所有合法锚点都应可用
+    bad = []
+    for a in sorted(T._VALID_ANCHORS):
+        try:
+            T.draw_text(screen, "测试", (100, 100), 12, anchor=a)
+        except Exception as exc:
+            bad.append(f"{a}:{exc}")
+    check(not bad, f"全部合法锚点可用（问题：{bad}）")
+
+    # 水平居中绘制：文字中心应对齐到给定 x
+    w = T.text_width("测试", 12)
+    r = T.draw_text_center_x(screen, "测试", 200, 50, 12)
+    check(abs((r.left + r.right) // 2 - 200) <= 1,
+          f"draw_text_center_x 水平居中（中心 {(r.left + r.right) // 2} vs 200）")
+    check(r.top == 50, f"draw_text_center_x 顶端对齐（top={r.top}）")
+    check(w > 0, "text_width 返回正数")
 
     pygame.quit()
     if FAILS:

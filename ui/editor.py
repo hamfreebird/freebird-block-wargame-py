@@ -1229,8 +1229,7 @@ class Editor:
                 pygame.draw.rect(s, T.TERRAIN_COLORS[terr], r, border_radius=3)
                 pygame.draw.rect(s, T.CYAN if self.brush_terrain == key else T.BORDER,
                                  r, 2 if self.brush_terrain == key else 1, border_radius=3)
-                T.draw_text(s, TERRAIN_NAME[key], (r.centerx, r.bottom + 1), 11, T.TEXT_DIM,
-                            anchor="midtop")
+                T.draw_text_center_x(s, TERRAIN_NAME[key], r.centerx, r.bottom + 1, 11, T.TEXT_DIM)
                 self.buttons.append((r, "terrain", key))
             y += 2 * 40 + 8
         elif self.tool == "facility":

@@ -500,7 +500,7 @@ class CampaignEditor:
 
         if not self.camp.steps:
             T.draw_text(s, "还没有关卡——点 + 添加第一关", (self.LIST_W // 2, ly + 20),
-                        11, T.TEXT_FAINT, anchor="mid")
+                        11, T.TEXT_FAINT, anchor="center")
 
     def _draw_form(self, s: pygame.Surface) -> None:
         """右侧：战役属性与关卡配置表单。"""
@@ -605,7 +605,7 @@ class CampaignEditor:
         for i, (cx, cy) in enumerate(pts):
             col = {1: T.GREEN, 2: T.CYAN, 3: T.AMBER, 4: T.RED}.get(steps[i].difficulty, T.CYAN)
             pygame.draw.circle(s, col, (cx, cy), 4)
-            T.draw_text(s, str(i + 1), (cx, cy - 12), 10, T.TEXT_FAINT, anchor="midbottom")
+            T.draw_text_center_x(s, str(i + 1), cx, cy - 12, 10, T.TEXT_FAINT)
 
     def _draw_map_picker(self, s: pygame.Surface) -> None:
         """地图选择浮层。"""
@@ -633,8 +633,8 @@ class CampaignEditor:
             self._row_buttons.append((row, "map_pick_choose", mid))
 
         if n > shown:
-            T.draw_text(s, f"滚动查看更多（{n} 张）", (r.centerx, r.bottom - 16), 10,
-                        T.TEXT_FAINT, anchor="midbottom")
+            T.draw_text_center_x(s, f"滚动查看更多（{n} 张）", r.centerx, r.bottom - 16, 10,
+                                T.TEXT_FAINT)
 
     def _draw_camp_picker(self, s: pygame.Surface) -> None:
         """已有战役选择浮层。"""
@@ -649,7 +649,7 @@ class CampaignEditor:
         n = len(self.camp_choices)
         if n == 0:
             T.draw_text(s, "还没有战役——先在编辑器里做一个", (r.centerx, r.y + 56),
-                        11, T.TEXT_FAINT, anchor="mid")
+                        11, T.TEXT_FAINT, anchor="center")
             return
         shown = min(10, n)
         for i in range(shown):

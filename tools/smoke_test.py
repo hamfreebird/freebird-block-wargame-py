@@ -734,6 +734,46 @@ def main() -> int:
     ed.redo()
     check(True, "撤销 / 重做可用")
 
+    # --- 编辑器三个标签页都能渲染 ---
+    # 这一段是有教训的：v2.1 的战役编辑器用了一个非法锚点（"mid"），
+    # 而测试只画了「有关卡」的状态，空列表分支从未被渲染过，
+    # 于是这个崩溃一直等到玩家手动打开编辑器才暴露。
+    # 因此这里对每个标签页、每种边界状态都渲染一遍。
+    for _tab in ("map", "units", "campaign"):
+        ed.tab = _tab
+        try:
+            app.draw()
+            ok = True
+        except Exception as exc:      # noqa: BLE001
+            ok = False
+            print(f"       （{_tab} 页渲染异常：{type(exc).__name__}: {exc}）")
+        check(ok, f"编辑器「{_tab}」页可渲染")
+    ed.tab = "map"
+
+    # --- 战役编辑器：空状态与满状态都要能画 ---
+    ce = ed.campaign_editor
+    ce.new_campaign()
+    ce.camp.steps.clear()
+    ce.step_index = 0
+    ed.tab = "campaign"
+    try:
+        app.draw()
+        ok = True
+    except Exception as exc:          # noqa: BLE001
+        ok = False
+        print(f"       （空战役渲染异常：{type(exc).__name__}: {exc}）")
+    check(ok, "战役编辑器：空战役可渲染")
+    ce.add_step()
+    ce.add_step()
+    try:
+        app.draw()
+        ok = True
+    except Exception as exc:          # noqa: BLE001
+        ok = False
+        print(f"       （多关战役渲染异常：{type(exc).__name__}: {exc}）")
+    check(ok, "战役编辑器：多关战役可渲染")
+    ed.tab = "map"
+
     # --- 3.1 编辑器框选与批量编辑 ---
     ed._set_selection(2, 2, 6, 6)
     check(ed.selection_size() == 25, "框选：矩形区域格数正确")

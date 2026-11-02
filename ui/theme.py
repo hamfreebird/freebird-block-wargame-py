@@ -459,11 +459,31 @@ def render_text(s: str, size: int, color: tuple[int, int, int],
     return surf
 
 
+# pygame 的 Rect.get_rect 只认这些锚点名。
+#
+# 两条容易踩的规则：
+# 1. **没有** "mid" / "midtop" / "midbottom"——只有 midleft 与 midright；
+# 2. **单轴锚点不可用**——"top" / "bottom" / "centerx" / "centery" 单独传给
+#    get_rect 会抛 TypeError（它们是坐标轴名，不是锚点名）。
+#
+# 因此本模块只暴露这 9 个合法值，并在 draw_text 里显式校验，
+# 把「写错锚点」从运行时的 AttributeError/TypeError 变成开发期就能看见的 ValueError。
+_VALID_ANCHORS = frozenset({
+    "topleft", "topright", "bottomleft", "bottomright",
+    "midleft", "midright", "center",
+})
+
+
 def draw_text(surface: pygame.Surface, s: str, pos: tuple[int, int], size: int = 13,
               color: tuple[int, int, int] | None = None, bold: bool = False,
               mono: bool = False, anchor: str = "topleft", alpha: int = 255) -> pygame.Rect:
     if color is None:
         color = _current.text
+    if anchor not in _VALID_ANCHORS:
+        # 锚点写错是低级错误，但崩溃会掩盖真正的问题——
+        # 明确报错并指出去处，比让 AttributeError 冒上来好排查。
+        raise ValueError(
+            f"未知的文字锚点 {anchor!r}；可用值：{sorted(_VALID_ANCHORS)}")
     surf = render_text(str(s), size, color, bold, mono)
     rect = surf.get_rect(**{anchor: pos})
     if alpha < 255:
@@ -473,8 +493,23 @@ def draw_text(surface: pygame.Surface, s: str, pos: tuple[int, int], size: int =
     return rect
 
 
-def text_width(s: str, size: int, bold: bool = False, mono: bool = False) -> int:
+def text_width(s: str, size: int = 13, bold: bool = False, mono: bool = False) -> int:
     return render_text(str(s), size, (255, 255, 255), bold, mono).get_width()
+
+
+def draw_text_center_x(surface: pygame.Surface, s: str, cx: int, y: int,
+                        size: int = 13, color: tuple[int, int, int] | None = None,
+                        bold: bool = False, mono: bool = False,
+                        alpha: int = 255) -> pygame.Rect:
+    """绘制**水平居中于 cx、顶端对齐于 y** 的文字。
+
+    pygame 的锚点里没有 "midtop"（只有 midleft / midright），
+    而单轴锚点 "centerx" 也不能单独传给 get_rect——所以这里自己算偏移。
+    """
+    text = str(s)
+    w = text_width(text, size, bold, mono)
+    return draw_text(surface, text, (cx - w // 2, y), size, color, bold, mono,
+                     anchor="topleft", alpha=alpha)
 
 
 def wrap_text(s: str, size: int, max_width: int, bold: bool = False) -> list[str]:
