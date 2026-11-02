@@ -5,6 +5,13 @@
     地图书  主视口，支持缩放平移、射程包线、探测覆盖、缩略图、事件滚动条
     侧栏   三个页签：单位详情 / 战役态势 / 作战日志
     底栏   操作提示与光标处地块信息
+
+v1.1 新增
+    * 教学想定与新手引导（core/tutorial.py 驱动的分步提示）
+    * 交战面板「对手视角」预览（core/rules.counter_threat_profile）
+    * 单位悬停信息卡（ui/inspect.py）
+    * 键位自定义（core/config.py + ui/settings.py）
+    * 战报导出（core/report.py）
 """
 from __future__ import annotations
 
@@ -17,18 +24,24 @@ import traceback
 import pygame
 
 from core import rules
+from core.config import ConfigError, UserConfig
 from core.enums import Detection, Domain, Facility, Side
 from core.engine import GameState
 from core.loader import LoadError, list_maps, load_scenario
 from core.model import Unit
 from core.save import SaveError, list_slots, load_game, save_game, slot_path
+from core.tutorial import Tutorial, build_tutorial
 
 from . import theme as T
 from .editor import Editor
+from .inspect import InspectCard
+from .keymap import build_reverse, hotkey_label, key_code
 from .mapview import MapView
+from .settings import SettingsPanel
 from .widgets import Button, LogView
 
 from core import paths as _paths          # 统一资源路径（兼容 zipapp / 冻结版）
+from core import report as _report
 ROOT = _paths.data_root()
 MAP_DIR = _paths.maps_dir()
 ARMORY = _paths.armory_path()
@@ -38,6 +51,9 @@ TOP_H = 50
 BOTTOM_H = 26
 SIDE_W = 400
 MIN_W, MIN_H = 1180, 740
+
+# 教学想定在主菜单中的固定入口（不依赖想定文件名）
+TUTORIAL_MAP_ID = "training_ground"
 
 
 class App:
@@ -90,6 +106,23 @@ class App:
         self._fire_btn = pygame.Rect(0, 0, 0, 0)
         self.slot_info: list[dict] = []
         self.editor: Editor | None = None
+
+        # -- v1.1：用户配置 / 键位自定义 --
+        self.cfg = UserConfig.load(_paths.user_config_path())
+        self.keymap = build_reverse(self.cfg)
+        self.settings_panel: SettingsPanel | None = None
+        self.show_settings = False
+
+        # -- v1.1：教学引导 --
+        self.tutorial: Tutorial | None = None
+        self.tutorial_visible = False
+        self._tutorial_notice = 0.0
+        self._tutorial_skip_btn = pygame.Rect(0, 0, 0, 0)
+
+        # -- v1.1：悬停信息卡与对手视角 --
+        self.inspect = InspectCard()
+        self.hover_card = False
+
         self._scan_scenarios()
         self._layout_menu()
 
@@ -116,6 +149,7 @@ class App:
                     raw = json.load(f)
                 self.scenarios.append({
                     "path": path,
+                    "id": raw.get("id", os.path.basename(path)),
                     "name": raw.get("name", os.path.basename(path)),
                     "desc": raw.get("description", ""),
                     "size": raw.get("size", [0, 0]),
@@ -123,14 +157,131 @@ class App:
                     "tile_km": raw.get("tile_km", 12),
                     "blue": len(raw.get("deployments", {}).get("BLUE", [])),
                     "red": len(raw.get("deployments", {}).get("RED", [])),
+                    "tutorial": bool(raw.get("tutorial")),
                 })
             except Exception as exc:
                 self.error = f"{os.path.basename(path)}: {exc}"
         if not self.scenarios:
             self.error = f"未在 {MAP_DIR} 找到可用地图"
+        # 教学想定排在最前，便于新玩家第一眼看到
+        self.scenarios.sort(key=lambda s: (not s.get("tutorial"), s["name"]))
 
     def _layout_menu(self) -> None:
         self._menu_buttons = []
+
+    # -- 菜单按钮几何 -----------------------------------------------------
+    def _menu_button_y(self) -> int:
+        return 420 + 122
+
+    def _menu_start_rect(self) -> pygame.Rect:
+        return pygame.Rect(60, self._menu_button_y(), 240, 46)
+
+    def _menu_edit_rect(self) -> pygame.Rect:
+        return pygame.Rect(316, self._menu_button_y(), 200, 46)
+
+    def _menu_tutorial_rect(self) -> pygame.Rect:
+        return pygame.Rect(532, self._menu_button_y(), 170, 46)
+
+    def _menu_settings_rect(self) -> pygame.Rect:
+        return pygame.Rect(718, self._menu_button_y(), 110, 46)
+
+    # ------------------------------------------------------------------ #
+    # 教学想定
+    # ------------------------------------------------------------------ #
+    def _tutorial_index(self) -> int:
+        """教学想定在想定列表中的下标；不存在返回 -1。"""
+        for i, sc in enumerate(self.scenarios):
+            if sc.get("tutorial") or sc.get("id") == TUTORIAL_MAP_ID:
+                return i
+        return -1
+
+    def start_tutorial(self) -> None:
+        """从主菜单直接进入教学想定。"""
+        idx = self._tutorial_index()
+        if idx < 0:
+            self.set_status("未找到教学想定", 4)
+            return
+        self.menu_index = idx
+        self.start_game()
+        if self.state is not None:
+            self.tutorial_visible = True
+            self._tutorial_notice = 3.0
+            self.set_status("教学开始：按提示逐步操作，随时可按「跳过教学」退出", 6)
+
+    def _toggle_tutorial(self) -> None:
+        """显示 / 隐藏教学提示条。"""
+        if self.tutorial is None:
+            return
+        self.tutorial_visible = not self.tutorial_visible
+
+    def _skip_tutorial(self) -> None:
+        if self.tutorial is not None:
+            self.tutorial.skip()
+        self.tutorial_visible = False
+        self.set_status("已退出教学", 3)
+
+    def _tutorial_note(self, event: str) -> None:
+        """把事件投递给教学引导机，并在推进时刷新提示。"""
+        if self.tutorial is None or self.tutorial.finished:
+            return
+        before = self.tutorial.index
+        self.tutorial.note(event)
+        if self.tutorial.index != before:
+            step = self.tutorial.current
+            if step is not None:
+                self.state.log_message(None, f"教学：{step.title}", "system")
+            elif self.tutorial.finished:
+                self.state.log_message(None, "教学完成——接下来就看你的了", "system")
+                self.tutorial_visible = False
+                self.set_status("教学完成！", 4)
+
+    def _tutorial_poll(self) -> None:
+        """轮询状态型教学步骤。"""
+        if self.tutorial is None or self.tutorial.finished or self.state is None:
+            return
+        before = self.tutorial.index
+        self.tutorial.poll(self.state)
+        if self.tutorial.index != before:
+            step = self.tutorial.current
+            if step is not None:
+                self.state.log_message(None, f"教学：{step.title}", "system")
+            elif self.tutorial.finished:
+                self.state.log_message(None, "教学完成——接下来就看你的了", "system")
+                self.tutorial_visible = False
+                self.set_status("教学完成！", 4)
+
+    # ------------------------------------------------------------------ #
+    # 设置
+    # ------------------------------------------------------------------ #
+    def open_settings(self) -> None:
+        """打开键位设置面板。"""
+        if self.settings_panel is None:
+            self.settings_panel = SettingsPanel(self.cfg)
+        self.show_settings = True
+
+    def close_settings(self) -> None:
+        """关闭设置面板并保存配置。"""
+        self.show_settings = False
+        try:
+            self.cfg.save()
+            self.keymap = build_reverse(self.cfg)
+            self.set_status("键位设置已保存", 3)
+        except ConfigError as exc:
+            self.set_status(str(exc), 5)
+
+    # ------------------------------------------------------------------ #
+    # 战报导出
+    # ------------------------------------------------------------------ #
+    def export_report(self, fmt: str = "md") -> None:
+        """把本局作战过程导出为战报文件。"""
+        if self.state is None:
+            return
+        try:
+            path = _report.export_report(self.state, _paths.reports_dir(), fmt)
+        except OSError as exc:
+            self.set_status(f"战报导出失败：{exc}", 5)
+            return
+        self.set_status(f"战报已导出：{path}", 6)
 
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
@@ -179,16 +330,24 @@ class App:
         for i, sc in enumerate(self.scenarios):
             r = pygame.Rect(x, 200, card_w, card_h)
             active = i == self.menu_index
+            is_tut = bool(sc.get("tutorial"))
             T.panel(s, r, T.PANEL_HI if active else T.PANEL,
                     T.CYAN if active else T.BORDER, radius=5)
             if active:
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x, r.y, r.w, 2))
-            T.draw_text(s, sc["name"], (r.x + 16, r.y + 16), 17, T.TEXT, bold=True)
+            if is_tut:
+                # 教学想定：左上角角标 + 高亮边框
+                pygame.draw.rect(s, T.GREEN, r, 1, border_radius=5)
+                badge = pygame.Rect(r.x + 12, r.y + 12, 56, 17)
+                pygame.draw.rect(s, (26, 74, 58), badge, border_radius=3)
+                T.draw_text(s, "教学", badge.center, 10, (170, 255, 210), anchor="center")
+            T.draw_text(s, sc["name"], (r.x + 16, r.y + (38 if is_tut else 16)), 17,
+                        T.TEXT, bold=True)
             T.draw_text(s, f"{sc['size'][0]}×{sc['size'][1]} 格 · {sc['tile_km']} km/格 · "
                             f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
-                        (r.x + 16, r.y + 44), 11, T.TEXT_FAINT)
-            yy = r.y + 68
-            for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:4]:
+                        (r.x + 16, r.y + 62), 11, T.TEXT_FAINT)
+            yy = r.y + 84
+            for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:3]:
                 T.draw_text(s, line, (r.x + 16, yy), 12, T.TEXT_DIM)
                 yy += 18
             T.draw_text(s, "点击选择", (r.x + 16, r.bottom - 26), 11,
@@ -221,18 +380,41 @@ class App:
                 self.menu_side = side
 
         # 开始按钮
-        start = pygame.Rect(60, y + 122, 240, 46)
+        start = self._menu_start_rect()
         hover = start.collidepoint(self.mouse)
         pygame.draw.rect(s, (30, 104, 128) if hover else (22, 78, 98), start, border_radius=4)
         pygame.draw.rect(s, T.CYAN, start, 1, border_radius=4)
         T.draw_text(s, "开始作战  [Enter]", start.center, 16, T.WHITE, bold=True, anchor="center")
 
-        edit_r = pygame.Rect(316, y + 122, 200, 46)
+        edit_r = self._menu_edit_rect()
         hover = edit_r.collidepoint(self.mouse)
         pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), edit_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, edit_r, 1, border_radius=4)
         T.draw_text(s, "地图 / 武器编辑器", edit_r.center, 13,
                     T.WHITE if hover else T.TEXT, anchor="center")
+
+        # 快速上手：直接进入教学想定（首次运行时高亮）
+        tut_r = self._menu_tutorial_rect()
+        hover = tut_r.collidepoint(self.mouse)
+        first_run = self.cfg.first_run
+        fill = (30, 82, 62) if hover else ((22, 62, 48) if first_run else (18, 26, 36))
+        pygame.draw.rect(s, fill, tut_r, border_radius=4)
+        pygame.draw.rect(s, T.GREEN if (hover or first_run) else T.BORDER_HI, tut_r, 1,
+                         border_radius=4)
+        T.draw_text(s, "快速上手  [T]", tut_r.center, 13,
+                    T.WHITE if hover else (T.TEXT if not first_run else (180, 255, 215)),
+                    bold=first_run, anchor="center")
+
+        # 设置入口
+        set_r = self._menu_settings_rect()
+        hover = set_r.collidepoint(self.mouse)
+        pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), set_r, border_radius=4)
+        pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, set_r, 1, border_radius=4)
+        T.draw_text(s, "设置", set_r.center, 13, T.WHITE if hover else T.TEXT, anchor="center")
+
+        if first_run:
+            T.draw_text(s, "首次使用？点「快速上手」用 3 分钟学会核心操作",
+                        (60, y + 190), 12, T.GREEN)
 
         tips = [
             "数据可编辑：data/maps/*.json 定义地图与部署，data/units/armory.json 定义武器与兵种",
@@ -266,8 +448,14 @@ class App:
         self.pending_target = None
         self.pending_facility = None
         self.show_menu = False
+        self.show_settings = False
         self.ai_timer = 0.0
         self.status = ""
+        # 教学引导：仅当想定声明了教学脚本时启用
+        self.tutorial = build_tutorial(scenario.raw)
+        self.tutorial_visible = bool(scenario.raw.get("tutorial")) and not self.cfg.first_run
+        if self.tutorial_visible:
+            self.state.log_message(None, f"教学开始：{self.tutorial.current.title if self.tutorial.current else ''}", "system")
         self._layout_game()
         self._select_first_unit()
 
@@ -331,24 +519,29 @@ class App:
         self.buttons = []
         x = self.w - 14
         specs = [
-            ("结束回合", self.end_turn, "primary", "空格"),
-            ("帮助", self.toggle_help, "ghost", "F1"),
+            ("结束回合", self.end_turn, "primary", "end_turn"),
+            ("帮助", self.toggle_help, "ghost", "help"),
         ]
-        for label, cb, kind, hk in specs:
+        for label, cb, kind, act in specs:
             width = 96 if label == "结束回合" else 62
             x -= width
             self.buttons.append(Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
-                                       size=13, hotkey=hk))
+                                       size=13, hotkey=hotkey_label(self.cfg, act)))
             x -= 8
         # 叠加层切换
         x -= 6
         self.overlay_btn = Button(pygame.Rect(x - 84, 9, 84, 32), "覆盖层", self.cycle_overlay,
                                   "ghost", size=12)
         self.buttons.append(self.overlay_btn)
+        # 设置
+        x -= 8
+        self.settings_btn = Button(pygame.Rect(x - 62, 9, 62, 32), "设置", self.open_settings,
+                                   "ghost", size=12)
+        self.buttons.append(self.settings_btn)
         # 系统菜单（存档/读档/返回）
         x -= 180
         self.menu_btn = Button(pygame.Rect(x, 9, 82, 32), "菜单", self.toggle_menu,
-                               "ghost", size=12, hotkey="F10")
+                               "ghost", size=12, hotkey=hotkey_label(self.cfg, "system_menu"))
         self.buttons.append(self.menu_btn)
 
     def _select_first_unit(self) -> None:
@@ -371,6 +564,7 @@ class App:
             self.reachable = rules.flood_reachable(self.state, u)
             self.reachable.pop((u.x, u.y), None)
             self.bring_into_view(u.x, u.y)
+            self._tutorial_note("select_unit")
         else:
             self.reachable = {}
 
@@ -391,6 +585,7 @@ class App:
         self.pending_target = None
         self.reachable = {}
         self.state.end_player_turn()
+        self._tutorial_note("turn_end")
         if self.state.over:          # 末回合/全歼可能在结算时直接结束对局
             self.mode = "over"
             return
@@ -468,6 +663,8 @@ class App:
             return
         res = self.state.fire(u, t, w)
         self.set_status(res.message, 3.5)
+        if res.ok:
+            self._tutorial_note("fire")
         self.pending_target = None
         self.reachable = {}
         if self.state.over:
@@ -511,6 +708,16 @@ class App:
 
     def _on_key(self, e: pygame.event.Event) -> None:
         k = e.key
+        action = self.keymap.get(k, "")
+
+        # 设置面板优先：捕获按键进行重绑定
+        if self.show_settings and self.settings_panel is not None:
+            if self.settings_panel.handle_event(e):
+                if getattr(self.settings_panel, "close_requested", False):
+                    self.settings_panel.close_requested = False
+                    self.close_settings()
+                return
+
         if self.mode == "menu":
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.start_game()
@@ -522,28 +729,30 @@ class App:
                 self.menu_index = (self.menu_index + 1) % max(1, len(self.scenarios))
             elif k in (pygame.K_TAB, pygame.K_s):
                 self.menu_side = Side.RED if self.menu_side is Side.BLUE else Side.BLUE
+            elif k == pygame.K_t:
+                self.start_tutorial()
             return
 
-        if k == pygame.K_F1:
+        # 绑定可配置的动作（帮助 / 存读档 / 系统菜单）
+        if action == "help":
             self.toggle_help()
             return
         if self.show_help:
-            if k in (pygame.K_ESCAPE, pygame.K_F1):
+            if action == "cancel" or action == "help":
                 self.show_help = False
             return
 
-        # 系统菜单与快速存读档
-        if k == pygame.K_F5:
+        if action == "quick_save":
             self.save_slot(1)
             return
-        if k == pygame.K_F9:
+        if action == "quick_load":
             self.load_slot(1)
             return
-        if k == pygame.K_F10:
+        if action == "system_menu":
             self.toggle_menu()
             return
         if self.show_menu:
-            if k == pygame.K_ESCAPE:
+            if action == "cancel":
                 self.show_menu = False
             return
 
@@ -556,36 +765,36 @@ class App:
             return
 
         st = self.state
-        if k in (pygame.K_SPACE,) and st.phase == "player":
+        if action == "end_turn" and st.phase == "player":
             self.end_turn()
-        elif k == pygame.K_SPACE and st.phase == "ai":
+        elif action == "end_turn" and st.phase == "ai":
             self.fast = True
-        elif k == pygame.K_ESCAPE:
+        elif action == "cancel":
             if self.pending_target:
                 self.pending_target = None
             elif self.pending_facility:
                 self.pending_facility = None
             else:
                 self.select_unit(None)
-        elif k == pygame.K_TAB:
+        elif action == "next_unit":
             self.next_unit()
-        elif k in (pygame.K_r,):
+        elif action == "radar":
             u = st.selected_unit()
             if u:
                 st.toggle_radar(u)
-        elif k in (pygame.K_j,):
+        elif action == "jam":
             u = st.selected_unit()
             if u:
                 st.toggle_jam(u)
-        elif k == pygame.K_e:
+        elif action == "overlay":
             self.cycle_overlay()
-        elif k == pygame.K_f:
+        elif action == "fit_map":
             self.mapview.fit()
-        elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+        elif action == "confirm":
             self.confirm_fire()
-        elif pygame.K_1 <= k <= pygame.K_9:
+        elif action.startswith("weapon_") and action[7:].isdigit():
+            idx = int(action[7:]) - 1
             ws = st.selected_unit().usable_weapons() if st.selected_unit() else []
-            idx = k - pygame.K_1
             if idx < len(ws):
                 st.selected_weapon = ws[idx].id
 
@@ -593,10 +802,14 @@ class App:
         pos = e.pos
         if self.mode == "menu":
             if e.button == 1:
-                if pygame.Rect(60, 542, 240, 46).collidepoint(pos):
+                if self._menu_start_rect().collidepoint(pos):
                     self.start_game()
-                elif pygame.Rect(316, 542, 200, 46).collidepoint(pos):
+                elif self._menu_edit_rect().collidepoint(pos):
                     self.open_editor()
+                elif self._menu_tutorial_rect().collidepoint(pos):
+                    self.start_tutorial()
+                elif self._menu_settings_rect().collidepoint(pos):
+                    self.open_settings()
             return
         if self.mode == "over":
             if e.button == 1:
@@ -621,6 +834,11 @@ class App:
                             self.show_menu = False
                             self.mode = "menu"
                             self._scan_scenarios()
+                        elif action == "export_md":
+                            self.export_report("md")
+                        elif action == "settings":
+                            self.show_menu = False
+                            self.open_settings()
                         elif action == "quit":
                             self.running = False
                         return
@@ -635,6 +853,12 @@ class App:
             for b in self.buttons:
                 if b.handle_click(pos):
                     return
+            return
+
+        # 教学提示条的跳过按钮
+        if self.tutorial_visible and self._tutorial_skip_btn.collidepoint(pos) \
+                and e.button == 1:
+            self._skip_tutorial()
             return
 
         # 侧栏
@@ -804,6 +1028,7 @@ class App:
                         self.mode = "over"
                     self._after_turn()
         self.hover_unit = None
+        self.hover_card = False
         if self.mapview and self.mapview.contains(self.mouse) and self.mode == "game":
             g = self.mapview.screen_to_grid(self.mouse)
             self.hover_tile = g
@@ -811,6 +1036,10 @@ class App:
                 u = st.unit_at(*g)
                 if u and (u.side is self.side or st.known_level(self.side, u).level >= 2):
                     self.hover_unit = u
+                    self.hover_card = True
+                    if u.side is not self.side:
+                        # 教学：悬停敌方目标
+                        self._tutorial_note("hover_enemy")
             sel = st.selected_unit()
             self.path_preview = None
             if sel and g and not (self.hover_unit and self.hover_unit.side is not self.side):
@@ -821,6 +1050,9 @@ class App:
         else:
             self.hover_tile = None
             self.path_preview = None
+
+        # 教学：状态型步骤轮询（跟踪判定等）
+        self._tutorial_poll()
 
     def _after_turn(self) -> None:
         st = self.state
@@ -849,6 +1081,8 @@ class App:
             return
         if self.mode == "menu":
             self._draw_menu()
+            if self.show_settings and self.settings_panel is not None:
+                self.settings_panel.draw(self.screen)
             pygame.display.flip()
             return
         s = self.screen
@@ -861,13 +1095,59 @@ class App:
         self._draw_map_overlay_widgets(s)
         self._draw_sidebar(s)
         self._draw_bottom(s)
+        self._draw_tutorial_bar(s)
+        if self.hover_card and self.hover_unit is not None:
+            known = (Detection.TRACKED if self.hover_unit.side is self.side
+                     else self.state.known_level(self.side, self.hover_unit))
+            self.inspect.draw(s, self.hover_unit, self.side, known, self.state, self.mouse)
         if self.show_help:
             self._draw_help(s)
         if self.show_menu:
             self._draw_system_menu(s)
+        if self.show_settings and self.settings_panel is not None:
+            self.settings_panel.draw(s)
         if self.mode == "over":
             self._draw_over(s)
         pygame.display.flip()
+
+    # -- 教学提示条 -------------------------------------------------------
+    def _draw_tutorial_bar(self, s: pygame.Surface) -> None:
+        """在地图上方绘制当前教学步骤的提示条。"""
+        if not self.tutorial_visible or self.tutorial is None:
+            return
+        step = self.tutorial.current
+        if step is None:
+            return
+        mv = self.mapview
+        w = min(660, mv.rect.width - 40)
+        x = mv.rect.x + (mv.rect.width - w) // 2
+        lines = T.wrap_text(step.body, 11, w - 30)
+        h = 40 + len(lines) * 16
+        r = pygame.Rect(x, mv.rect.y + 8, w, h)
+        surf = pygame.Surface(r.size, pygame.SRCALPHA)
+        surf.fill((12, 24, 30, 236))
+        s.blit(surf, r.topleft)
+        pygame.draw.rect(s, T.GREEN, r, 1, border_radius=4)
+
+        T.draw_text(s, step.title, (r.x + 12, r.y + 7), 12, (170, 255, 210), bold=True)
+        T.draw_text(s, self.tutorial.progress_text, (r.right - 12, r.y + 8), 10,
+                    T.TEXT_FAINT, anchor="topright")
+        if step.goal:
+            T.draw_text(s, "目标：" + step.goal, (r.right - 12 - T.text_width(
+                self.tutorial.progress_text, 10) - 14, r.y + 8), 10, T.AMBER,
+                anchor="topright")
+        yy = r.y + 26
+        for line in lines[:5]:
+            T.draw_text(s, line, (r.x + 12, yy), 11, (200, 220, 235))
+            yy += 16
+
+        # 跳过按钮
+        b = pygame.Rect(r.right - 74, r.bottom - 26, 64, 20)
+        hover = b.collidepoint(self.mouse)
+        pygame.draw.rect(s, (30, 48, 44) if hover else (20, 32, 30), b, border_radius=3)
+        pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, b, 1, border_radius=3)
+        T.draw_text(s, "跳过教学", b.center, 10, T.TEXT_DIM, anchor="center")
+        self._tutorial_skip_btn = b
 
     # -- 系统菜单（存档/读档） --------------------------------------------
     def _draw_system_menu(self, s: pygame.Surface) -> None:
@@ -917,8 +1197,9 @@ class App:
             y += row_h
 
         y += 6
-        btns = [("继续作战", "resume"), ("返回想定选择", "to_menu"), ("退出游戏", "quit")]
-        bw = (w - 32 - 16) // 3
+        btns = [("继续作战", "resume"), ("返回想定选择", "to_menu"),
+                ("导出战报", "export_md"), ("设置", "settings"), ("退出游戏", "quit")]
+        bw = (w - 32 - 16) // 5
         for i, (label, act) in enumerate(btns):
             b = pygame.Rect(r.x + 16 + i * (bw + 8), y, bw, 34)
             hover = b.collidepoint(self.mouse)
@@ -1226,6 +1507,7 @@ class App:
         if st.build_fort(u):
             tile = st.map.at(u.x, u.y)
             self.set_status(f"{u.name} 构筑工事至 Lv{tile.fort}（消耗 1.0 机动点）", 4)
+            self._tutorial_note("fortify")
             return
         # 给出具体原因，便于玩家判断
         tile = st.map.at(u.x, u.y)
@@ -1340,7 +1622,10 @@ class App:
         w = u.weapon_by_id(st.selected_weapon or "")
         prof = rules.shot_profile(st, u, t, w) if w else None
         ok = bool(w and prof and prof.ok)
-        h = 190 if ok else 92
+        threat = rules.counter_threat_profile(st, u, t, w) if (w and t) else None
+        # 对手视角区块的高度：标题 + 关键指标 + 若干条明细
+        th_h = self._threat_panel_height(threat)
+        h = (190 if ok else 92) + th_h
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, (26, 20, 24), (110, 60, 66), radius=4)
         T.draw_text(s, "交战目标", (r.x + 10, r.y + 8), 11, T.RED, bold=True)
@@ -1382,7 +1667,69 @@ class App:
             T.draw_text(s, "确认开火  [Enter]", btn.center, 12, (255, 235, 235),
                         bold=True, anchor="center")
             self._fire_btn = btn
+
+        if threat is not None:
+            self._draw_counter_threat(s, r, threat, u, t, w)
         return r.bottom + 8
+
+    # ------------------------------------------------------------------ #
+    # 对手视角（为什么打不到）
+    # ------------------------------------------------------------------ #
+    def _threat_panel_height(self, threat) -> int:
+        """对手视角区块高度（与绘制逻辑保持一致）。"""
+        if threat is None:
+            return 0
+        lines = self._threat_lines(threat)
+        return 30 + len(lines) * 14 + 8
+
+    def _threat_lines(self, threat) -> list[tuple[str, str, tuple[int, int, int]]]:
+        """构造对手视角的明细行：(标签, 内容, 颜色)。"""
+        out: list[tuple[str, str, tuple[int, int, int]]] = []
+        if threat.intercept_pk > 0.01:
+            col = T.RED if threat.intercept_pk > 0.35 else T.AMBER
+            out.append(("拦截", f"{threat.intercept_pk * 100:.0f}%　"
+                                f"{len(threat.interceptors)} 个防空单元", col))
+            for name in threat.interceptors[:2]:
+                out.append(("　└", name[:30], T.TEXT_FAINT))
+        else:
+            out.append(("拦截", "无敌方防空覆盖", T.GREEN))
+
+        if threat.reply_units:
+            col = T.RED if threat.enemy_fire_control else T.AMBER
+            out.append(("反击", f"{len(threat.reply_units)} 个敌方单元可打你"
+                                f"（最高 Pk {threat.reply_pk * 100:.0f}%）", col))
+            for name in threat.reply_weapons[:1]:
+                out.append(("　└", name[:30], T.TEXT_FAINT))
+        else:
+            out.append(("反击", "无可威胁到你的敌方火力", T.GREEN))
+
+        fc = "已跟踪到我方" if threat.enemy_fire_control else "未跟踪到我方"
+        out.append(("敌方火控", fc, T.RED if threat.enemy_fire_control else T.TEXT_DIM))
+        for b in threat.blockers[:2]:
+            out.append(("阻碍", b[:32], T.AMBER))
+        return out
+
+    def _draw_counter_threat(self, s, panel: pygame.Rect, threat, u: Unit, t: Unit,
+                             w) -> None:
+        """绘制「对手视角」区块：解释这一发为什么打不到。"""
+        th_h = self._threat_panel_height(threat)
+        r = pygame.Rect(panel.x, panel.bottom - th_h, panel.width, th_h)
+        pygame.draw.rect(s, (16, 22, 32), r, border_radius=3)
+        pygame.draw.rect(s, (60, 84, 110), r, 1, border_radius=3)
+
+        T.draw_text(s, "对手视角", (r.x + 10, r.y + 6), 10, (140, 180, 220), bold=True)
+        T.draw_text(s, "这发子弹会遇到什么", (r.right - 10, r.y + 7), 9, T.TEXT_FAINT,
+                    anchor="topright")
+
+        yy = r.y + 22
+        for label, text, col in self._threat_lines(threat):
+            T.draw_text(s, label, (r.x + 10, yy), 9, T.TEXT_FAINT)
+            T.draw_text(s, text, (r.x + 54, yy), 9, col)
+            yy += 14
+
+        # 教学：玩家查看了对手视角
+        if self.tutorial is not None and not self.tutorial.finished:
+            self._tutorial_note("counter_viewed")
 
     def _draw_facility_panel(self, s, body, u: Unit, y: int) -> int:
         st = self.state

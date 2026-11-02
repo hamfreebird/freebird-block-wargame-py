@@ -1,0 +1,194 @@
+{
+ "id": "training_ground",
+ "name": "新兵训练场",
+ "description": "教学想定：在一片简化战场上依次体验探测、跟踪、交战、对手视角与构筑工事。兵力精简、回合宽松，3~5 分钟即可走完一遍核心循环。",
+ "size": [
+  20,
+  14
+ ],
+ "tile_km": 8,
+ "turn_limit": 8,
+ "terrain": [
+  "pppppppppppppppppppp",
+  "ppfffpppppppppfffppp",
+  "ppfffpppppppppfffppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pppppppppppppppppppp",
+  "pphhhppppppppphhhppp",
+  "pphhhppppppppphhhppp",
+  "pppppppppppppppppppp"
+ ],
+ "elevation": {
+  "rows": [
+   "22222222222222222222",
+   "22333222222222333222",
+   "22333222222222333222",
+   "22222222222222222222",
+   "22222222222222222222",
+   "22222222222222222222",
+   "22222222222222222222",
+   "22222211111111222222",
+   "22222222222222222222",
+   "22222222222222222222",
+   "22222222222222222222",
+   "22444222222222444222",
+   "22444222222222444222",
+   "22222222222222222222"
+  ]
+ },
+ "facilities": [
+  {
+   "x": 1,
+   "y": 6,
+   "facility": "depot",
+   "owner": "BLUE",
+   "hp": 100
+  },
+  {
+   "x": 18,
+   "y": 6,
+   "facility": "sam_site",
+   "owner": "RED",
+   "hp": 100
+  }
+ ],
+ "forts": [
+  {
+   "x": 1,
+   "y": 10,
+   "level": 1,
+   "owner": "BLUE"
+  },
+  {
+   "x": 13,
+   "y": 10,
+   "level": 1,
+   "owner": "RED"
+  }
+ ],
+ "objectives": [
+  {
+   "x": 6,
+   "y": 8,
+   "name": "训练靶场",
+   "kind": "capture",
+   "side": "NEUTRAL",
+   "value": 3,
+   "owner": "NEUTRAL"
+  }
+ ],
+ "deployments": {
+  "BLUE": [
+   {
+    "template": "radar_tpy2",
+    "x": 1,
+    "y": 8
+   },
+   {
+    "template": "hq17",
+    "x": 2,
+    "y": 6
+   },
+   {
+    "template": "himars",
+    "x": 3,
+    "y": 9
+   },
+   {
+    "template": "m1a2",
+    "x": 2,
+    "y": 10
+   },
+   {
+    "template": "inf_light",
+    "x": 1,
+    "y": 11
+   }
+  ],
+  "RED": [
+   {
+    "template": "radar_container",
+    "x": 17,
+    "y": 5
+   },
+   {
+    "template": "s400",
+    "x": 12,
+    "y": 7
+   },
+   {
+    "template": "t90m",
+    "x": 11,
+    "y": 9
+   },
+   {
+    "template": "bmp3",
+    "x": 12,
+    "y": 11
+   },
+   {
+    "template": "inf_motor",
+    "x": 13,
+    "y": 12
+   }
+  ]
+ },
+ "tutorial": {
+  "steps": [
+   {
+    "id": "welcome",
+    "title": "第 1 步 · 认识战场",
+    "body": "欢迎来到方块兵棋。左侧是战场，右侧三个页签分别是单位详情、战役态势与作战日志。\n先点击地图上的任意一个蓝色单位（推荐：红旗-17A 防空连），看看它有什么传感器和武器。",
+    "goal": "点击任意一个己方单位",
+    "trigger": "select_unit",
+    "focus": "sidebar"
+   },
+   {
+    "id": "detect",
+    "title": "第 2 步 · 发现与识别",
+    "body": "战场上灰色的问号代表「有接触但未识别」的目标。\n把鼠标移到问号上，会弹出目标详情——这就是悬停侦察。\n想要看得更清楚，就让侦察单元往前靠：传感器越近，识别等级越高。",
+    "goal": "悬停查看一个敌方目标",
+    "trigger": "hover_enemy",
+    "focus": "map"
+   },
+   {
+    "id": "engage",
+    "title": "第 3 步 · 跟踪与开火",
+    "body": "只有被「跟踪」的目标才能装订射击诸元。\n把火箭炮连往前推，缩短与敌目标的距离——目标一旦进入射程即可开火。\n点击敌方目标，再按回车确认开火。",
+    "goal": "跟踪目标并开火",
+    "trigger": "fire",
+    "focus": "map"
+   },
+   {
+    "id": "defend",
+    "title": "第 4 步 · 看清对面在干什么",
+    "body": "交战面板下方的「对手视角」会告诉你：\n· 敌方有没有火控通道、能不能反击你；\n· 谁会拦截你的弹药、拦截概率多大；\n· 这一发为什么打不到。\n开火前先看这里，能省下整整一排炮弹。",
+    "goal": "查看一次对手视角",
+    "trigger": "counter_viewed",
+    "focus": "sidebar"
+   },
+   {
+    "id": "fortify",
+    "title": "第 5 步 · 构筑工事",
+    "body": "步兵驻守不动时可以挖壕据守。\n选中轻步兵连 → 点击右侧「筑工事」按钮，工事会降低被命中的概率，同时让你更难被发现。\n注意：一旦机动，工事就会失效。",
+    "goal": "让步兵构筑一道工事",
+    "trigger": "fortify",
+    "focus": "sidebar"
+   },
+   {
+    "id": "finish",
+    "title": "第 6 步 · 结束回合",
+    "body": "按空格结束回合，红方 AI 会开始行动。\n留心「作战日志」——每一次探测、拦截与命中都记录在那里。\n你已经掌握了本作的核心循环，接下来去试试真正的想定吧。",
+    "goal": "结束第一个回合",
+    "trigger": "turn_end",
+    "focus": "topbar"
+   }
+  ]
+ }
+}

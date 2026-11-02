@@ -691,6 +691,105 @@ def interception_estimate(state: "GameState", attacker: Unit, target: Unit,
 
 
 # --------------------------------------------------------------------------- #
+# 对手视角威胁评估
+# --------------------------------------------------------------------------- #
+@dataclass
+class CounterThreat:
+    """「对手视角」评估：这一发子弹为什么打不到 / 打到了会怎样。
+
+    玩家在交战面板中需要回答三类问题：
+    1. 子弹会不会被拦下（拦截层次与综合拦截概率）；
+    2. 目标是否有反击能力（对方能不能打到我们）；
+    3. 这一发到底受什么条件限制（情报、通视、弹种、诱饵）。
+    """
+
+    intercept_pk: float = 0.0
+    interceptors: list[str] = field(default_factory=list)
+    reply_units: list[str] = field(default_factory=list)   # 可反击的敌方单位
+    reply_weapons: list[str] = field(default_factory=list)  # 其可用武器
+    reply_pk: float = 0.0                                  # 单发最危险的反击概率
+    enemy_fire_control: bool = False                       # 对方是否已跟踪到我们
+    enemy_detected_level: Detection = Detection.NONE
+    blockers: list[str] = field(default_factory=list)      # 阻止命中的具体条件
+    notes: list[str] = field(default_factory=list)         # 补充提示
+
+    @property
+    def blocked(self) -> bool:
+        """这一发是否存在被完全拦下的风险。"""
+        return self.intercept_pk > 0.01
+
+
+def counter_threat_profile(state: "GameState", attacker: Unit, target: Unit,
+                           weapon: Weapon) -> CounterThreat:
+    """从防守方视角评估这次射击，解释「为什么打不到」。
+
+    与 `shot_profile` 互补：后者回答「我能不能打中」，本函数回答
+    「对方能做什么」。所有判断均为纯计算，不消耗任何资源。
+    """
+    out = CounterThreat()
+    if attacker is None or target is None or weapon is None:
+        return out
+
+    # -- 1) 拦截层次：这一发会被谁拦下 --
+    if weapon.interceptable and not weapon.strategic:
+        pk, names = interception_estimate(state, attacker, target, weapon)
+        out.intercept_pk = pk
+        out.interceptors = names
+    elif weapon.strategic:
+        out.notes.append("洲际弹道：战术防空网无能为力，仅中段反导可拦")
+
+    # -- 2) 目标能否反击：对方有哪些单位能打到我们 --
+    dist_to_me = dist_units(target, attacker)
+    best_reply = 0.0
+    for e in state.enemies_of(attacker.side):
+        if e is target or not e.alive:
+            continue
+        usable = [w for w in e.usable_weapons()
+                  if attacker.domain in w.targets
+                  and dist((e.x, e.y), (attacker.x, attacker.y)) <= w.range_max + RANGE_TOLERANCE]
+        if not usable:
+            continue
+        out.reply_units.append(e.name)
+        for w in usable[:2]:
+            out.reply_weapons.append(f"{e.name}·{w.name}")
+        best_reply = max(best_reply, max(w.pk for w in usable))
+    out.reply_pk = best_reply
+
+    # 目标自身的反击能力（自卫火力）
+    self_reply = [w for w in target.usable_weapons()
+                  if attacker.domain in w.targets
+                  and dist_to_me <= w.range_max + RANGE_TOLERANCE]
+    if self_reply:
+        out.reply_units.append(f"{target.name}（自卫）")
+        for w in self_reply[:2]:
+            out.reply_weapons.append(f"{target.name}·{w.name}")
+        out.reply_pk = max(out.reply_pk, max(w.pk for w in self_reply))
+
+    # -- 3) 对方是否已经掌握我们的火控数据（能否反击取决于是否跟踪到） --
+    lvl = detection_level(state, target.side, attacker)
+    out.enemy_detected_level = lvl
+    out.enemy_fire_control = lvl is Detection.TRACKED
+
+    # -- 4) 阻止命中的具体条件 --
+    if target.is_decoy:
+        out.blockers.append("目标疑为电子诱饵：打上去只会浪费弹药")
+    if weapon.guidance.value == "anti_radiation" and not target.is_emitting():
+        out.blockers.append("目标未辐射，反辐射导弹无法锁定")
+    if not weapon.interceptable:
+        out.blockers.append("该弹种不可拦截：但也意味着精度依赖发射时诸元")
+    if weapon.min_detection is Detection.CLASSIFIED and \
+            state.known_level(attacker.side, target) is Detection.CLASSIFIED:
+        out.blockers.append("仅识别级情报即可开火：命中精度已打折")
+    if weapon.speed >= 9.0 and out.intercept_pk > 0.2:
+        out.blockers.append("高速弹的拦截窗口很短，但仍有被截杀的可能")
+    if out.enemy_fire_control:
+        out.blockers.append("对方已跟踪到我方：开火会立刻暴露并招致反击")
+    elif out.reply_units:
+        out.blockers.append("对方有反击能力，但尚未跟踪到我方")
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # 固定设施打击与基地勤务
 # --------------------------------------------------------------------------- #
 FACILITY_SIZE = {

@@ -98,3 +98,15 @@ def saves_dir() -> str:
     d = os.path.join(user_writable_dir(), "saves")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def user_config_path() -> str:
+    """用户配置文件（键位自定义与界面偏好）的存放位置。"""
+    return os.path.join(user_writable_dir(), "user_config.json")
+
+
+def reports_dir() -> str:
+    """战报导出目录。"""
+    d = os.path.join(user_writable_dir(), "reports")
+    os.makedirs(d, exist_ok=True)
+    return d

@@ -59,8 +59,18 @@ def main() -> int:
     app.draw()
     check(True, "主菜单渲染")
 
-    # ---- 想定 1：草原雷霆 ----
-    app.menu_index = 0
+    # 教学想定排在最前，索引需按想定 id 定位而非固定序号
+    def scenario_index(substr: str) -> int:
+        for i, sc in enumerate(app.scenarios):
+            if substr in sc["name"] or substr in sc.get("id", ""):
+                return i
+        return -1
+
+    # ---- 想定 0：草原雷霆 ----
+    app.menu_index = scenario_index("草原雷霆")
+    if app.menu_index < 0:
+        check(False, "未找到草原雷霆想定")
+        app.menu_index = 0
     app.start_game()
     st = app.state
     check(st is not None and len(st.units) > 20, f"想定载入（{st.map.name}，{len(st.units)} 单位）")
@@ -150,13 +160,128 @@ def main() -> int:
     app.load_slot(1)
     check(app.state.turn_count == turn_before, "存读档回合一致")
 
-    # ---- 想定 2：海峡屏障 ----
+    # ---- 想定 1：海峡屏障 ----
     app.mode = "menu"
-    app.menu_index = 1
+    app.menu_index = scenario_index("海峡")
+    if app.menu_index < 0:
+        check(False, "未找到海峡屏障想定")
+        app.menu_index = 0
     app.start_game()
     check(app.state.map.name.startswith("海峡"), "第二张想定载入")
 
-    # ---- 编辑器 ----
+    # ================================================================== #
+    # v1.1：教学想定与引导
+    # ================================================================== #
+    app.mode = "menu"
+    app._scan_scenarios()
+    check(app._tutorial_index() >= 0, "教学想定可被定位")
+    app.start_tutorial()
+    check(app.state is not None and app.state.map.name == "新兵训练场", "教学想定载入")
+    # 步骤推进：选中单位 → 推进
+    tut = app.tutorial
+    check(tut is not None and tut.total >= 5, "教学脚本已装载")
+    check(app.tutorial_visible, "教学提示条可见")
+    # 开局自动选中了第一个单位，第 1 步应已推进
+    check(tut.index >= 1, f"教学步骤已自动推进（index={tut.index}）")
+
+    # 步骤 2：悬停敌方目标
+    st2 = app.state
+    st2.refresh_detection()
+    enemy = next((e for e in st2.enemies_of(Side.BLUE)
+                  if st2.known_level(Side.BLUE, e) is not Detection.NONE), None)
+    if enemy is not None:
+        idx1 = tut.index
+        app._tutorial_note("hover_enemy")
+        check(tut.index > idx1, "教学步骤推进（悬停侦察）")
+    else:
+        check(True, "本回合无可见敌人（跳过悬停教学）")
+
+    # 对手视角：交战面板应给出拦截与反击评估
+    sel = next((u for u in st2.units_of(Side.BLUE)
+                if u.template.weapons and u.has_ammo()), None)
+    tgt = next((e for e in st2.enemies_of(Side.BLUE)
+                if e.alive and st2.known_level(Side.BLUE, e).level >= Detection.TRACKED.level), None)
+    if sel is not None and tgt is not None:
+        w = sel.usable_weapons()[0]
+        threat = rules.counter_threat_profile(st2, sel, tgt, w)
+        check(isinstance(threat.intercept_pk, float), "对手视角：拦截概率可计算")
+        check(isinstance(threat.reply_units, list), "对手视角：反击单位列表可计算")
+        check(threat.enemy_detected_level is not None, "对手视角：敌方火控状态可判定")
+    else:
+        check(True, "本回合无可评估目标（跳过对手视角）")
+
+    # 悬停信息卡：己方与敌方都应能弹出
+    own = next((u for u in st2.units_of(Side.BLUE) if u.alive), None)
+    if own is not None:
+        app.mouse = app.mapview.grid_to_rect(own.x, own.y).center
+        app.update(0.1)
+        check(app.hover_card and app.hover_unit is own, "悬停信息卡：己方单位可弹出")
+    foe = next((e for e in st2.enemies_of(Side.BLUE)
+                if e.alive and st2.known_level(Side.BLUE, e).level >= Detection.TRACKED.level), None)
+    if foe is not None:
+        app.mouse = app.mapview.grid_to_rect(foe.x, foe.y).center
+        app.update(0.1)
+        check(app.hover_card and app.hover_unit is foe, "悬停信息卡：敌方单位可弹出")
+        # 未识别目标不得泄露参数（战争迷雾）
+        from ui.inspect import build_rows
+        rows = build_rows(foe, Side.BLUE, Detection.CONTACT, st2)
+        check(not any(k == "血量" for k, _, _ in rows), "悬停信息卡：未识别目标不泄露血量")
+    else:
+        check(True, "无已跟踪敌人（跳过敌方悬停检查）")
+
+    # 战报导出
+    from core import report as _report
+    md = _report.build_markdown(app.state)
+    txt = _report.build_text(app.state)
+    check(len(md) > 200 and "战报" in md, "战报 Markdown 生成")
+    check(len(txt) > 200 and "作战结果" in txt, "战报文本生成")
+    stats = _report.collect_stats(app.state)
+    check(stats["shots"] >= 0 and 0.0 <= stats["hit_rate"] <= 100.0, "战报统计合理")
+
+    # 键位自定义：改键后重绑定表随之更新
+    from core.config import UserConfig
+    cfg = UserConfig.load("")
+    check(cfg.key_for("end_turn") == "space", "默认键位正确")
+    cfg.set_key("end_turn", "enter")
+    check(cfg.key_for("end_turn") == "enter", "键位可修改")
+    cfg.reset_keys()
+    check(cfg.key_for("end_turn") == "space", "键位可恢复默认")
+    cfg.set_key("bogus_action", "x")
+    check(cfg.key_for("bogus_action") == "", "非法动作被拒绝")
+    # 配置文件损坏时回退到默认值
+    import tempfile
+    bad = os.path.join(tempfile.gettempdir(), "bw_bad_cfg.json")
+    with open(bad, "w", encoding="utf-8") as f:
+        f.write("{ not json")
+    cfg2 = UserConfig.load(bad)
+    check(cfg2.key_for("end_turn") == "space" and cfg2.load_error != "", "损坏配置回退默认值")
+    os.remove(bad)
+
+    # 设置面板可渲染
+    app.open_settings()
+    app.draw()
+    check(app.show_settings and app.settings_panel is not None, "设置面板可打开")
+    app.close_settings()
+
+    # 引导机：requires 条件未满足时不得推进
+    from core.tutorial import Tutorial, TutorialStep
+    flag = {"ok": False}
+    tut2 = Tutorial(steps=[
+        TutorialStep(id="a", title="A", body="", goal="", trigger="go",
+                     requires=lambda st: flag["ok"]),
+        TutorialStep(id="b", title="B", body="", goal="", trigger="go"),
+    ])
+    tut2.note("go")
+    check(tut2.index == 0, "条件未满足时不推进步骤")
+    flag["ok"] = True
+    tut2.poll(app.state)
+    check(tut2.index == 1, "条件满足后推进步骤")
+    tut2.note("go")
+    check(tut2.index == 2 and tut2.finished, "最后一步后教学结束")
+    check(tut2.current is None, "结束后无当前步骤")
+
+    # ================================================================== #
+    # 编辑器 ----
     app.open_editor()
     ed = app.editor
     check(ed is not None and len(ed.terr) > 0, "编辑器打开")

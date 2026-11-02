@@ -176,6 +176,67 @@ def run(map_name: str, turns: int) -> Checker:
         if st.missiles:
             ck.warn("L5", f"对局结束时仍有 {len(st.missiles)} 枚弹药在飞（正常，属未结算回合）")
 
+        # L12 战报可生成：导出不应因数据异常而崩溃
+        from core.report import build_markdown, build_text
+        try:
+            md = build_markdown(st)
+            txt = build_text(st)
+            if "战报" not in md or "作战结果" not in txt:
+                ck.fail("L12", "战报内容缺少标题段")
+        except Exception as exc:
+            ck.fail("L12", f"战报生成异常: {exc}")
+
+        # L13 对手视角：任何一次合法射击都应能算出威胁评估
+        from core import rules as _rules
+        checked = 0
+        for u in st.units_of(Side.BLUE):
+            if not u.alive or not u.usable_weapons():
+                continue
+            for e in st.enemies_of(Side.BLUE):
+                if not e.alive:
+                    continue
+                for w in u.usable_weapons():
+                    p = _rules.shot_profile(st, u, e, w)
+                    if not p.ok:
+                        continue
+                    th = _rules.counter_threat_profile(st, u, e, w)
+                    if not (0.0 <= th.intercept_pk <= 1.0):
+                        ck.fail("L13", f"拦截概率越界 {th.intercept_pk}")
+                    if th.reply_pk < 0.0 or th.reply_pk > 1.0:
+                        ck.fail("L13", f"反击概率越界 {th.reply_pk}")
+                    checked += 1
+                    break
+                if checked:
+                    break
+            if checked:
+                break
+        if checked == 0:
+            # 该局未发生可评估射击（多为海空交战）：改为直接验证评估函数
+            # 对任意存活单位组合都不得抛异常，且概率必须落在合法区间。
+            try:
+                blue = st.units_of(Side.BLUE)
+                red = st.units_of(Side.RED)
+                for a in blue:
+                    if not a.template.weapons:
+                        continue
+                    for b in red:
+                        if not b.alive:
+                            continue
+                        w = a.template.weapons[0]
+                        th = _rules.counter_threat_profile(st, a, b, w)
+                        if not (0.0 <= th.intercept_pk <= 1.0):
+                            ck.fail("L13", f"拦截概率越界 {th.intercept_pk}")
+                        if not (0.0 <= th.reply_pk <= 1.0):
+                            ck.fail("L13", f"反击概率越界 {th.reply_pk}")
+                        checked = 1
+                        break
+                    if checked:
+                        break
+            except Exception as exc:
+                ck.fail("L13", f"对手视角评估异常: {exc}")
+        if checked == 0:
+            ck.warn("L13", "无可用单位组合，跳过对手视角检查")
+
         # L7 存档往返
         from core.save import load_game, save_game
         st.scenario_path = path
@@ -224,7 +285,7 @@ def main() -> int:
     maps = [a for a in sys.argv[1:] if not a.isdigit()]
     turns = next((int(a) for a in sys.argv[1:] if a.isdigit()), 18)
     if not maps:
-        maps = ["strait_shield", "steppe_thunder"]
+        maps = ["strait_shield", "steppe_thunder", "training_ground"]
     total = 0
     for m in maps:
         ck = run(m, turns)

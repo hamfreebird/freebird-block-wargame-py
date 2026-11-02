@@ -57,7 +57,7 @@ jobs:
       - name: 数据校验（地图 + 武器库）
         run: python main.py --check
 
-      - name: 作战逻辑自检（11 条不变量）
+      - name: 作战逻辑自检（13 条不变量）
         run: python tools/diag.py 20
 
       - name: 无界面 UI 冒烟测试
@@ -69,6 +69,7 @@ jobs:
         run: |
           python main.py --sim 16 --map 0
           python main.py --sim 18 --map 1
+          python main.py --sim 8 --map 2
 
   balance:
     name: 平衡性回归（多种子）

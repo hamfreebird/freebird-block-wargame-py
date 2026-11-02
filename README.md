@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.0.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v1.1.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -24,13 +24,16 @@ pip install pygame-ce          # 或 pip install pygame
 python main.py
 ```
 
+**第一次玩？** 主菜单点「**快速上手**」（或按 `T`）进入教学想定，6 步带你在 3~5 分钟内
+走完一遍核心循环：认识战场 → 发现识别 → 跟踪开火 → 对手视角 → 构筑工事 → 结束回合。
+
 其他运行方式：
 
 ```bash
 python main.py --check         # 校验全部地图与武器库数据
 python main.py --sim 16        # 无界面双 AI 推演 16 回合（平衡性测试）
 python main.py --sim 16 --map 1
-python tools/diag.py           # 作战逻辑自检（10 条不变量，含存档往返）
+python tools/diag.py           # 作战逻辑自检（13 条不变量，含存档往返）
 ```
 
 环境：Python 3.9+ / pygame 2.5+。窗口可自由缩放（最小 1180×740）。
@@ -211,11 +214,15 @@ Pk_i  = 拦截弹基础 Pk × (1 − 弹药突防能力) × (1 − 干扰 × 0.6
 
 ## 操作
 
+> 下列键位均可自定义：主菜单「设置」或游戏内「F10 → 设置」中逐条改绑定，
+> 保存到用户目录的 `user_config.json`，重启后生效。
+
 | 输入 | 功能 |
 |---|---|
 | 左键 | 选择己方单位 / 点击敌方单位选定目标 / 点击空地机动 / 点击敌方设施打击 |
 | 右键 | 下达机动指令 |
 | 再次点击目标 或 `Enter` | 确认开火 / 确认打击 |
+| **悬停单位** | **弹出信息卡：双方识别状态、弹药余量、工事等级、射程环** |
 | 滚轮 / `+` `-` | 缩放 |
 | 中键拖动 / 方向键 | 平移地图 |
 | `空格` | 结束回合（AI 阶段按住可快进） |
@@ -224,6 +231,7 @@ Pk_i  = 拦截弹基础 Pk × (1 − 弹药突防能力) × (1 − 干扰 × 0.6
 | `R` / `J` | 雷达开关 / 干扰开关 |
 | `E` | 切换覆盖层（无 / 侦察覆盖 / 敌方防空包线） |
 | `F5` / `F9` / `F10` | 快速保存 / 快速读取 / 系统菜单 |
+| `T` | 主菜单：直接进入教学想定 |
 | 单位面板「雷诱 / 红诱 / 假目标」 | 选择诱饵频段后点击地图投放 |
 | 单位面板「筑工事」 | 消耗 1.0 机动点构筑/加固野战工事 |
 | 单位面板「剖面」 | 航空兵切换 打击 / 制空巡逻 / 转场 |
@@ -231,6 +239,56 @@ Pk_i  = 拦截弹基础 Pk × (1 − 弹药突防能力) × (1 − 干扰 × 0.6
 | `F` / `F1` / `Esc` | 视图复位 / 规则说明 / 取消 |
 
 反卫星打击入口：**战役态势**页 → 天基资产列表 → 点击敌方卫星（需先选中具备反卫星能力的单位）。
+
+战报导出：**F10 系统菜单 → 导出战报**，输出 Markdown（含双方编制、逐回合流水、
+交战明细与统计汇总）到用户数据目录的 `reports/`。
+
+---
+
+## v1.1 新增功能
+
+### 教学想定与新手引导
+
+- 新增第三张想定「**新兵训练场**」（20×14、8 回合），蓝方 5 个单位对抗红方 5 个单位，
+  兵力精简、几何紧凑，确保每个教学动作都能在几步内完成。
+- **6 步引导**：认识战场 → 发现识别 → 跟踪开火 → 对手视角 → 构筑工事 → 结束回合。
+  步骤由事件驱动（`core/tutorial.py`），完成条件既可用事件也可用状态判定
+  （例如「已开火」且「存在被跟踪的目标」才推进）。
+- 引导条固定显示在地图上方，随时可「跳过教学」。想定 JSON 中的 `tutorial.steps`
+  可自定义脚本，社区想定也能带自己的引导。
+
+### 交战面板「对手视角」
+
+交战面板新增区块，回答「**这一发子弹为什么打不到**」：
+
+| 项目 | 内容 |
+|---|---|
+| 拦截 | 综合拦截概率 + 具体是哪几个防空单元、拦截概率多少 |
+| 反击 | 有几个敌方单位能打到你的发射平台、最高 Pk |
+| 敌方火控 | 对方是否已经跟踪到我方（决定开火会不会招来报复） |
+| 阻碍 | 具体阻碍条件（诱饵、未辐射、情报不足等） |
+
+计算逻辑在 `core/rules.counter_threat_profile()`，纯计算不消耗任何资源。
+
+### 单位悬停信息
+
+鼠标停在单位上即弹出信息卡，无需选中：
+
+- **己方单位**：血量、机动点、燃油、逐项弹药余量、工事等级、掩体等级、雷达开关状态；
+- **敌方单位**：按识别等级给出对应深度的信息（仅接触时只显示"不知兵种"，
+  跟踪后才显示血量、弹药与防空包线），并提示己方哪些单位能直接打击它。
+
+### 键位自定义
+
+- 12 个常规动作 + 9 个武器快捷槽可逐一改绑，冲突会被检测并提示；
+- 配置写入用户目录 `user_config.json`，**配置损坏时自动回退默认键位**，绝不阻断启动；
+- 键名以文本存储（`"space"` / `"f1"` / `"a"`），跨平台可读、可手工编辑。
+
+### 战报导出
+
+`core/report.py` 把一局作战导出为 Markdown 或纯文本：作战结果、双方初始编制、
+作战统计（发射/命中/击毁/拦截/未命中）、逐回合流水、交战明细表。
+用于复盘"那发炮弹为什么没打中"，也便于想定调参。
 
 ---
 
@@ -394,10 +452,13 @@ core/
   enums.py              阵营、作战域、地形、探测等级、武器/制导/传感器分类
   model.py              数据模型：Weapon / Sensor / UnitTemplate / Unit / Tile / Missile
   loader.py             JSON 加载与校验（错误定位到字段）
-  rules.py              视线、探测链、电子战、命中与拦截、设施打击、寻路与距离场
+  rules.py              视线、探测链、电子战、命中与拦截、对手视角、设施打击、寻路与距离场
   engine.py             回合状态机、交战结算、导弹飞行、后勤补给、反卫星、胜负判定
   ai.py                 对手 AI（威胁评估 + 目标分配 + 距离场机动 + 返场/反卫星/设施打击）
   save.py               存档序列化与反序列化
+  config.py             用户配置：键位绑定与界面偏好（user_config.json）
+  tutorial.py           教学引导机：事件驱动的分步脚本
+  report.py             战报导出：Markdown / 纯文本
   paths.py              资源路径解析（源码 / 冻结 / zipapp 三种形态）
 ui/
   theme.py              配色、字体缓存、文本渲染
@@ -405,15 +466,18 @@ ui/
   mapview.py            地形预渲染、棋子、射程环、特效、缩略图
   app.py                主循环、布局、事件、面板
   editor.py             地图 / 武器可视化编辑器
+  settings.py           设置面板：键位自定义
+  inspect.py            悬停信息卡
+  keymap.py             键名 ↔ 键码转换与动作反查
 data/
-  maps/*.json           可编辑地图与想定
+  maps/*.json           可编辑地图与想定（training_ground.json 为教学想定）
   units/armory.json     可编辑武器库
 saves/                  存档槽位（运行时生成）
 tools/
   make_maps.py          地图生成脚本（开发用）
   make_icon.py          图标生成（多尺寸 PNG + ICO + SVG）
   simcheck.py           双 AI 推演诊断脚本（开发用）
-  diag.py               作战逻辑自检：11 条不变量 + 存档往返校验
+  diag.py               作战逻辑自检：13 条不变量 + 存档往返校验
   smoke_test.py         无界面 UI 冒烟测试（CI 使用）
 assets/icon/            应用图标（PNG / ICO / SVG）
 packaging/              打包流程（PyInstaller + 便携版 + 源码包）

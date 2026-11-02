@@ -1,0 +1,189 @@
+"""用户配置：键位自定义与界面偏好。
+
+设计要点：
+1. 配置文件为人类可读的 JSON，位于用户可写目录（见 core.paths.user_writable_dir）；
+2. 键位以「pygame 键名」字符串保存（如 "space" / "f1" / "a"），
+   而非平台相关的整数常量——这样配置文件跨平台可读、可手工编辑；
+3. 配置文件损坏、字段缺失或键名非法时，自动回退到默认值，绝不阻断游戏启动；
+4. 本模块不依赖 pygame，纯数据层；键名与键码的转换在 UI 层完成。
+"""
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
+
+CONFIG_VERSION = 1
+CONFIG_FILENAME = "user_config.json"
+
+
+# --------------------------------------------------------------------------- #
+# 键位定义
+# --------------------------------------------------------------------------- #
+# 动作 ID → 显示名。UI 与配置文件都使用动作 ID 作为主键。
+ACTION_LABELS: dict[str, str] = {
+    "end_turn": "结束回合",
+    "next_unit": "切换单位",
+    "cancel": "取消 / 取消选择",
+    "confirm": "确认开火",
+    "radar": "雷达开关",
+    "jam": "干扰开关",
+    "overlay": "切换覆盖层",
+    "fit_map": "地图复位",
+    "help": "规则帮助",
+    "system_menu": "系统菜单",
+    "quick_save": "快速保存",
+    "quick_load": "快速读取",
+}
+
+# 武器快捷槽（1-9）单独成组，便于在设置面板中分两栏显示
+SLOT_ACTIONS: list[str] = [f"weapon_{i}" for i in range(1, 10)]
+
+SLOT_LABELS: dict[str, str] = {f"weapon_{i}": f"武器槽 {i}" for i in range(1, 10)}
+
+DEFAULT_BINDINGS: dict[str, str] = {
+    "end_turn": "space",
+    "next_unit": "tab",
+    "cancel": "escape",
+    "confirm": "return",
+    "radar": "r",
+    "jam": "j",
+    "overlay": "e",
+    "fit_map": "f",
+    "help": "f1",
+    "system_menu": "f10",
+    "quick_save": "f5",
+    "quick_load": "f9",
+    "weapon_1": "1",
+    "weapon_2": "2",
+    "weapon_3": "3",
+    "weapon_4": "4",
+    "weapon_5": "5",
+    "weapon_6": "6",
+    "weapon_7": "7",
+    "weapon_8": "8",
+    "weapon_9": "9",
+}
+
+ALL_ACTIONS: list[str] = list(DEFAULT_BINDINGS.keys())
+
+# 允许在设置界面重新绑定的键名黑名单：这些键已被界面本身占用
+RESERVED_KEYS: set[str] = {"escape"}
+
+
+class ConfigError(Exception):
+    """配置文件读写失败。"""
+
+
+# --------------------------------------------------------------------------- #
+# 配置对象
+# --------------------------------------------------------------------------- #
+class UserConfig:
+    """用户配置：键位绑定 + 少量界面偏好。"""
+
+    def __init__(self, path: str = "", bindings: dict[str, str] | None = None,
+                 prefs: dict[str, Any] | None = None):
+        self.path = path
+        self.bindings: dict[str, str] = dict(DEFAULT_BINDINGS)
+        if bindings:
+            for action, key in bindings.items():
+                if action in DEFAULT_BINDINGS and isinstance(key, str) and key:
+                    self.bindings[action] = key.lower()
+        self.prefs: dict[str, Any] = dict(prefs or {})
+        self.load_error = ""
+
+    # -- 读写 -------------------------------------------------------------
+    @classmethod
+    def load(cls, path: str) -> "UserConfig":
+        """读取配置；文件不存在或损坏时返回默认配置（记录错误供 UI 提示）。"""
+        cfg = cls(path)
+        if not path or not os.path.isfile(path):
+            return cfg
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            cfg.load_error = f"配置文件读取失败（已使用默认键位）：{exc}"
+            return cfg
+        if not isinstance(data, dict):
+            cfg.load_error = "配置文件格式错误（已使用默认键位）"
+            return cfg
+        bindings = data.get("bindings")
+        prefs = data.get("prefs")
+        cfg = cls(path,
+                  bindings=bindings if isinstance(bindings, dict) else None,
+                  prefs=prefs if isinstance(prefs, dict) else None)
+        if bindings is not None and not isinstance(bindings, dict):
+            cfg.load_error = "配置文件 bindings 字段格式错误（已使用默认键位）"
+        return cfg
+
+    def save(self) -> None:
+        """原子写入配置文件。"""
+        if not self.path:
+            return
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+            data = {
+                "version": CONFIG_VERSION,
+                "bindings": {a: self.bindings.get(a, DEFAULT_BINDINGS[a])
+                             for a in ALL_ACTIONS},
+                "prefs": self.prefs,
+            }
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            raise ConfigError(f"写入配置文件失败：{exc}") from None
+
+    # -- 键位 -------------------------------------------------------------
+    def key_for(self, action: str) -> str:
+        """动作对应的键名（pygame.key.name 风格）。"""
+        return self.bindings.get(action, DEFAULT_BINDINGS.get(action, ""))
+
+    def set_key(self, action: str, key_name: str) -> bool:
+        """重新绑定一个动作。返回是否成功（动作未知或键名非法时失败）。"""
+        if action not in DEFAULT_BINDINGS:
+            return False
+        name = (key_name or "").strip().lower()
+        if not name:
+            return False
+        self.bindings[action] = name
+        return True
+
+    def reset_keys(self) -> None:
+        self.bindings = dict(DEFAULT_BINDINGS)
+
+    def conflicts(self) -> dict[str, list[str]]:
+        """找出被多个动作占用的键位，返回 {键名: [动作, ...]}。"""
+        seen: dict[str, list[str]] = {}
+        for action in ALL_ACTIONS:
+            seen.setdefault(self.key_for(action), []).append(action)
+        return {k: v for k, v in seen.items() if len(v) > 1}
+
+    # -- 偏好 -------------------------------------------------------------
+    def pref(self, key: str, default: Any = None) -> Any:
+        return self.prefs.get(key, default)
+
+    def set_pref(self, key: str, value: Any) -> None:
+        self.prefs[key] = value
+
+    @property
+    def first_run(self) -> bool:
+        """是否从未看过引导（用于主菜单高亮「快速上手」）。"""
+        return not bool(self.prefs.get("seen_intro", False))
+
+    def mark_intro_seen(self) -> None:
+        self.prefs["seen_intro"] = True
+
+
+def label_for(action: str) -> str:
+    """动作 ID → 中文显示名。"""
+    return ACTION_LABELS.get(action) or SLOT_LABELS.get(action) or action
+
+
+__all__ = [
+    "CONFIG_VERSION", "CONFIG_FILENAME", "ACTION_LABELS", "SLOT_ACTIONS", "SLOT_LABELS",
+    "DEFAULT_BINDINGS", "ALL_ACTIONS", "RESERVED_KEYS", "ConfigError", "UserConfig",
+    "label_for",
+]
