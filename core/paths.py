@@ -10,6 +10,7 @@ zipapp（.pyz）内的数据文件不能直接用文件系统路径读取，
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import zipfile
@@ -40,21 +41,82 @@ def _archive_path() -> str | None:
     return None
 
 
-def _extract_from_archive(archive: str, dest: str) -> None:
-    """把归档内的 data/ 与 assets/ 释放到 dest（已存在则跳过）。"""
+def _file_hash(path: str) -> str:
+    """计算文件内容的 MD5（用于判断数据文件是否被玩家改动）。"""
+    h = hashlib.md5()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def _extract_from_archive(archive: str, dest: str) -> bool:
+    """把归档内的 data/ 与 assets/ 释放到 dest。
+
+    采用**按内容哈希的增量提取**。`.extracted` 清单记录上次释放时每个文件的
+    内容哈希，据此区分两种情况：
+
+    * 目标文件与上次释放的哈希一致 → 玩家没改过 → 可安全地用新版本覆盖
+      （归档升级后同名数据文件的修复能生效）；
+    * 目标文件哈希与上次释放的不一致 → 玩家改过 → **保留玩家版本**；
+    * 清单里没有的新文件 → 直接释放（升级便携版后新增的想定能正常出现）。
+
+    因此：升级后新增数据能补齐，旧数据能更新，玩家本地修改不会被覆盖。
+    """
     marker = os.path.join(dest, ".extracted")
-    if os.path.exists(marker):
-        return
     os.makedirs(dest, exist_ok=True)
-    with zipfile.ZipFile(archive, "r") as z:
-        for name in z.namelist():
-            if name.startswith(("data/", "assets/")) and not name.endswith("/"):
+
+    try:
+        with zipfile.ZipFile(archive, "r") as z:
+            members = [n for n in z.namelist()
+                       if n.startswith(("data/", "assets/")) and not n.endswith("/")]
+
+            # 上次释放的清单：{相对路径: 内容哈希}
+            old: dict[str, str] = {}
+            if os.path.isfile(marker):
+                try:
+                    with open(marker, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line or " " not in line:
+                                continue
+                            name, digest = line.rsplit(" ", 1)
+                            old[name] = digest
+                except (OSError, ValueError):
+                    old = {}
+
+            new: dict[str, str] = {}
+            for name in members:
+                data = z.read(name)
+                digest = hashlib.md5(data).hexdigest()
+                new[name] = digest
                 target = os.path.join(dest, name.replace("/", os.sep))
+
+                if os.path.isfile(target):
+                    prev = old.get(name)
+                    if prev is not None:
+                        if _file_hash(target) != prev:
+                            # 玩家改过这个文件 → 保留玩家版本
+                            continue
+                    elif _file_hash(target) == digest:
+                        # 清单缺失但内容与归档一致 → 无需重写
+                        continue
+
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                with z.open(name) as src, open(target, "wb") as dst:
-                    dst.write(src.read())
-    with open(marker, "w", encoding="utf-8") as f:
-        f.write("ok\n")
+                with open(target, "wb") as dst:
+                    dst.write(data)
+
+            # 记录本次清单
+            with open(marker, "w", encoding="utf-8") as f:
+                for name in sorted(new):
+                    f.write(f"{name} {new[name]}\n")
+            return True
+    except (OSError, zipfile.BadZipFile, KeyError):
+        # 提取失败时保留已有文件，由调用方决定是否回退到项目根目录
+        return False
 
 
 def data_root() -> str:

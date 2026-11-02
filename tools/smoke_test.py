@@ -280,6 +280,32 @@ def main() -> int:
     check(tut2.index == 2 and tut2.finished, "最后一步后教学结束")
     check(tut2.current is None, "结束后无当前步骤")
 
+    # 便携版增量提取：升级后新增数据文件必须能补齐，且不覆盖玩家本地修改
+    import shutil
+    import tempfile
+    import zipfile
+    from core import paths as _paths
+    tmpd = os.path.join(tempfile.gettempdir(), "bw_extract_test")
+    shutil.rmtree(tmpd, ignore_errors=True)
+    os.makedirs(tmpd, exist_ok=True)
+    arc = os.path.join(tmpd, "test.pyz")
+    with zipfile.ZipFile(arc, "w") as z:
+        z.writestr("data/maps/a.json", '{"id":"a","name":"甲"}')
+        z.writestr("data/maps/b.json", '{"id":"b","name":"乙"}')
+    dest = os.path.join(tmpd, "dest")
+    _paths._extract_from_archive(arc, dest)
+    check(os.path.isfile(os.path.join(dest, "data", "maps", "a.json")), "便携版：首次提取数据")
+    # 模拟旧版本地：只有 a.json，标记文件已在
+    os.remove(os.path.join(dest, "data", "maps", "b.json"))
+    with open(os.path.join(dest, "data", "maps", "a.json"), "w", encoding="utf-8") as f:
+        f.write('{"id":"a","name":"玩家改过"}')
+    _paths._extract_from_archive(arc, dest)
+    check(os.path.isfile(os.path.join(dest, "data", "maps", "b.json")),
+          "便携版：升级后补齐新增数据文件")
+    with open(os.path.join(dest, "data", "maps", "a.json"), encoding="utf-8") as f:
+        check("玩家改过" in f.read(), "便携版：不覆盖玩家本地修改")
+    shutil.rmtree(tmpd, ignore_errors=True)
+
     # ================================================================== #
     # 编辑器 ----
     app.open_editor()
