@@ -446,6 +446,10 @@ class App:
         self.status = ""
         self.tutorial = None
         self.tutorial_visible = False
+        # 战役每关都给出简报——但先清掉上一关的残留状态
+        self.debrief = None
+        self.show_briefing = False
+        self.briefing = None
         # 继承上一关的幸存部队
         carried = apply_carryover(self.state, prog.carryover, self.menu_side)
         if carried:
@@ -463,6 +467,9 @@ class App:
         self._layout_game()
         self._select_first_unit()
         self.set_status(f"{camp.name} · {step.title}", 6)
+        # 每关都给出作战简报——战役同样需要让玩家知道这一关怎么打
+        self.briefing = build_briefing(self.state)
+        self.show_briefing = True
 
     def _campaign_step_complete(self) -> None:
         """一关结束：累计胜负点、收集幸存部队、推进到下一关。"""
@@ -887,6 +894,11 @@ class App:
         self.pending_facility = None
         self.ai_timer = 0.0
         self.tab = "unit"
+        # 读档直接进入战斗——简报与回顾状态必须清掉，
+        # 否则残留的模态浮层会让整个界面点不动
+        self.show_briefing = False
+        self.briefing = None
+        self.debrief = None
         self.mapview.state = st
         self._layout_game()
         self.mapview.state = st
@@ -909,31 +921,38 @@ class App:
             self.logview = LogView(pygame.Rect(side_x + 12, TOP_H + 48, SIDE_W - 24, 200), size=12)
 
     def _build_buttons(self) -> None:
+        """构建顶栏按钮。
+
+        从右向左依次排布，每个按钮占位后立即把游标左移到自身左边界之外，
+        避免出现「后建按钮压在先建按钮上」导致点不到的情况。
+        """
         self.buttons = []
         x = self.w - 14
         specs = [
-            (i18n.tr("top.end_turn"), self.end_turn, "primary", "end_turn"),
-            (i18n.tr("top.help"), self.toggle_help, "ghost", "help"),
+            (i18n.tr("top.end_turn"), self.end_turn, "primary", "end_turn", 96),
+            (i18n.tr("top.help"), self.toggle_help, "ghost", "help", 62),
         ]
-        for label, cb, kind, act in specs:
-            width = 96 if label == i18n.tr("top.end_turn") else 62
+        for label, cb, kind, act, width in specs:
             x -= width
             self.buttons.append(Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
                                        size=13, hotkey=hotkey_label(self.cfg, act)))
-            x -= 8
+            x -= 8                      # 按钮间距
         # 叠加层切换
-        x -= 6
-        self.overlay_btn = Button(pygame.Rect(x - 84, 9, 84, 32), i18n.tr("top.overlay"),
+        x -= 84
+        self.overlay_btn = Button(pygame.Rect(x, 9, 84, 32), i18n.tr("top.overlay"),
                                   self.cycle_overlay,
                                   "ghost", size=12)
         self.buttons.append(self.overlay_btn)
-        # 设置
         x -= 8
-        self.settings_btn = Button(pygame.Rect(x - 62, 9, 62, 32), "设置", self.open_settings,
+        # 设置
+        x -= 62
+        self.settings_btn = Button(pygame.Rect(x, 9, 62, 32),
+                                   i18n.tr("menu.settings"), self.open_settings,
                                    "ghost", size=12)
         self.buttons.append(self.settings_btn)
+        x -= 8
         # 系统菜单（存档/读档/返回）
-        x -= 180
+        x -= 82
         self.menu_btn = Button(pygame.Rect(x, 9, 82, 32), "菜单", self.toggle_menu,
                                "ghost", size=12, hotkey=hotkey_label(self.cfg, "system_menu"))
         self.buttons.append(self.menu_btn)
@@ -1217,6 +1236,13 @@ class App:
 
     def _on_mouse_down(self, e: pygame.event.Event) -> None:
         pos = e.pos
+        # 设置面板是模态：无论当前在哪个界面，鼠标事件都优先交给它
+        if self.show_settings and self.settings_panel is not None:
+            if self.settings_panel.handle_event(e):
+                if getattr(self.settings_panel, "close_requested", False):
+                    self.settings_panel.close_requested = False
+                    self.close_settings()
+            return
         if self.mode == "menu":
             if e.button == 1:
                 if self._menu_start_rect().collidepoint(pos):
@@ -1255,6 +1281,14 @@ class App:
         if self.show_briefing:
             if e.button == 1 and self._brief_btn.collidepoint(pos):
                 self._close_briefing()
+            return
+
+        # 设置面板是模态：所有鼠标事件都交给它处理，不再穿透到下方界面
+        if self.show_settings and self.settings_panel is not None:
+            if self.settings_panel.handle_event(e):
+                if getattr(self.settings_panel, "close_requested", False):
+                    self.settings_panel.close_requested = False
+                    self.close_settings()
             return
 
         if self.show_help:

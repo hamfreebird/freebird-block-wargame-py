@@ -185,6 +185,10 @@ def main() -> int:
     check(app._tutorial_index() >= 0, "教学想定可被定位")
     app.start_tutorial()
     check(app.state is not None and app.state.map.name == "新兵训练场", "教学想定载入")
+    # 教学想定同样会弹简报——关掉它，否则后续所有点击都被简报拦截
+    check(app.show_briefing, "教学想定：开局弹出简报")
+    app._close_briefing()
+    check(not app.show_briefing, "教学想定：简报可关闭")
     # 步骤推进：选中单位 → 推进
     tut = app.tutorial
     check(tut is not None and tut.total >= 5, "教学脚本已装载")
@@ -270,6 +274,53 @@ def main() -> int:
     app.draw()
     check(app.show_settings and app.settings_panel is not None, "设置面板可打开")
     app.close_settings()
+
+    # --- v1.4 修复：顶栏按钮不可重叠、设置面板控件可点 ---
+    # 顶栏按钮两两不得重叠（重叠会让后绘制的按钮拦截点击）
+    _top = [(b.label, b.rect) for b in app.buttons]
+    _overlap = [(n1, n2) for i, (n1, r1) in enumerate(_top)
+                for (n2, r2) in _top[i + 1:] if r1.colliderect(r2)]
+    check(not _overlap, f"顶栏按钮互不重叠（{len(_top)} 个）")
+    # 关键按钮必须未被其它顶栏按钮遮挡
+    for _label, _btn in (("设置", app.settings_btn),
+                         ("覆盖层", app.overlay_btn),
+                         ("菜单", app.menu_btn)):
+        _blk = [n for n, r in _top if r is not _btn.rect and r.colliderect(_btn.rect)]
+        check(not _blk, f"顶栏按钮「{_label}」未被遮挡")
+    # 设置面板：鼠标点击必须能触发控件（此前事件未转交面板，按钮全点不动）
+    app.open_settings()
+    app.draw()
+    _p = app.settings_panel
+    _theme_before = app.cfg.theme
+    _tid = "light" if _theme_before != "light" else "tactical"
+    _rect = next(r for r, t in _p._theme_buttons if t == _tid)
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": _rect.center, "button": 1}))
+    check(app.cfg.theme == _tid, "设置面板：点击主题按钮可切换")
+    _lang_before = app.cfg.language
+    _lcode = "en" if _lang_before != "en" else "zh"
+    _lrect = next(r for r, c in _p._lang_buttons if c == _lcode)
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": _lrect.center, "button": 1}))
+    check(app.cfg.language == _lcode, "设置面板：点击语言按钮可切换")
+    _sfx_before = app.cfg.sound_enabled
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": _p._sound_btn.center, "button": 1}))
+    check(app.cfg.sound_enabled != _sfx_before, "设置面板：点击可开关音效")
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": _p._btn_close.center, "button": 1}))
+    check(not app.show_settings, "设置面板：点击「完成」可关闭")
+    # 顶栏「设置」按钮本身可点
+    app.mouse = app.settings_btn.rect.center
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": app.settings_btn.rect.center,
+                                           "button": 1}))
+    check(app.show_settings, "顶栏：点击「设置」按钮可打开设置面板")
+    app.close_settings()
+    # 上面切过语言与音效——恢复原状，避免影响后续断言
+    app._apply_language("zh")
+    app._apply_sound(True)
+    app._apply_theme("tactical")
 
     # 引导机：requires 条件未满足时不得推进
     from core.tutorial import Tutorial, TutorialStep

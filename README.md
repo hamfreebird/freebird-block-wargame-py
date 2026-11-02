@@ -688,6 +688,7 @@ tools/
   make_icon.py          图标生成（多尺寸 PNG + ICO + SVG）
   simcheck.py           双 AI 推演诊断脚本（开发用）
   diag.py               作战逻辑自检：25 条不变量 + 存档往返校验
+  check_layout.py       UI 布局自检：按钮重叠 / 越界 / 遮挡（多界面 + 最小窗口）
   smoke_test.py         无界面 UI 冒烟测试（CI 使用）
 assets/icon/            应用图标（PNG / ICO / SVG）
 packaging/              打包流程（PyInstaller + 便携版 + 源码包）
@@ -708,7 +709,8 @@ python main.py                 # 运行游戏
 python main.py --check         # 数据校验（地图 + 武器库）
 python main.py --sim 16        # 无界面双 AI 推演
 python tools/diag.py 20        # 作战逻辑自检（25 条不变量）
-python tools/smoke_test.py     # 无界面 UI 冒烟测试（136 项断言）
+python tools/check_layout.py   # UI 布局自检（按钮重叠 / 越界 / 遮挡）
+python tools/smoke_test.py     # 无界面 UI 冒烟测试（151 项断言）
 ```
 
 工作流：`main` 分支受保护 → `feature/<主题>` 分支开发 → PR 触发 CI（多版本 + 多平台）
@@ -720,7 +722,7 @@ python tools/smoke_test.py     # 无界面 UI 冒烟测试（136 项断言）
 
 | 作业 | 内容 |
 |---|---|
-| **verify** | Python 3.10–3.13 × Ubuntu/Windows 矩阵：编译检查、ruff 致命错误检查、`--check` 数据校验、`diag` 自检、UI 冒烟测试、双 AI 推演 |
+| **verify** | Python 3.10–3.13 × Ubuntu/Windows 矩阵：编译检查、ruff 致命错误检查、`--check` 数据校验、`diag` 自检、**UI 布局自检**、UI 冒烟测试、双 AI 推演 |
 | **balance** | 5 个随机种子 × 2 张想定，结果写入任务摘要；**一方全胜即判定失衡并让 CI 失败** |
 | **package** | 依赖 verify，调用打包脚本产出安装包并上传制品 |
 

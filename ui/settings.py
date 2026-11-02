@@ -134,6 +134,10 @@ class SettingsPanel:
                 self.close_requested = True
                 return True
             return True
+        # 设置面板是模态：其余鼠标事件（移动、抬起、滚轮）也一并吞掉，
+        # 避免穿透到底下的地图与侧栏。
+        if e.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP, pygame.MOUSEWHEEL):
+            return True
         return False
 
     def _set_volume_from_pos(self, x: int) -> None:
