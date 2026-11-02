@@ -183,6 +183,63 @@ def main() -> int:
     app.mode = "menu"
     app._scan_scenarios()
     check(app._tutorial_index() >= 0, "教学想定可被定位")
+
+    # --- 主菜单：悬停选中不得错位（曾因内层循环覆盖外层索引而错位）---
+    _n_scn = len(app.scenarios)
+    _ok_hover = True
+    for _i in range(_n_scn):
+        app.menu_index = -1
+        # 直接把鼠标放到第 i 张卡片中心，模拟悬停
+        _cols, _cw, _ch, _rh = app._menu_grid()
+        _row, _col = divmod(_i, _cols)
+        _area = app._menu_cards_area()
+        app.menu_scroll = _row
+        _rect = pygame.Rect(_area.x + _col * (_cw + 16),
+                            _area.y + (_row - _row) * _rh, _cw, _ch)
+        app.mouse = _rect.center
+        app.draw()                      # 绘制时会按悬停位置更新 menu_index
+        if app.menu_index != _i:
+            _ok_hover = False
+            break
+    check(_ok_hover, "主菜单：悬停选中与卡片一一对应（无错位）")
+    app.menu_scroll = 0
+
+    # --- 主菜单：想定网格与滚动 ---
+    _cols, _cw, _ch, _rh = app._menu_grid()
+    check(_cols >= 1 and _cw > 0 and _ch > 0, "主菜单：想定网格可用")
+    check(app._menu_max_scroll(_cols, _ch, _rh) >= 0, "主菜单：滚动范围合法")
+    # 选中项变化后应自动滚入可视范围
+    app.menu_index = 0
+    app.menu_scroll = 0
+    app._menu_scroll_to_index()
+    check(app.menu_scroll == 0, "主菜单：滚动跟随选中项")
+    app.menu_index = max(0, len(app.scenarios) - 1)
+    app._menu_scroll_to_index()
+    check(0 <= app.menu_scroll <= app._menu_max_scroll(_cols, _ch, _rh),
+          "主菜单：滚动位置在合法范围内")
+
+    # --- 主菜单：导入按钮与导入浮层 ---
+    app.draw()
+    check(app._menu_import_btn.width > 0, "主菜单：导入想定按钮存在")
+    _imp_hit = app._menu_import_btn.collidepoint(app._menu_import_btn.center)
+    check(_imp_hit, "主菜单：导入按钮可命中")
+    app._on_mouse_down(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                          {"pos": app._menu_import_btn.center,
+                                           "button": 1}))
+    check(app._import_dialog is not None, "主菜单：点击可打开导入浮层")
+    if app._import_dialog is not None:
+        _dlg = app._import_dialog
+        check(isinstance(_dlg.items, list), "导入浮层：包列表已扫描")
+        app.draw()                       # 触发列表行矩形计算
+        check(True, "导入浮层：可渲染")
+        # 关闭
+        app._on_key(pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_ESCAPE}))
+        check(app._import_dialog is None, "导入浮层：Esc 可关闭")
+
+    # --- 想定扫描：安装目录 + 用户目录 ---
+    from core import paths as _paths
+    check(len(_paths.all_maps_dirs()) == 2, "想定扫描：安装目录 + 用户目录")
+
     app.start_tutorial()
     check(app.state is not None and app.state.map.name == "新兵训练场", "教学想定载入")
     # 教学想定同样会弹简报——关掉它，否则后续所有点击都被简报拦截

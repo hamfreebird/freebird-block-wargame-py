@@ -148,6 +148,22 @@ def maps_dir() -> str:
     return os.path.join(data_root(), "data", "maps")
 
 
+def user_maps_dir() -> str:
+    """用户想定目录（导入的社区想定放这里）。
+
+    安装目录在冻结版里可能不可写，因此导入的想定一律落到用户目录；
+    扫描想定时两个目录都会看，用户目录优先。
+    """
+    d = os.path.join(user_writable_dir(), "maps")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def all_maps_dirs() -> list[str]:
+    """想定扫描目录列表：安装目录在前，用户目录在后（同名以用户目录为准）。"""
+    return [maps_dir(), user_maps_dir()]
+
+
 def lang_dir() -> str:
     """语言包目录（`data/lang/<code>.json`）。"""
     return os.path.join(data_root(), "data", "lang")

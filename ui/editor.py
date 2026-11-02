@@ -14,12 +14,15 @@ import pygame
 
 from core.enums import Facility, Side, TERRAIN_CHARS, Terrain
 from core.loader import LoadError, load_scenario
+from core import pkg as _pkg
+from core import paths as _paths
 
 from . import theme as T
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAP_DIR = os.path.join(ROOT, "data", "maps")
 ARMORY = os.path.join(ROOT, "data", "units", "armory.json")
+USER_DIR = _paths.user_writable_dir()
 
 TERRAIN_ORDER = ["w", "c", "p", "f", "h", "m", "u", "d", "s"]
 TERRAIN_NAME = {"w": "海域", "c": "滩涂", "p": "平原", "f": "林地", "h": "丘陵",
@@ -560,6 +563,8 @@ class Editor:
             self._bump_ammo(*arg)
         elif action == "save_armory":
             self.save_armory()
+        elif action == "export_package":
+            self.export_package()
         elif action == "validate":
             self._validate()
 
@@ -1001,6 +1006,40 @@ class Editor:
         except Exception as exc:
             self.error = f"武器库保存失败：{exc}"
 
+    def export_package(self) -> None:
+        """把当前地图导出为社区想定包（.bwscn）。
+
+        有未保存改动时先落盘（包里必须是磁盘上的最新版本）；
+        没有改动就直接用磁盘上的文件，避免无谓地重写地图文件
+        （重写会把 `12` 变成 `12.0` 这类格式差异弄进版本库）。
+        导出到用户数据目录的 `packages/`，随包附带武器库覆盖，
+        这样别人导入后能直接玩。
+        """
+        if self.undo_stack:
+            try:
+                self.save_map()
+            except Exception as exc:
+                self.error = f"导出前保存失败：{exc}"
+                return
+        if not self.path or not os.path.isfile(self.path):
+            self.error = "导出失败：地图尚未保存"
+            return
+        try:
+            out_dir = os.path.join(USER_DIR, "packages")
+            os.makedirs(out_dir, exist_ok=True)
+            base = os.path.splitext(os.path.basename(self.path))[0]
+            out = os.path.join(out_dir, base + _pkg.PACKAGE_SUFFIX)
+            doc = self._rebuild_doc()
+            meta = doc.get("meta") or {}
+            _pkg.export_package([self.path], self.armory_path, out,
+                                name=doc.get("name", base),
+                                author=meta.get("author", ""),
+                                include_armory=True)
+            self.status = f"想定包已导出：{out}"
+            self.error = ""
+        except Exception as exc:
+            self.error = f"导出失败：{exc}"
+
     def _validate(self) -> None:
         try:
             self.save_map()
@@ -1042,6 +1081,14 @@ class Editor:
         T.draw_text(s, "方块兵棋 · 可视化编辑器", (190, 14), 13, T.TEXT_DIM)
         if self.path:
             T.draw_text(s, os.path.basename(self.path), (390, 15), 11, T.TEXT_FAINT)
+        # 导出社区想定包
+        exp_r = pygame.Rect(self.w - 186, 8, 82, 28)
+        hover = exp_r.collidepoint(pygame.mouse.get_pos())
+        pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL, exp_r, border_radius=3)
+        pygame.draw.rect(s, T.CYAN if hover else T.BORDER, exp_r, 1, border_radius=3)
+        T.draw_text(s, "导出想定包", exp_r.center, 11,
+                    T.TEXT if hover else T.TEXT_DIM, anchor="center")
+        self.buttons.append((exp_r, "export_package", None))
         quit_r = pygame.Rect(self.w - 96, 8, 82, 28)
         hover = quit_r.collidepoint(pygame.mouse.get_pos())
         pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL, quit_r, border_radius=3)

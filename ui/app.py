@@ -43,6 +43,7 @@ from .audio import AudioManager
 from .briefing import (BriefingData, DebriefData, build_briefing, build_debrief,
                        draw_briefing, draw_debrief)
 from .editor import Editor
+from .importdlg import ImportDialog
 from .inspect import InspectCard
 from .keymap import build_reverse, hotkey_label, key_code
 from .mapview import MapView
@@ -147,7 +148,10 @@ class App:
         self.logview: LogView | None = None
         self.scenarios: list[dict] = []
         self.menu_index = 0
+        self.menu_scroll = 0          # 想定列表的纵向滚动偏移（行）
         self.menu_side = Side.BLUE
+        self._menu_import_btn = pygame.Rect(0, 0, 0, 0)
+        self._import_dialog: ImportDialog | None = None
         self._menu_buttons: list[Button] = []
         self._tab_rects: list[tuple[pygame.Rect, str]] = []
         self._fire_btn = pygame.Rect(0, 0, 0, 0)
@@ -212,15 +216,31 @@ class App:
                 return
 
     def _scan_scenarios(self) -> None:
+        """扫描可用想定。
+
+        同时扫描安装目录与用户目录（导入的社区想定），
+        同名文件以**用户目录**为准——用户可能改过它。
+        """
         self.scenarios = []
-        for path in list_maps(MAP_DIR):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
+        seen: set[str] = set()
+        for d in _paths.all_maps_dirs():
+            if not os.path.isdir(d):
+                continue
+            for path in list_maps(d):
+                base = os.path.basename(path)
+                if base in seen:
+                    continue
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        raw = json.load(f)
+                except Exception as exc:
+                    self.error = f"{base}: {exc}"
+                    continue
+                seen.add(base)
                 self.scenarios.append({
                     "path": path,
-                    "id": raw.get("id", os.path.basename(path)),
-                    "name": raw.get("name", os.path.basename(path)),
+                    "id": raw.get("id", base),
+                    "name": raw.get("name", base),
                     "desc": raw.get("description", ""),
                     "size": raw.get("size", [0, 0]),
                     "turns": raw.get("turn_limit", 0),
@@ -231,12 +251,12 @@ class App:
                     "meta": _meta_of(raw),
                     "events": len(raw.get("events", []) or []),
                 })
-            except Exception as exc:
-                self.error = f"{os.path.basename(path)}: {exc}"
         if not self.scenarios:
             self.error = f"未在 {MAP_DIR} 找到可用地图"
         # 教学想定排在最前，便于新玩家第一眼看到
         self.scenarios.sort(key=lambda s: (not s.get("tutorial"), s["name"]))
+        # 选中项可能因新增/删除想定而越界
+        self.menu_index = min(self.menu_index, max(0, len(self.scenarios) - 1))
 
     def _layout_menu(self) -> None:
         self._menu_buttons = []
@@ -244,6 +264,64 @@ class App:
     # -- 菜单按钮几何 -----------------------------------------------------
     def _menu_button_y(self) -> int:
         return 420 + 122
+
+    # -- 主菜单想定列表：网格与滚动 --------------------------------------
+    def _menu_cards_area(self) -> pygame.Rect:
+        """想定卡片区的可视矩形（左侧）。
+
+        右侧为机制速览 + 阵营选择，预留 320px——窄窗口下右侧面板
+        可能显示不下，所以这里只保证卡片区不挤压它。
+        """
+        right_reserved = 320          # 右侧机制速览 + 阵营选择的宽度
+        area_w = max(320, self.w - 60 - right_reserved - 20)
+        return pygame.Rect(60, 200, area_w, 318)
+
+    def _menu_grid(self) -> tuple[int, int, int, int]:
+        """返回 (列数, 卡片宽, 卡片高, 行高)。"""
+        area = self._menu_cards_area()
+        card_w = 340
+        gap = 16
+        cols = max(1, area.width // (card_w + gap))
+        card_w = min(card_w, (area.width - (cols - 1) * gap) // cols)
+        card_h = 148
+        return cols, card_w, card_h, card_h + 10
+
+    def _menu_max_scroll(self, cols: int, card_h: int, row_h: int) -> int:
+        """最大滚动行数——超出可视行的部分才需要滚动。"""
+        area = self._menu_cards_area()
+        rows = (len(self.scenarios) + cols - 1) // cols
+        vis_rows = max(1, area.height // row_h)
+        return max(0, rows - vis_rows)
+
+    def _menu_scroll_to_index(self) -> None:
+        """把选中项滚进可视范围。"""
+        cols, _cw, _ch, row_h = self._menu_grid()
+        if cols <= 0:
+            return
+        row = self.menu_index // cols
+        max_scroll = self._menu_max_scroll(cols, _ch, row_h)
+        vis_rows = max(1, self._menu_cards_area().height // row_h)
+        if row < self.menu_scroll:
+            self.menu_scroll = row
+        elif row >= self.menu_scroll + vis_rows:
+            self.menu_scroll = row - vis_rows + 1
+        self.menu_scroll = max(0, min(self.menu_scroll, max_scroll))
+
+    def _menu_import_rect(self) -> pygame.Rect:
+        """主菜单「导入想定」按钮。"""
+        return pygame.Rect(self.w - 60 - 110, 168, 110, 24)
+
+    def _menu_move_cursor(self, delta_row: int) -> None:
+        """上下移动想定选中项（按网格行）。"""
+        if not self.scenarios:
+            return
+        cols, _cw, _ch, _rh = self._menu_grid()
+        row, col = divmod(self.menu_index, cols)
+        row += delta_row
+        if row < 0 or row * cols >= len(self.scenarios):
+            return
+        self.menu_index = row * cols + min(col, len(self.scenarios) - row * cols - 1)
+        self._menu_scroll_to_index()
 
     def _menu_start_rect(self) -> pygame.Rect:
         return pygame.Rect(60, self._menu_button_y(), 240, 46)
@@ -609,9 +687,17 @@ class App:
             self.set_status("packages 目录中没有 .bwscn 文件", 5)
             return
         packs.sort(key=lambda p: os.path.getmtime(p["path"]), reverse=True)
-        path = packs[0]["path"]
+        self._import_package(packs[0]["path"])
+
+    def _import_package(self, path: str) -> None:
+        """导入指定的想定包。
+
+        导入目标固定为**用户可写目录**下的 `maps/`——冻结版的安装目录
+        未必可写，装到用户目录才可靠。导入后重新扫描想定列表。
+        """
         try:
-            res = _pkg.import_package(path, MAP_DIR, ARMORY, merge_armory=True)
+            res = _pkg.import_package(path, _paths.user_maps_dir(), ARMORY,
+                                       merge_armory=True)
             self._scan_scenarios()
             extra = (f"，新增 {len(res.added_templates)} 个兵种"
                      if res.added_templates else "")
@@ -676,11 +762,30 @@ class App:
         T.hline(s, 60, self.w - 60, 158, T.BORDER)
 
         T.draw_text(s, i18n.tr("menu.select_scenario"), (60, 176), 13, T.TEXT_DIM, bold=True)
-        card_w = min(430, (self.w - 150) // max(1, len(self.scenarios)) - 16)
-        card_h = 208
-        x = 60
+        # 导入按钮：把社区想定包导入用户目录
+        self._menu_import_btn = self._menu_import_rect()
+        _imp_hover = self._menu_import_btn.collidepoint(self.mouse)
+        pygame.draw.rect(s, T.PANEL_HI if _imp_hover else T.PANEL, self._menu_import_btn,
+                         border_radius=4)
+        pygame.draw.rect(s, T.CYAN if _imp_hover else T.BORDER_HI, self._menu_import_btn, 1,
+                         border_radius=4)
+        T.draw_text(s, i18n.tr("menu.import"), self._menu_import_btn.center, 12,
+                    T.TEXT if _imp_hover else T.TEXT_DIM, anchor="center")
+
+        # 想定卡片：网格排列，超出可视高度时可纵向滚动
+        area = self._menu_cards_area()
+        cols, card_w, card_h, row_h = self._menu_grid()
+        max_scroll = self._menu_max_scroll(cols, card_h, row_h)
+        self.menu_scroll = max(0, min(self.menu_scroll, max_scroll))
+        vis_rows = max(1, area.height // row_h)
+
         for i, sc in enumerate(self.scenarios):
-            r = pygame.Rect(x, 200, card_w, card_h)
+            row, col = divmod(i, cols)
+            # 只绘制可视行内的卡片（scroll 是首个可见行号）
+            if row < self.menu_scroll or row >= self.menu_scroll + vis_rows:
+                continue
+            r = pygame.Rect(area.x + col * (card_w + 16),
+                            area.y + (row - self.menu_scroll) * row_h, card_w, card_h)
             active = i == self.menu_index
             is_tut = bool(sc.get("tutorial"))
             T.panel(s, r, T.PANEL_HI if active else T.PANEL,
@@ -689,7 +794,7 @@ class App:
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x, r.y, r.w, 2))
             # 卡片内元素按固定行序排布，避免互相重叠：
             #   标题行 → 规格行 → 元数据行 → 描述（最多 2 行）
-            head_y = r.y + 14
+            head_y = r.y + 12
             if is_tut:
                 # 教学想定：左上角角标 + 高亮边框
                 pygame.draw.rect(s, T.GREEN, r, 1, border_radius=5)
@@ -697,25 +802,25 @@ class App:
                 pygame.draw.rect(s, T.mix(T.PANEL, T.GREEN, 0.22), badge, border_radius=3)
                 T.draw_text(s, i18n.tr("menu.tutorial_tag"), badge.center, 10,
                             T.mix(T.GREEN, T.WHITE, 0.4), anchor="center")
-            T.draw_text(s, sc["name"], (r.x + 16, head_y + (22 if is_tut else 0)), 17,
+            T.draw_text(s, sc["name"], (r.x + 16, head_y + (20 if is_tut else 0)), 16,
                         T.TEXT, bold=True)
             T.draw_text(s, f"{sc['size'][0]}×{sc['size'][1]} 格 · {sc['tile_km']} km/格 · "
                             f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
-                        (r.x + 16, head_y + 46), 11, T.TEXT_FAINT)
+                        (r.x + 16, head_y + 38), 11, T.TEXT_FAINT)
             # 元数据：难度标签 + 作者 + 事件数（同一行内横向排布）
             meta = sc.get("meta") or {}
             diff = meta.get("difficulty", "")
-            meta_y = head_y + 64
+            meta_y = head_y + 56
             bx = r.x + 16
             if diff:
-                col = DIFFICULTY_COLORS.get(diff, T.CYAN)
+                col_c = DIFFICULTY_COLORS.get(diff, T.CYAN)
                 label = DIFFICULTY_LABELS.get(diff, diff)
                 bw = T.text_width(label, 10) + 14
                 chip = pygame.Rect(bx, meta_y, bw, 16)
-                pygame.draw.rect(s, (col[0] // 5, col[1] // 5, col[2] // 5), chip,
+                pygame.draw.rect(s, (col_c[0] // 5, col_c[1] // 5, col_c[2] // 5), chip,
                                  border_radius=3)
-                pygame.draw.rect(s, col, chip, 1, border_radius=3)
-                T.draw_text(s, label, chip.center, 10, col, anchor="center")
+                pygame.draw.rect(s, col_c, chip, 1, border_radius=3)
+                T.draw_text(s, label, chip.center, 10, col_c, anchor="center")
                 bx += bw + 6
             if meta.get("author"):
                 T.draw_text(s, f"作者 {meta['author']}", (bx, meta_y + 2), 10, T.TEXT_FAINT)
@@ -723,40 +828,53 @@ class App:
                 T.draw_text(s, f"脚本事件 {sc['events']} 条", (r.right - 16, meta_y + 2), 10,
                             T.PURPLE, anchor="topright")
             # 标签行（单独一行，不与难度标签重叠）
-            for i, tag in enumerate(meta.get("tags", [])[:3]):
-                tx = r.x + 16 + i * 62
+            # 注意：循环变量不能用 i——外层 i 是想定索引，被覆盖会导致悬停高亮错位
+            for ti, tag in enumerate(meta.get("tags", [])[:3]):
+                tx = r.x + 16 + ti * 62
                 T.draw_text(s, f"#{tag}", (tx, meta_y + 20), 9, T.mix(T.CYAN, T.TEXT_DIM, 0.5))
-            # 描述：放在元数据下方，最多 2 行
-            yy = meta_y + 38
-            for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:2]:
-                T.draw_text(s, line, (r.x + 16, yy), 12, T.TEXT_DIM)
-                yy += 18
-            T.draw_text(s, "点击选择", (r.x + 16, r.bottom - 26), 11,
+            # 描述：放在元数据下方，最多 1 行（卡片高度有限，多了会挤到底部提示）
+            yy = meta_y + 36
+            for line in T.wrap_text(sc["desc"], 11, r.width - 32)[:1]:
+                T.draw_text(s, line, (r.x + 16, yy), 11, T.TEXT_DIM)
+            T.draw_text(s, "点击选择", (r.x + 16, r.bottom - 20), 11,
                         T.CYAN if active else T.TEXT_FAINT)
             if r.collidepoint(self.mouse):
                 self.menu_index = i
-            x += card_w + 18
 
-        # 右侧机制速览
-        px = x + 4
+        # 滚动条：想定多于可视行数时才出现
+        if max_scroll > 0:
+            track = pygame.Rect(area.right - 6, area.y, 4, area.height)
+            pygame.draw.rect(s, T.PANEL_SUNK, track, border_radius=2)
+            knob_h = max(24, int(track.height * vis_rows / max(1, vis_rows + max_scroll)))
+            knob_y = track.y + int((track.height - knob_h)
+                                   * (self.menu_scroll / max(1, max_scroll)))
+            pygame.draw.rect(s, T.BORDER_HI, pygame.Rect(track.x, knob_y, 4, knob_h),
+                             border_radius=2)
+            T.draw_text(s, f"{self.menu_index + 1}/{len(self.scenarios)}",
+                        (area.right - 14, area.bottom + 4), 10, T.TEXT_FAINT,
+                        anchor="topright")
+
+        # 右侧机制速览（窄窗口下允许省略，但不能整块消失）
+        px = area.right + 20
         pw = self.w - px - 60
-        if pw >= 250:
-            self._draw_menu_features(s, pygame.Rect(px, 200, pw, card_h + 128))
+        if pw >= 220:
+            self._draw_menu_features(s, pygame.Rect(px, 200, pw, 214))
 
-        # 阵营选择
-        y = 420
-        T.draw_text(s, "选择阵营", (60, y), 13, T.TEXT_DIM, bold=True)
+        # 阵营选择（放在右侧面板下方）
+        side_x = px
+        side_w = pw if pw >= 220 else 280
+        T.draw_text(s, "选择阵营", (side_x, 432), 13, T.TEXT_DIM, bold=True)
         for j, (side, label, desc) in enumerate([
             (Side.BLUE, "蓝方", "联合部队：体系化侦察与防区外精确打击"),
             (Side.RED, "红方", "区域拒止：远程防空与饱和反舰突击"),
         ]):
-            r = pygame.Rect(60 + j * 330, y + 26, 310, 66)
+            r = pygame.Rect(side_x, 458 + j * 42, min(side_w, 310), 38)
             active = self.menu_side is side
             T.panel(s, r, T.PANEL_HI if active else T.PANEL,
                     T.side_color(side) if active else T.BORDER, radius=4)
-            pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + 12, r.y + 16, 4, 34))
-            T.draw_text(s, label, (r.x + 26, r.y + 14), 16, T.TEXT, bold=True)
-            T.draw_text(s, desc, (r.x + 26, r.y + 38), 11, T.TEXT_DIM)
+            pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + 10, r.y + 10, 4, 18))
+            T.draw_text(s, label, (r.x + 22, r.y + 9), 15, T.TEXT, bold=True)
+            T.draw_text(s, desc[:18], (r.x + 78, r.y + 12), 10, T.TEXT_DIM)
             if r.collidepoint(self.mouse):
                 self.menu_side = side
 
@@ -817,6 +935,10 @@ class App:
             yy += 20
         if self.error:
             T.draw_text(s, self.error, (60, self.h - 44), 12, T.RED)
+
+        # 导入浮层（模态，画在最上层）
+        if self._import_dialog is not None:
+            self._import_dialog.draw(s)
 
     # ================================================================== #
     # 开局
@@ -1112,6 +1234,16 @@ class App:
             if self.log_drag and self.mapview:
                 self.mapview.pan(e.rel[0], e.rel[1])
         elif e.type == pygame.MOUSEWHEEL:
+            if self.mode == "menu":
+                # 主菜单：滚轮滚动想定列表
+                if self._import_dialog is not None:
+                    return
+                cols, _cw, _ch, row_h = self._menu_grid()
+                max_scroll = self._menu_max_scroll(cols, _ch, row_h)
+                if max_scroll > 0:
+                    self.menu_scroll = max(0, min(max_scroll,
+                                                  self.menu_scroll - e.y))
+                return
             if self.mode != "game":
                 return
             if self.mouse[0] >= self.w - SIDE_W and self.tab == "log" and self.logview:
@@ -1132,15 +1264,28 @@ class App:
                 return
 
         if self.mode == "menu":
+            # 导入浮层优先：模态，吞掉所有按键
+            if self._import_dialog is not None:
+                if self._import_dialog.handle_event(e):
+                    if getattr(self._import_dialog, "close_requested", False):
+                        self._import_dialog.close_requested = False
+                        self._import_dialog = None
+                return
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.start_game()
             elif k == pygame.K_ESCAPE:
                 self.running = False
             elif k in (pygame.K_LEFT, pygame.K_a):
                 self.menu_index = (self.menu_index - 1) % max(1, len(self.scenarios))
+                self._menu_scroll_to_index()
             elif k in (pygame.K_RIGHT, pygame.K_d):
                 self.menu_index = (self.menu_index + 1) % max(1, len(self.scenarios))
-            elif k in (pygame.K_TAB, pygame.K_s):
+                self._menu_scroll_to_index()
+            elif k in (pygame.K_UP, pygame.K_w):
+                self._menu_move_cursor(-1)
+            elif k in (pygame.K_DOWN, pygame.K_s):
+                self._menu_move_cursor(1)
+            elif k == pygame.K_TAB:
                 self.menu_side = Side.RED if self.menu_side is Side.BLUE else Side.BLUE
             elif k == pygame.K_t:
                 self.start_tutorial()
@@ -1245,6 +1390,18 @@ class App:
             return
         if self.mode == "menu":
             if e.button == 1:
+                # 导入浮层优先
+                if self._import_dialog is not None:
+                    if self._import_dialog.handle_event(e):
+                        if getattr(self._import_dialog, "close_requested", False):
+                            self._import_dialog.close_requested = False
+                            self._import_dialog = None
+                    return
+                if self._menu_import_btn.collidepoint(pos):
+                    self._import_dialog = ImportDialog(
+                        self._packages_dir(), on_import=self._import_package)
+                    self._sfx("click")
+                    return
                 if self._menu_start_rect().collidepoint(pos):
                     self.start_game()
                 elif self._menu_edit_rect().collidepoint(pos):

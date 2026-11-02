@@ -40,6 +40,7 @@ _BUILTIN_EN: dict[str, str] = {
     "menu.campaign": "Campaign",
     "menu.settings": "Settings",
     "menu.select_scenario": "Select Scenario",
+    "menu.import": "Import",
     "menu.click_to_choose": "Click to select",
     "menu.tips": "Tips",
     "menu.tip_data": "Editable data: data/maps/*.json defines maps and deployments, "
@@ -171,6 +172,7 @@ _BUILTIN_ZH: dict[str, str] = {
     "menu.campaign": "战役模式",
     "menu.settings": "设置",
     "menu.select_scenario": "选择想定",
+    "menu.import": "导入想定",
     "menu.click_to_choose": "点击选择",
     "menu.tips": "提示",
     "menu.tip_data": "数据可编辑：data/maps/*.json 定义地图与部署，"
