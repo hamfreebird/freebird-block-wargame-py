@@ -25,6 +25,13 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
+# 把用户数据目录隔离到临时目录——脚本会打开设置面板，不能污染玩家配置
+import shutil
+import tempfile
+_TEST_USER_DIR = tempfile.mkdtemp(prefix="bw_layout_")
+os.environ["BLOCKWARGAME_USER_DIR"] = _TEST_USER_DIR
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
@@ -354,4 +361,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        _rc = main()
+    finally:
+        shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
+    raise SystemExit(_rc)

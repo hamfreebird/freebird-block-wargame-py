@@ -857,6 +857,11 @@ def main() -> int:
     check(set(_EN.keys()) == set(_ZH.keys()), "本地化：中英词条键集合一致")
 
     # --- 呈现：系统菜单布局与字号下限 ---
+    # 测试数据必须与玩家真实目录隔离——否则切换主题/语言会写进 user_config.json
+    from core.paths import _user_data_dir
+    check(os.path.abspath(_user_data_dir()) == os.path.abspath(_TEST_USER_DIR),
+          "隔离：测试数据目录指向临时目录，不污染玩家配置")
+
     from ui import theme as _T2
     app.mode = "game"
     app.show_menu = True
