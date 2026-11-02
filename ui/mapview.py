@@ -192,7 +192,7 @@ class MapView:
 
         # 海岸线：陆地与水域相邻处提亮一道细边
         if ts >= 10:
-            shore = (150, 196, 214)
+            shore = T.mix(T.TERRAIN_COLORS[Terrain.WATER], (255, 255, 255), 0.35)
             for ty in range(y0, y1):
                 for tx in range(x0, x1):
                     t = md.at(tx, ty)
@@ -225,11 +225,11 @@ class MapView:
                     ly = (ty - y0) * ts
                     n = md.at(tx + 1, ty)
                     if n is not None and n.terrain is not Terrain.WATER and n.elevation // 600 != band:
-                        pygame.draw.line(surf, (12, 18, 24), (lx + ts - 1, ly),
+                        pygame.draw.line(surf, T.mix(T.BG_MAP, (0, 0, 0), 0.55), (lx + ts - 1, ly),
                                          (lx + ts - 1, ly + ts))
                     n = md.at(tx, ty + 1)
                     if n is not None and n.terrain is not Terrain.WATER and n.elevation // 600 != band:
-                        pygame.draw.line(surf, (12, 18, 24), (lx, ly + ts - 1),
+                        pygame.draw.line(surf, T.mix(T.BG_MAP, (0, 0, 0), 0.55), (lx, ly + ts - 1),
                                          (lx + ts, ly + ts - 1))
 
         # 网格：低对比度分隔线，避免干扰地形。
@@ -370,7 +370,7 @@ class MapView:
 
         if hover:
             r = self.grid_to_rect(*hover)
-            pygame.draw.rect(surf, (150, 200, 240), r, width=1)
+            pygame.draw.rect(surf, T.mix(T.CYAN, T.TEXT, 0.25), r, width=1)
         if pending_target is not None and pending_target.domain is not Domain.SPACE:
             r = self.grid_to_rect(pending_target.x, pending_target.y)
             self._draw_reticle(surf, r)
@@ -464,7 +464,7 @@ class MapView:
                 rng = u.best_sensor_range()
                 if rng <= 0:
                     continue
-                self._ring(surf, (u.x, u.y), rng, (60, 150, 190), 1, alpha=42)
+                self._ring(surf, (u.x, u.y), rng, T.BLUE, 1, alpha=42)
         elif self.overlay == "threat":
             for u in st.enemies_of(st.player_side):
                 lvl = st.known_level(st.player_side, u)
@@ -473,7 +473,7 @@ class MapView:
                 rng = u.max_intercept_range()
                 if rng <= 0:
                     continue
-                self._ring(surf, (u.x, u.y), rng, (200, 70, 70), 1, alpha=46)
+                self._ring(surf, (u.x, u.y), rng, T.RED, 1, alpha=46)
 
     def _ring(self, surf: pygame.Surface, center, radius_tiles: float,
               color, width: int = 2, alpha: int = 90, fill: bool = True) -> None:
@@ -505,7 +505,7 @@ class MapView:
                 continue
             cx, cy = self.grid_center(fm.x, fm.y)
             rad = max(4, int(self.tile * 1.5))
-            col = (255, 205, 120) if fm.prepared else (170, 150, 110)
+            col = T.AMBER if fm.prepared else T.mix(T.AMBER, T.BG_MAP, 0.45)
             # 圆环：准备完成为实线，准备中为虚线
             if fm.prepared:
                 pygame.draw.circle(surf, col, (cx, cy), rad, 2)
@@ -544,14 +544,14 @@ class MapView:
                     continue
                 c = r.center
                 s = max(3, self.tile // 4)
-                pygame.draw.line(surf, (200, 80, 80), (c[0] - s, c[1] - s),
+                pygame.draw.line(surf, T.RED, (c[0] - s, c[1] - s),
                                  (c[0] + s, c[1] + s), 1)
-                pygame.draw.line(surf, (200, 80, 80), (c[0] - s, c[1] + s),
+                pygame.draw.line(surf, T.RED, (c[0] - s, c[1] + s),
                                  (c[0] + s, c[1] - s), 1)
                 continue
             a = self.grid_center(src.x, src.y)
             b = self.grid_center(u.x, u.y)
-            col = (70, 190, 150)
+            col = T.GREEN
             # 虚线
             dx, dy = b[0] - a[0], b[1] - a[1]
             length = max(1.0, math.hypot(dx, dy))
@@ -634,7 +634,8 @@ class MapView:
                 continue
             col = T.side_color(t.fort_owner, "glow")
             w = max(2, int((ts - 4) * min(3, t.fort) / 3.0))
-            pygame.draw.rect(surf, (8, 11, 16), (r.x + 1, r.bottom - 5, ts - 2, 4))
+            pygame.draw.rect(surf, T.mix(T.BG_MAP, (0, 0, 0), 0.45),
+                             (r.x + 1, r.bottom - 5, ts - 2, 4))
             pygame.draw.rect(surf, col, (r.x + 2, r.bottom - 4, w, 3))
             if ts >= 18:
                 T.draw_text(surf, "⌂", (r.right - 3, r.y + 2), max(8, ts // 4), col,

@@ -100,11 +100,10 @@ def _meta_of(raw: dict) -> dict:
     }
 
 
-DIFFICULTY_COLORS = {
-    "easy": (92, 222, 150),
-    "normal": (94, 231, 224),
-    "hard": (255, 196, 92),
-    "extreme": (255, 106, 106),
+# 难度标签色：跟随主题解析，不要硬编码——
+# 硬编码的深色主题值在亮色主题下过浅，标签几乎看不出来。
+DIFFICULTY_ACCENTS = {
+    "easy": "green", "normal": "cyan", "hard": "amber", "extreme": "red",
 }
 DIFFICULTY_LABELS = {
     "easy": "入门", "normal": "标准", "hard": "困难", "extreme": "专家",
@@ -925,10 +924,9 @@ class App:
         s.fill(T.BG)
         # 背景网格
         for x in range(0, self.w, 48):
-            pygame.draw.line(s, (16, 22, 30), (x, 0), (x, self.h))
+            pygame.draw.line(s, T.GRID, (x, 0), (x, self.h))
         for y in range(0, self.h, 48):
-            pygame.draw.line(s, (16, 22, 30), (0, y), (self.w, y))
-
+            pygame.draw.line(s, T.GRID, (0, y), (self.w, y))
         T.draw_text(s, "方块兵棋", (60, 54), 40, T.TEXT, bold=True)
         T.draw_text(s, "BLOCK WARGAME · 现代联合作战推演", (62, 104), 15, T.CYAN)
         T.draw_text(s, "n×n 方块战场 · 回合制 · 侦察-打击链 · 电子战 · 防区外打击", (62, 128), 12, T.TEXT_DIM)
@@ -998,11 +996,13 @@ class App:
             meta_y = head_y + 56
             bx = r.x + 16
             if diff:
-                col_c = DIFFICULTY_COLORS.get(diff, T.CYAN)
+                accent = DIFFICULTY_ACCENTS.get(diff, "")
+                col_c = getattr(T, accent.upper()) if accent else T.CYAN
                 label = DIFFICULTY_LABELS.get(diff, diff)
                 bw = T.text_width(label, 11) + 14
                 chip = pygame.Rect(bx, meta_y, bw, 16)
-                pygame.draw.rect(s, (col_c[0] // 5, col_c[1] // 5, col_c[2] // 5), chip,
+                # 芯片底色由主题派生，浅色主题下不会变成深色块
+                pygame.draw.rect(s, T.button_fill(col_c), chip,
                                  border_radius=3)
                 pygame.draw.rect(s, col_c, chip, 1, border_radius=3)
                 T.draw_text(s, label, chip.center, 11, col_c, anchor="center")
@@ -1079,49 +1079,54 @@ class App:
                             T.CYAN if active else T.mix(T.CYAN, T.TEXT_DIM, 0.4),
                             anchor="topright")
 
-        # 开始按钮
+        # -- 主菜单按钮 ---------------------------------------------------
+        # 底色与文字色都由主题派生（T.button_fill / T.button_text），
+        # 不再硬编码深色——否则亮色主题下这些按钮会变成突兀的黑块。
+
+        # 开始按钮（主行动）
         start = self._menu_start_rect()
         hover = start.collidepoint(self.mouse)
-        pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.34 if hover else 0.22),
-                         start, border_radius=4)
+        pygame.draw.rect(s, T.button_fill(T.CYAN, hover), start, border_radius=4)
         pygame.draw.rect(s, T.CYAN, start, 1, border_radius=4)
         T.draw_text(s, i18n.tr("menu.start") + "  [Enter]", start.center, 16,
-                    T.WHITE, bold=True, anchor="center")
+                    T.button_text(T.CYAN, hover), bold=True, anchor="center")
 
         edit_r = self._menu_edit_rect()
         hover = edit_r.collidepoint(self.mouse)
-        pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), edit_r, border_radius=4)
+        pygame.draw.rect(s, T.button_fill(T.CYAN, hover), edit_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, edit_r, 1, border_radius=4)
         T.draw_text(s, i18n.tr("menu.editor"), edit_r.center, 13,
-                    T.WHITE if hover else T.TEXT, anchor="center")
+                    T.button_text(T.CYAN, hover), anchor="center")
 
         # 快速上手：直接进入教学想定（首次运行时高亮）
         tut_r = self._menu_tutorial_rect()
         hover = tut_r.collidepoint(self.mouse)
         first_run = self.cfg.first_run
-        fill = (30, 82, 62) if hover else ((22, 62, 48) if first_run else (18, 26, 36))
-        pygame.draw.rect(s, fill, tut_r, border_radius=4)
+        # 首次运行时用绿色底突出，但亮度仍跟随主题
+        pygame.draw.rect(s, T.button_fill(T.GREEN, hover or first_run),
+                         tut_r, border_radius=4)
         pygame.draw.rect(s, T.GREEN if (hover or first_run) else T.BORDER_HI, tut_r, 1,
                          border_radius=4)
         T.draw_text(s, i18n.tr("menu.tutorial") + "  [T]", tut_r.center, 13,
-                    T.WHITE if hover else (T.TEXT if not first_run else (180, 255, 215)),
+                    T.button_text(T.GREEN, hover or first_run),
                     bold=first_run, anchor="center")
 
         # 战役入口
         camp_r = self._menu_campaign_rect()
         hover = camp_r.collidepoint(self.mouse)
-        pygame.draw.rect(s, (34, 30, 52) if hover else (22, 20, 34), camp_r, border_radius=4)
+        pygame.draw.rect(s, T.button_fill(T.PURPLE, hover), camp_r, border_radius=4)
         pygame.draw.rect(s, T.PURPLE if hover else T.BORDER_HI, camp_r, 1, border_radius=4)
         T.draw_text(s, "战役模式", camp_r.center, 13,
-                    T.WHITE if hover else T.TEXT, anchor="center")
+                    T.button_text(T.PURPLE, hover), anchor="center")
 
         # 设置入口
         set_r = self._menu_settings_rect()
         hover = set_r.collidepoint(self.mouse)
-        pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), set_r, border_radius=4)
+        pygame.draw.rect(s, T.button_fill(T.CYAN, hover), set_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, set_r, 1, border_radius=4)
         T.draw_text(s, i18n.tr("menu.settings"), set_r.center, 13,
-                    T.WHITE if hover else T.TEXT, anchor="center")
+                    T.button_text(T.CYAN, hover), anchor="center")
+
 
         if first_run:
             T.draw_text(s, "首次使用？点「快速上手」用 3 分钟学会核心操作",
@@ -1171,11 +1176,13 @@ class App:
         self.show_settings = False
         self.ai_timer = 0.0
         self.status = ""
-        # 教学引导：仅当想定声明了教学脚本时启用
+        # 教学引导：仅当想定真的带教学脚本时才启用。
+        # build_tutorial 对普通想定返回 None —— 教学不是所有想定的默认行为。
         self.tutorial = build_tutorial(scenario.raw)
-        self.tutorial_visible = bool(scenario.raw.get("tutorial")) and not self.cfg.first_run
-        if self.tutorial_visible:
-            self.state.log_message(None, f"教学开始：{self.tutorial.current.title if self.tutorial.current else ''}", "tutorial")
+        self.tutorial_visible = self.tutorial is not None
+        if self.tutorial_visible and self.tutorial.current is not None:
+            self.state.log_message(
+                None, f"教学开始：{self.tutorial.current.title}", "tutorial")
         self._layout_game()
         self._select_first_unit()
         # 作战简报：开局前先给玩家看敌情与胜利条件
@@ -2279,9 +2286,9 @@ class App:
         x = 758
         env = environment_for(st)
         env_col = {"拂晓": T.AMBER, "白天": T.WHITE, "黄昏": T.AMBER,
-                   "夜间": (120, 150, 210)}.get(env.time_of_day.label, T.TEXT)
-        wcol = {"晴": T.TEXT_DIM, "雨": (120, 180, 240), "雾": (170, 180, 190),
-                "雪": (200, 220, 240)}.get(env.weather.label, T.TEXT_DIM)
+                   "夜间": T.BLUE}.get(env.time_of_day.label, T.TEXT)
+        wcol = {"晴": T.TEXT_DIM, "雨": T.BLUE, "雾": T.TEXT_DIM,
+                "雪": T.CYAN}.get(env.weather.label, T.TEXT_DIM)
         T.draw_text(s, "战场环境", (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
         T.draw_text(s, env.clock, (x + 34, 22), 11, T.TEXT_DIM, mono=True)
@@ -2505,10 +2512,10 @@ class App:
             sel = st.selected_weapon == w.id
             row = pygame.Rect(body.x, y, body.width, 38)
             if sel:
-                pygame.draw.rect(s, (20, 40, 56), row, border_radius=3)
+                pygame.draw.rect(s, T.button_fill(T.CYAN, True), row, border_radius=3)
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(row.x, row.y, 2, row.height))
             elif row.collidepoint(self.mouse):
-                pygame.draw.rect(s, (18, 26, 36), row, border_radius=3)
+                pygame.draw.rect(s, T.button_fill(T.CYAN), row, border_radius=3)
             col = T.TEXT if ammo > 0 else T.TEXT_FAINT
             T.draw_text(s, w.name, (row.x + 8, row.y + 4), 12, col, bold=sel)
             info = f"{w.kind.label} · {w.range_min:.1f}-{w.range_max:.1f}格 · Pk {w.pk * 100:.0f}%"
@@ -2809,7 +2816,7 @@ class App:
         th_h = self._threat_panel_height(threat)
         h = (190 if ok else 92) + th_h
         r = pygame.Rect(body.x, y, body.width, h)
-        T.panel(s, r, (26, 20, 24), (110, 60, 66), radius=4)
+        T.panel(s, r, T.button_fill(T.RED), T.mix(T.BORDER, T.RED, 0.55), radius=4)
         T.draw_text(s, "交战目标", (r.x + 10, r.y + 8), 11, T.RED, bold=True)
         T.draw_text(s, t.name, (r.x + 10, r.y + 24), 13, T.TEXT, bold=True)
         T.draw_text(s, f"{t.template.unit_class.label} · {lvl.label} · "
@@ -2844,7 +2851,7 @@ class App:
         if self.pending_target is t and ok:
             btn = pygame.Rect(r.x + 10, r.bottom - 30, r.width - 20, 24)
             hover = btn.collidepoint(self.mouse)
-            pygame.draw.rect(s, (128, 40, 44) if hover else (92, 30, 34), btn, border_radius=3)
+            pygame.draw.rect(s, T.button_fill(T.RED, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.RED, btn, 1, border_radius=3)
             T.draw_text(s, "确认开火  [Enter]", btn.center, 12, T.mix(T.RED, T.WHITE, 0.6),
                         bold=True, anchor="center")
@@ -2879,8 +2886,7 @@ class App:
         # 防空网分工：谁负责哪一段防区
         if threat.adn_roles:
             roles = "、".join(sorted({r for _, r, _ in threat.adn_roles}))
-            out.append(("防空网", f"{roles}｜余 {threat.adn_channels} 通道", (150, 190, 235)))
-
+            out.append(("防空网", f"{roles}｜余 {threat.adn_channels} 通道", T.BLUE))
         if threat.reply_units:
             col = T.RED if threat.enemy_fire_control else T.AMBER
             out.append(("反击", f"{len(threat.reply_units)} 个敌方单元可打你"
@@ -2901,9 +2907,8 @@ class App:
         """绘制「对手视角」区块：解释这一发为什么打不到。"""
         th_h = self._threat_panel_height(threat)
         r = pygame.Rect(panel.x, panel.bottom - th_h, panel.width, th_h)
-        pygame.draw.rect(s, (16, 22, 32), r, border_radius=3)
-        pygame.draw.rect(s, (60, 84, 110), r, 1, border_radius=3)
-
+        pygame.draw.rect(s, T.PANEL_SUNK, r, border_radius=3)
+        pygame.draw.rect(s, T.BORDER_HI, r, 1, border_radius=3)
         T.draw_text(s, "对手视角", (r.x + 10, r.y + 6), 11,
                         T.mix(T.BLUE, T.CYAN, 0.4), bold=True)
         T.draw_text(s, "这发子弹会遇到什么", (r.right - 10, r.y + 7), 11, T.TEXT_FAINT,
@@ -2928,7 +2933,7 @@ class App:
         ok = bool(prof and prof.ok)
         h = 176 if ok else 92
         r = pygame.Rect(body.x, y, body.width, h)
-        T.panel(s, r, (28, 24, 20), (130, 96, 60), radius=4)
+        T.panel(s, r, T.button_fill(T.AMBER), T.mix(T.BORDER, T.AMBER, 0.55), radius=4)
         T.draw_text(s, "设施打击", (r.x + 10, r.y + 8), 11, T.AMBER, bold=True)
         if tile is None:
             return r.bottom + 8
@@ -2962,7 +2967,7 @@ class App:
         if ok:
             btn = pygame.Rect(r.x + 10, r.bottom - 30, r.width - 20, 24)
             hover = btn.collidepoint(self.mouse)
-            pygame.draw.rect(s, (130, 96, 40) if hover else (94, 68, 28), btn, border_radius=3)
+            pygame.draw.rect(s, T.button_fill(T.AMBER, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.AMBER, btn, 1, border_radius=3)
             T.draw_text(s, "确认打击  [Enter]", btn.center, 12, T.mix(T.AMBER, T.WHITE, 0.5),
                         bold=True, anchor="center")
@@ -3073,7 +3078,7 @@ class App:
                 if sat.side is not st.player_side:
                     hov = row.collidepoint(self.mouse)
                     if hov:
-                        pygame.draw.rect(s, (36, 24, 26), row)
+                        pygame.draw.rect(s, T.button_fill(T.RED), row)
                     T.draw_text(s, f"  {sat.name}", (body.x + 8, y), 11,
                                 T.side_color(sat.side) if hov else T.TEXT_DIM)
                     self._sat_rects.append((row, sat))
@@ -3291,7 +3296,7 @@ class App:
 
         btn = pygame.Rect(self.w // 2 - 130, self.h // 2 + 108, 260, 44)
         hover = btn.collidepoint(self.mouse)
-        pygame.draw.rect(s, (30, 96, 120) if hover else (22, 70, 90), btn, border_radius=4)
+        pygame.draw.rect(s, T.button_fill(T.CYAN, hover), btn, border_radius=4)
         pygame.draw.rect(s, T.CYAN, btn, 1, border_radius=4)
         if self.campaign_pending:
             T.draw_text(s, "进入下一阶段  [Enter]", btn.center, 14, T.WHITE, bold=True,

@@ -335,6 +335,8 @@ def main() -> int:
     # 开局自动选中了第一个单位，第 1 步应已推进
     check(tut.index >= 1, f"教学步骤已自动推进（index={tut.index}）")
 
+
+
     # 步骤 2：悬停敌方目标
     st2 = app.state
     st2.refresh_detection()
@@ -1077,6 +1079,29 @@ def main() -> int:
     if FAILED:
         print(f"冒烟测试失败 {len(FAILED)} 项：{FAILED}")
         return 1
+
+    # --- v2.2.1：普通想定不得触发教学 -----------------------------------
+    # 教学引导机会往作战日志里写「教学：第 N 步 · …」。
+    # 若普通想定也挂了引导机，玩家在正规作战中会看到与战局无关的教学提示。
+    # 放在测试末尾——它会重建对局状态，不能插在中段。
+    _norm = next((s for s in app.scenarios if not s.get("tutorial")), None)
+    if _norm is not None:
+        app.menu_index = app.scenarios.index(_norm)
+        app.start_game()
+        check(app.tutorial is None,
+              f"普通想定「{_norm['name']}」不挂教学引导机")
+        check(not app.tutorial_visible,
+              f"普通想定「{_norm['name']}」不显示教学提示条")
+        # 真实操作一遍，确认日志里不会冒出教学条目
+        app._tutorial_note("select_unit")
+        app._tutorial_note("hover_enemy")
+        app._tutorial_note("fire")
+        app._tutorial_note("turn_end")
+        _tut_logs = [e.text for e in app.state.log if e.kind == "tutorial"]
+        check(not _tut_logs,
+              f"普通想定「{_norm['name']}」作战日志中无教学条目"
+              + (f"（实际有：{_tut_logs[:2]}）" if _tut_logs else ""))
+
     print("冒烟测试全部通过")
     return 0
 

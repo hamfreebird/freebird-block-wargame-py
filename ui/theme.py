@@ -553,6 +553,45 @@ def mix(c1: tuple[int, int, int], c2: tuple[int, int, int], t: float) -> tuple[i
             int(c1[2] + (c2[2] - c1[2]) * t))
 
 
+def button_fill(accent: RGB, hover: bool = False) -> RGB:
+    """按钮底色：由主题面板色与强调色派生。
+
+    **不要在界面代码里硬编码按钮底色。** 早期版本把按钮写成
+    ``(18, 26, 36)`` 这样的深色常量，切到亮色主题后这些按钮
+    在浅色背景上变成突兀的黑块（实测主菜单的「编辑想定」「快速上手」
+    「战役模式」「设置」四个按钮全是深色）。
+
+    派生规则：底色始终是「面板色向强调色靠一点」，
+    因此深色主题下按钮略亮于面板，浅色主题下按钮略深于面板——
+    两套主题下都能看出边界，且不会跑到对面去。
+
+    比例随主题明暗翻转：深色主题多混一点（0.18 / 0.34），
+    浅色主题少混一点（0.10 / 0.20），免得浅底被染得太艳。
+    """
+    t = _current
+    light = t.id == "light"
+    if light:
+        ratio = 0.20 if hover else 0.10
+        base = t.panel_hi
+    else:
+        ratio = 0.34 if hover else 0.18
+        base = t.panel
+    return mix(base, accent, ratio)
+
+
+def button_text(accent: RGB, hover: bool = False) -> RGB:
+    """按钮上的文字色。
+
+    浅色主题下按钮底色是浅的，文字必须用深色才看得清；
+    深色主题反之。用 ``accent`` 微微染色，让按钮文字与边框呼应。
+    """
+    t = _current
+    if t.id == "light":
+        return mix(t.text, accent, 0.25)
+    return t.white if hover else mix(t.white, accent, 0.15)
+
+
+
 def panel(surface: pygame.Surface, rect: pygame.Rect, fill=None, border=None,
           radius: int = 4, width: int = 1) -> pygame.Rect:
     if fill is None:

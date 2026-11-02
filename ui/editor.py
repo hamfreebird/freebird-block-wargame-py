@@ -1139,7 +1139,7 @@ class Editor:
                     pygame.draw.polygon(s, T.AMBER, [(cx, cy - d), (cx + d, cy),
                                                      (cx, cy + d), (cx - d, cy)])
                 if self.tile >= 10:
-                    pygame.draw.rect(s, (20, 26, 34), cell, 1)
+                    pygame.draw.rect(s, T.GRID, cell, 1)
         # 工事
         for (fx, fy), f in self.fort.items():
             cell = self._cell(fx, fy)
@@ -1184,7 +1184,7 @@ class Editor:
         # 鼠标格
         if self.hover:
             cell = self._cell(*self.hover)
-            pygame.draw.rect(s, (255, 255, 255), cell, 1)
+            pygame.draw.rect(s, T.TEXT, cell, 1)
             if self.tool == "terrain":
                 terr = TERRAIN_CHARS.get(self.brush_terrain, Terrain.PLAIN)
                 c = T.elevation_shade(T.TERRAIN_COLORS[terr], 600)
@@ -1304,8 +1304,9 @@ class Editor:
                 rr = pygame.Rect(x + (i % 6) * (cw + 2), y + (i // 6) * 22, cw, 19)
                 active = self.pack_filter == pid
                 hov = rr.collidepoint(pygame.mouse.get_pos())
-                pygame.draw.rect(s, (22, 50, 66) if active else
-                                 ((20, 28, 38) if hov else T.PANEL_SUNK), rr, border_radius=2)
+                pygame.draw.rect(s, T.button_fill(T.CYAN, active or hov)
+                                 if (active or hov) else T.PANEL_SUNK,
+                                 rr, border_radius=2)
                 pygame.draw.rect(s, T.CYAN if active else T.BORDER, rr, 1, border_radius=2)
                 T.draw_text(s, label, rr.center, 11,
                             T.WHITE if active else T.TEXT_DIM, anchor="center")
@@ -1400,9 +1401,7 @@ class Editor:
             active = gi == self.tmpl_index
             hov = rr.collidepoint(pygame.mouse.get_pos())
             if active:
-                pygame.draw.rect(s, (22, 50, 66), rr)
-            elif hov:
-                pygame.draw.rect(s, (20, 28, 38), rr)
+                pygame.draw.rect(s, T.button_fill(T.CYAN, active), rr)
             short = str(u.get("short", u.get("id", "?")))[:6]
             T.draw_text(s, short, (rr.x + 5, rr.centery), 11,
                         T.CYAN if active else T.TEXT_DIM, anchor="midleft", mono=True)
@@ -1445,9 +1444,7 @@ class Editor:
             rr = pygame.Rect(lr.x + 2, lr.y + 3 + i * row_h, lr.width - 4, row_h - 1)
             active = idx == self.tmpl_index
             if active:
-                pygame.draw.rect(s, (22, 50, 66), rr)
-            elif rr.collidepoint(pygame.mouse.get_pos()):
-                pygame.draw.rect(s, (20, 28, 38), rr)
+                pygame.draw.rect(s, T.button_fill(T.CYAN, active), rr)
             T.draw_text(s, u.get("short", u.get("id", "?"))[:6], (rr.x + 6, rr.centery), 11,
                         T.TEXT if active else T.TEXT_DIM, anchor="midleft")
             T.draw_text(s, u.get("name", ""), (rr.x + 60, rr.centery), 11,
@@ -1488,7 +1485,8 @@ class Editor:
             r = pygame.Rect(fx, yy, 88, 22)
             on = self._flag_value(t, key)
             hov = r.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(s, (22, 52, 44) if on else T.PANEL_SUNK, r, border_radius=3)
+            pygame.draw.rect(s, T.button_fill(T.GREEN, on) if on else T.PANEL_SUNK,
+                             r, border_radius=3)
             pygame.draw.rect(s, T.GREEN if on else (T.BORDER_HI if hov else T.BORDER),
                              r, 1, border_radius=3)
             T.draw_text(s, ("● " if on else "○ ") + label, r.center, 11,
@@ -1509,7 +1507,8 @@ class Editor:
                 yy += 24
             r = pygame.Rect(cx, yy, w_, 20)
             hov = r.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(s, (26, 44, 58) if hov else T.PANEL_SUNK, r, border_radius=3)
+            pygame.draw.rect(s, T.button_fill(T.CYAN, hov) if hov else T.PANEL_SUNK,
+                             r, border_radius=3)
             pygame.draw.rect(s, T.CYAN if hov else T.BORDER, r, 1, border_radius=3)
             T.draw_text(s, label, r.center, 11, T.TEXT if hov else T.TEXT_DIM, anchor="center")
             self.buttons.append((r, "loadout", lo.get("id", "")))
@@ -1520,7 +1519,8 @@ class Editor:
         T.draw_text(s, "武器与备弹", (x2, yy), 11, T.CYAN, bold=True)
         add_r = pygame.Rect(x2 + 96, yy - 3, 84, 20)
         hov = add_r.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(s, (24, 52, 54) if hov else T.PANEL_SUNK, add_r, border_radius=3)
+        pygame.draw.rect(s, T.button_fill(T.GREEN, hov) if hov else T.PANEL_SUNK,
+                         add_r, border_radius=3)
         pygame.draw.rect(s, T.GREEN if hov else T.BORDER, add_r, 1, border_radius=3)
         T.draw_text(s, "＋ 添加武器", add_r.center, 11, T.GREEN if hov else T.TEXT_DIM,
                     anchor="center")
@@ -1552,7 +1552,8 @@ class Editor:
             self._stepper(s, row.right - 112, yy + 3, ammo, ("ammo", (wi, -1)), ("ammo", (wi, 1)))
             xr = pygame.Rect(row.right - 28, yy + 5, 18, 16)
             hov = xr.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(s, (58, 26, 30) if hov else T.PANEL, xr, border_radius=2)
+            pygame.draw.rect(s, T.button_fill(T.RED, hov) if hov else T.PANEL,
+                             xr, border_radius=2)
             pygame.draw.rect(s, T.RED if hov else T.BORDER, xr, 1, border_radius=2)
             T.draw_text(s, "×", xr.center, 11, T.RED if hov else T.TEXT_DIM, anchor="center")
             self.buttons.append((xr, "rm_weapon", wi))
@@ -1590,7 +1591,8 @@ class Editor:
                         (r.x + 110, r.y + 19), 11, T.TEXT_FAINT)
         close = pygame.Rect(r.right - 84, r.y + 12, 64, 24)
         hov = close.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(s, (40, 24, 28) if hov else T.PANEL, close, border_radius=3)
+        pygame.draw.rect(s, T.button_fill(T.RED, hov) if hov else T.PANEL,
+                             close, border_radius=3)
         pygame.draw.rect(s, T.RED if hov else T.BORDER, close, 1, border_radius=3)
         T.draw_text(s, "关闭", close.center, 11, T.TEXT_DIM, anchor="center")
         self.buttons.append((close, "close_picker", None))
@@ -1616,7 +1618,7 @@ class Editor:
             has = wid in owned
             hov = rr.collidepoint(pygame.mouse.get_pos())
             if hov:
-                pygame.draw.rect(s, (20, 32, 44), rr)
+                pygame.draw.rect(s, T.button_fill(T.CYAN), rr)
             T.draw_text(s, str(wd.get("name", wid))[:24], (rr.x + 8, rr.centery), 11,
                         T.TEXT if not has else T.TEXT_FAINT, anchor="midleft")
             T.draw_text(s, wid, (rr.x + 268, rr.centery), 11, T.TEXT_FAINT,
@@ -1641,7 +1643,8 @@ class Editor:
         rp = pygame.Rect(x + 54, y, 20, 20)
         for r, act in ((rm, minus), (rp, plus)):
             hov = r.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(s, (30, 44, 58) if hov else T.PANEL_SUNK, r, border_radius=2)
+            pygame.draw.rect(s, T.button_fill(T.CYAN, hov) if hov else T.PANEL_SUNK,
+                             r, border_radius=2)
             pygame.draw.rect(s, T.BORDER_HI if hov else T.BORDER, r, 1, border_radius=2)
             T.draw_text(s, "-" if r is rm else "+", r.center, 11, T.TEXT_DIM, anchor="center")
             self.buttons.append((r, act[0], act[1]))

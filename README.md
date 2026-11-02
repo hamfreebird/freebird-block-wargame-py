@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.2.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v2.2.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -108,6 +108,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v2.1** | 内容与性能 | **可视化战役编辑器**、**可替换单位图标包**、**分块渲染 + 增量探测**（渲染提速 4.3 倍） |
 | **v2.1.1** | 缺陷修复 | 修复战役编辑器文字锚点崩溃（pygame 只认 9 种锚点） |
 | **v2.1.2** | 交互修复 | 主菜单**点击才选中**（不再悬停即切换）、修复「导入回放」浮层不显示 |
+| **v2.2.1** | 体验修复 | 普通想定不再误触发教学、**浅色主题下按钮不再显示为深色** |
 | **v2.2** | 深度与智能 | **AI 战术库**（可达性判断 / 斩首 / 撤退）、**大地图寻路优化**、**JSON 规则钩子**、**平衡体检** |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
@@ -151,11 +152,15 @@ python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档�
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
 python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
 python tools/test_mods.py       # 模组接口自检（注册 / 钩子 / 错误隔离）
-python tools/smoke_test.py      # 无界面 UI 冒烟测试（177 项断言）
+python tools/smoke_test.py      # 无界面 UI 冒烟测试（197 项断言）
 python tools/test_stack.py      # 同格共存规则测试
 python tools/test_icons.py      # 单位图标包自检
 python tools/test_campaign_editor.py   # 战役编辑器自检
 python tools/test_perf.py       # 性能回归自检（渲染 / 探测 / 结论一致性）
+python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动 / 战术规则）
+python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
+python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
+python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 

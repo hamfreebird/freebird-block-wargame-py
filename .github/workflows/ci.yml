@@ -112,6 +112,11 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/balance_check.py
 
+      - name: 主题与教学自检（浅色适配 / 教学触发边界）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_theme.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

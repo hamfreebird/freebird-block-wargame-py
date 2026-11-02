@@ -286,17 +286,28 @@ def steps_from_scenario(raw: dict) -> list[TutorialStep] | None:
 TUTORIAL_SCENARIO_ID = "training_ground"
 
 
-def build_tutorial(raw: dict) -> Tutorial:
+def build_tutorial(raw: dict) -> Tutorial | None:
     """为一个想定构造教学引导机。
 
-    优先级：想定内自定义脚本 → 教学想定的标准脚本 → 通用默认脚本。
+    优先级：想定内自定义脚本 → 教学想定的标准脚本 → **没有教学**。
+
+    **普通想定必须返回 None**（而不是回退到默认脚本）：
+
+    教学引导机会监听玩家的每一个操作（选中、开火、结束回合……），
+    每推进一步就往作战日志里写一条「教学：第 N 步 · …」。
+    如果普通想定也挂了引导机，玩家在正规作战中会看到
+    与当前战局毫不相干的教学提示——实测「海峡对决」里
+    日志中会冒出「教学：第 2 步 · 发现与识别」这种条目。
+
+    教学是**教学想定的事**，不是所有想定的默认行为。
     """
     steps = steps_from_scenario(raw)
     if steps is None and raw.get("id") == TUTORIAL_SCENARIO_ID:
         steps = default_steps()
     if steps is None:
-        steps = default_steps()
+        return None
     return Tutorial(steps=steps)
+
 
 
 __all__ = [

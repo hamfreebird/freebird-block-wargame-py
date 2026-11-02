@@ -48,21 +48,22 @@ class Button:
         if not self.enabled:
             fill, border, fg = T.PANEL_SUNK, T.BORDER, T.TEXT_FAINT
         elif self.kind == "primary":
-            fill = T.mix(T.PANEL, T.CYAN, 0.30 if self.hover else 0.20)
+            fill = T.button_fill(T.CYAN, self.hover)
             border = T.CYAN if self.hover else T.mix(T.BORDER, T.CYAN, 0.55)
-            fg = T.TEXT if T.current_theme().id == "light" else T.WHITE
+            fg = T.button_text(T.CYAN, self.hover)
         elif self.kind == "danger":
-            fill = T.mix(T.PANEL, T.RED, 0.32 if self.hover else 0.20)
+            fill = T.button_fill(T.RED, self.hover)
             border = T.RED if self.hover else T.mix(T.BORDER, T.RED, 0.55)
-            fg = T.TEXT if T.current_theme().id == "light" else T.WHITE
+            fg = T.button_text(T.RED, self.hover)
         elif self.active:
-            fill = T.mix(T.PANEL, T.GREEN, 0.26 if self.hover else 0.16)
+            fill = T.button_fill(T.GREEN, self.hover)
             border = T.GREEN
-            fg = T.mix(T.TEXT, T.GREEN, 0.4)
+            fg = T.button_text(T.GREEN, self.hover)
         else:
             fill = T.PANEL_HI if self.hover else T.PANEL
             border = T.BORDER_HI if self.hover else T.BORDER
             fg = T.TEXT if self.hover else T.TEXT_DIM
+
 
         pygame.draw.rect(surf, fill, r, border_radius=3)
         pygame.draw.rect(surf, border, r, width=1, border_radius=3)
