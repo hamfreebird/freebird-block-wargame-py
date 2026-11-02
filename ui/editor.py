@@ -1181,11 +1181,11 @@ class Editor:
 
         # 尺寸提示
         T.draw_text(s, f"{w}×{h} 格 · 每格 {self.inputs['tile_km'].value} km",
-                    (r.x + 10, r.bottom - 20), 10, T.TEXT_FAINT)
+                    (r.x + 10, r.bottom - 20), 11, T.TEXT_FAINT)
         if self.sel_cells:
             T.draw_text(s, f"已选 {self.selection_size()} 格"
                         f"（右键清除）",
-                        (r.x + 10, r.bottom - 36), 10, T.CYAN)
+                        (r.x + 10, r.bottom - 36), 11, T.CYAN)
 
     # -- 左侧/右侧面板 ----------------------------------------------------
     def _panel_rect(self) -> pygame.Rect:
@@ -1207,7 +1207,7 @@ class Editor:
         y += ((len(TOOLS) - 1) // 3 + 1) * 30 + 8
 
         if self.tool == "terrain":
-            T.draw_text(s, "地形笔刷", (x, y), 10, T.TEXT_FAINT)
+            T.draw_text(s, "地形笔刷", (x, y), 11, T.TEXT_FAINT)
             y += 18
             for i, key in enumerate(TERRAIN_ORDER):
                 r = pygame.Rect(x + (i % 5) * 44, y + (i // 5) * 40, 40, 24)
@@ -1215,46 +1215,46 @@ class Editor:
                 pygame.draw.rect(s, T.TERRAIN_COLORS[terr], r, border_radius=3)
                 pygame.draw.rect(s, T.CYAN if self.brush_terrain == key else T.BORDER,
                                  r, 2 if self.brush_terrain == key else 1, border_radius=3)
-                T.draw_text(s, TERRAIN_NAME[key], (r.centerx, r.bottom + 1), 8, T.TEXT_DIM,
+                T.draw_text(s, TERRAIN_NAME[key], (r.centerx, r.bottom + 1), 11, T.TEXT_DIM,
                             anchor="midtop")
                 self.buttons.append((r, "terrain", key))
             y += 2 * 40 + 8
         elif self.tool == "facility":
-            T.draw_text(s, "设施类型", (x, y), 10, T.TEXT_FAINT)
+            T.draw_text(s, "设施类型", (x, y), 11, T.TEXT_FAINT)
             y += 18
             for i, fc in enumerate(FACILITY_ORDER):
                 r = pygame.Rect(x + (i % 4) * 56, y + (i // 4) * 30, 52, 26)
                 self._tool_button(s, r, fc.label, self.brush_facility is fc, ("facility", fc))
             y += 2 * 30 + 6
-            T.draw_text(s, "归属", (x, y + 4), 10, T.TEXT_FAINT)
+            T.draw_text(s, "归属", (x, y + 4), 11, T.TEXT_FAINT)
             self._side_buttons(s, x + 44, y)
             y += 34
         elif self.tool == "fort":
-            T.draw_text(s, "工事等级（堑壕/掩体/雷场）", (x, y), 10, T.TEXT_FAINT)
+            T.draw_text(s, "工事等级（堑壕/掩体/雷场）", (x, y), 11, T.TEXT_FAINT)
             y += 18
             for i, lv in enumerate((1, 2, 3)):
                 r = pygame.Rect(x + i * 72, y, 68, 26)
                 self._tool_button(s, r, f"Lv{lv}", self.brush_fort == lv, ("fort_lv", lv))
             y += 32
-            T.draw_text(s, "归属", (x, y + 4), 10, T.TEXT_FAINT)
+            T.draw_text(s, "归属", (x, y + 4), 11, T.TEXT_FAINT)
             self._side_buttons(s, x + 44, y)
             y += 34
-            T.draw_text(s, "敌方部队穿越时会被迟滞并触雷", (x, y), 9, T.TEXT_DIM)
+            T.draw_text(s, "敌方部队穿越时会被迟滞并触雷", (x, y), 11, T.TEXT_DIM)
             y += 14
-            T.draw_text(s, "归属方获得减伤与隐蔽加成", (x, y), 9, T.TEXT_DIM)
+            T.draw_text(s, "归属方获得减伤与隐蔽加成", (x, y), 11, T.TEXT_DIM)
             y += 16
         elif self.tool == "select":
-            T.draw_text(s, "框选与批量编辑", (x, y), 10, T.TEXT_FAINT)
+            T.draw_text(s, "框选与批量编辑", (x, y), 11, T.TEXT_FAINT)
             y += 18
-            T.draw_text(s, "在地图上左键拖拽框选一块矩形区域，", (x, y), 9, T.TEXT_DIM)
+            T.draw_text(s, "在地图上左键拖拽框选一块矩形区域，", (x, y), 11, T.TEXT_DIM)
             y += 15
-            T.draw_text(s, "然后切换到任意工具并点击地图——", (x, y), 9, T.TEXT_DIM)
+            T.draw_text(s, "然后切换到任意工具并点击地图——", (x, y), 11, T.TEXT_DIM)
             y += 15
-            T.draw_text(s, "工具会应用到整个选区。", (x, y), 9, T.TEXT_DIM)
+            T.draw_text(s, "工具会应用到整个选区。", (x, y), 11, T.TEXT_DIM)
             y += 20
             n = self.selection_size()
             if n:
-                T.draw_text(s, f"当前已选 {n} 个格子", (x, y), 10, T.CYAN)
+                T.draw_text(s, f"当前已选 {n} 个格子", (x, y), 11, T.CYAN)
                 y += 18
                 r = pygame.Rect(x, y, 108, 26)
                 self._tool_button(s, r, "填充选区", False, ("fill_sel", None))
@@ -1262,25 +1262,25 @@ class Editor:
                 self._tool_button(s, r2, "清除选区", False, ("clear_sel", None))
                 y += 34
             else:
-                T.draw_text(s, "尚未框选区域", (x, y), 9, T.TEXT_FAINT)
+                T.draw_text(s, "尚未框选区域", (x, y), 11, T.TEXT_FAINT)
                 y += 18
         elif self.tool == "objective":
-            T.draw_text(s, "目标点设置", (x, y), 10, T.TEXT_FAINT)
+            T.draw_text(s, "目标点设置", (x, y), 11, T.TEXT_FAINT)
             y += 18
-            T.draw_text(s, "名称", (x, y + 4), 10, T.TEXT_DIM)
+            T.draw_text(s, "名称", (x, y + 4), 11, T.TEXT_DIM)
             self.inputs["obj_name"].rect.topleft = (x + 70, y)
             self.inputs["obj_name"].draw(s, pygame.mouse.get_pos())
             y += 28
-            T.draw_text(s, "价值", (x, y + 4), 10, T.TEXT_DIM)
+            T.draw_text(s, "价值", (x, y + 4), 11, T.TEXT_DIM)
             self.inputs["obj_value"].rect.topleft = (x + 70, y)
             self.inputs["obj_value"].draw(s, pygame.mouse.get_pos())
-            T.draw_text(s, "胜负点/回合", (x + 124, y + 4), 9, T.TEXT_FAINT)
+            T.draw_text(s, "胜负点/回合", (x + 124, y + 4), 11, T.TEXT_FAINT)
             y += 30
-            T.draw_text(s, "归属", (x, y + 4), 10, T.TEXT_FAINT)
+            T.draw_text(s, "归属", (x, y + 4), 11, T.TEXT_FAINT)
             self._side_buttons(s, x + 44, y)
             y += 34
         elif self.tool == "unit":
-            T.draw_text(s, "阵营", (x, y + 4), 10, T.TEXT_FAINT)
+            T.draw_text(s, "阵营", (x, y + 4), 11, T.TEXT_FAINT)
             self._side_buttons(s, x + 40, y)
             y += 30
             # 预设编队筛选
@@ -1294,15 +1294,15 @@ class Editor:
                 pygame.draw.rect(s, (22, 50, 66) if active else
                                  ((20, 28, 38) if hov else T.PANEL_SUNK), rr, border_radius=2)
                 pygame.draw.rect(s, T.CYAN if active else T.BORDER, rr, 1, border_radius=2)
-                T.draw_text(s, label, rr.center, 8,
+                T.draw_text(s, label, rr.center, 11,
                             T.WHITE if active else T.TEXT_DIM, anchor="center")
                 self.buttons.append((rr, "pack", pid))
             y += ((len(chips) - 1) // 6 + 1) * 22 + 4
             y = self._draw_template_list(s, x, y, 196, compact=True)
         else:
-            T.draw_text(s, "左键擦除设施/目标/单位", (x, y), 10, T.TEXT_DIM)
+            T.draw_text(s, "左键擦除设施/目标/单位", (x, y), 11, T.TEXT_DIM)
             y += 20
-            T.draw_text(s, "（地形不会恢复为默认）", (x, y), 9, T.TEXT_FAINT)
+            T.draw_text(s, "（地形不会恢复为默认）", (x, y), 11, T.TEXT_FAINT)
             y += 18
 
         # 想定属性
@@ -1312,14 +1312,14 @@ class Editor:
         y += 20
         props = [("文件 id", "id"), ("名称", "name"), ("回合上限", "turns"), ("每格 km", "tile_km")]
         for label, key in props:
-            T.draw_text(s, label, (x, y + 4), 10, T.TEXT_DIM)
+            T.draw_text(s, label, (x, y + 4), 11, T.TEXT_DIM)
             inp = self.inputs[key]
             inp.rect.topleft = (x + 72, y)
             inp.draw(s, pygame.mouse.get_pos())
             y += 28
 
         # 地图尺寸（宽 × 高 + 应用）
-        T.draw_text(s, "地图尺寸", (x, y + 4), 10, T.TEXT_DIM)
+        T.draw_text(s, "地图尺寸", (x, y + 4), 11, T.TEXT_DIM)
         self.inputs["w"].rect.topleft = (x + 72, y)
         self.inputs["w"].draw(s, pygame.mouse.get_pos())
         T.draw_text(s, "×", (x + 130, y + 4), 11, T.TEXT_FAINT)
@@ -1339,8 +1339,8 @@ class Editor:
             self._tool_button(s, r, label, False, (act, None),
                               accent=T.GREEN if act == "save" else T.CYAN)
         y += ((len(ops) - 1) // 4 + 1) * 30 + 4
-        T.draw_text(s, "左键绘制 · 拖动连续绘制 · 右键擦除", (x, y), 9, T.TEXT_FAINT)
-        T.draw_text(s, "中键平移 · 滚轮缩放", (x, y + 13), 9, T.TEXT_FAINT)
+        T.draw_text(s, "左键绘制 · 拖动连续绘制 · 右键擦除", (x, y), 11, T.TEXT_FAINT)
+        T.draw_text(s, "中键平移 · 滚轮缩放", (x, y + 13), 11, T.TEXT_FAINT)
 
     def _tool_button(self, s, r: pygame.Rect, label: str, active: bool,
                      action: tuple, accent=None) -> None:
@@ -1353,7 +1353,7 @@ class Editor:
                          r, border_radius=3)
         pygame.draw.rect(s, accent if active else (T.BORDER_HI if hov else T.BORDER),
                          r, 1, border_radius=3)
-        T.draw_text(s, label, r.center, 10, T.WHITE if active else T.TEXT_DIM, anchor="center")
+        T.draw_text(s, label, r.center, 11, T.WHITE if active else T.TEXT_DIM, anchor="center")
         self.buttons.append((r, action[0], action[1]))
 
     def _side_buttons(self, s, x: int, y: int) -> None:
@@ -1364,7 +1364,7 @@ class Editor:
             pygame.draw.rect(s, T.mix(T.PANEL_SUNK, T.CYAN, 0.30) if active else T.PANEL_SUNK,
                          r, border_radius=3)
             pygame.draw.rect(s, c if active else T.BORDER, r, 2 if active else 1, border_radius=3)
-            T.draw_text(s, side.label, r.center, 10, c if active else T.TEXT_DIM, anchor="center")
+            T.draw_text(s, side.label, r.center, 11, c if active else T.TEXT_DIM, anchor="center")
             self.buttons.append((r, "side", side))
 
     def _draw_template_list(self, s, x: int, y: int, h: int, compact: bool = False) -> int:
@@ -1391,18 +1391,18 @@ class Editor:
             elif hov:
                 pygame.draw.rect(s, (20, 28, 38), rr)
             short = str(u.get("short", u.get("id", "?")))[:6]
-            T.draw_text(s, short, (rr.x + 5, rr.centery), 9,
+            T.draw_text(s, short, (rr.x + 5, rr.centery), 11,
                         T.CYAN if active else T.TEXT_DIM, anchor="midleft", mono=True)
-            T.draw_text(s, str(u.get("name", ""))[:14], (rr.x + 46, rr.centery), 9,
+            T.draw_text(s, str(u.get("name", ""))[:14], (rr.x + 46, rr.centery), 11,
                         T.TEXT if active else T.TEXT_FAINT, anchor="midleft")
-            T.draw_text(s, str(u.get("domain", ""))[:2], (rr.right - 5, rr.centery), 8,
+            T.draw_text(s, str(u.get("domain", ""))[:2], (rr.right - 5, rr.centery), 11,
                         T.TEXT_FAINT, anchor="midright")
             self.buttons.append((rr, "tmpl", gi))
         if len(items) > visible:
             T.draw_text(s, f"滚轮翻页 {self.tmpl_scroll + 1}-{min(len(items), self.tmpl_scroll + visible)}"
-                            f"/{len(items)}", (r.x + 4, r.bottom + 3), 8, T.TEXT_FAINT)
+                            f"/{len(items)}", (r.x + 4, r.bottom + 3), 11, T.TEXT_FAINT)
         else:
-            T.draw_text(s, f"共 {len(items)} 个兵种", (r.x + 4, r.bottom + 3), 8, T.TEXT_FAINT)
+            T.draw_text(s, f"共 {len(items)} 个兵种", (r.x + 4, r.bottom + 3), 11, T.TEXT_FAINT)
         return r.bottom + 16
 
     # -- 兵种页 -----------------------------------------------------------
@@ -1435,13 +1435,13 @@ class Editor:
                 pygame.draw.rect(s, (22, 50, 66), rr)
             elif rr.collidepoint(pygame.mouse.get_pos()):
                 pygame.draw.rect(s, (20, 28, 38), rr)
-            T.draw_text(s, u.get("short", u.get("id", "?"))[:6], (rr.x + 6, rr.centery), 10,
+            T.draw_text(s, u.get("short", u.get("id", "?"))[:6], (rr.x + 6, rr.centery), 11,
                         T.TEXT if active else T.TEXT_DIM, anchor="midleft")
-            T.draw_text(s, u.get("name", ""), (rr.x + 60, rr.centery), 9,
+            T.draw_text(s, u.get("name", ""), (rr.x + 60, rr.centery), 11,
                         T.TEXT_FAINT, anchor="midleft")
             self.buttons.append((rr, "tmpl", idx))
         # 滚动提示
-        T.draw_text(s, "滚轮滚动列表 · 共 %d 个兵种" % len(units), (lr.x, lr.bottom + 6), 9,
+        T.draw_text(s, "滚轮滚动列表 · 共 %d 个兵种" % len(units), (lr.x, lr.bottom + 6), 11,
                     T.TEXT_FAINT)
 
         t = self._selected_template()
@@ -1450,7 +1450,7 @@ class Editor:
         x2 = lr.right + 24
         T.draw_text(s, f"{t.get('name', '')}", (x2, y), 16, T.TEXT, bold=True)
         T.draw_text(s, f"{t.get('id', '')} · {t.get('class', '')} · {t.get('domain', '')}",
-                    (x2, y + 24), 10, T.TEXT_FAINT)
+                    (x2, y + 24), 11, T.TEXT_FAINT)
 
         yy = y + 52
         stats = [("hp", "耐久", 10), ("mp", "机动", 0.2), ("armor", "装甲", 0.05),
@@ -1478,7 +1478,7 @@ class Editor:
             pygame.draw.rect(s, (22, 52, 44) if on else T.PANEL_SUNK, r, border_radius=3)
             pygame.draw.rect(s, T.GREEN if on else (T.BORDER_HI if hov else T.BORDER),
                              r, 1, border_radius=3)
-            T.draw_text(s, ("● " if on else "○ ") + label, r.center, 10,
+            T.draw_text(s, ("● " if on else "○ ") + label, r.center, 11,
                         T.WHITE if on else T.TEXT_DIM, anchor="center")
             self.buttons.append((r, "toggle", key))
             fx += 94
@@ -1490,7 +1490,7 @@ class Editor:
         cx = x2
         for lo in self._loadouts_for(t):
             label = str(lo.get("name", ""))[:10]
-            w_ = max(66, T.text_width(label, 9) + 16)
+            w_ = max(66, T.text_width(label, 10) + 16)
             if cx + w_ > self.w - 40:
                 cx = x2
                 yy += 24
@@ -1498,7 +1498,7 @@ class Editor:
             hov = r.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, (26, 44, 58) if hov else T.PANEL_SUNK, r, border_radius=3)
             pygame.draw.rect(s, T.CYAN if hov else T.BORDER, r, 1, border_radius=3)
-            T.draw_text(s, label, r.center, 9, T.TEXT if hov else T.TEXT_DIM, anchor="center")
+            T.draw_text(s, label, r.center, 11, T.TEXT if hov else T.TEXT_DIM, anchor="center")
             self.buttons.append((r, "loadout", lo.get("id", "")))
             cx += w_ + 6
         yy += 28
@@ -1509,7 +1509,7 @@ class Editor:
         hov = add_r.collidepoint(pygame.mouse.get_pos())
         pygame.draw.rect(s, (24, 52, 54) if hov else T.PANEL_SUNK, add_r, border_radius=3)
         pygame.draw.rect(s, T.GREEN if hov else T.BORDER, add_r, 1, border_radius=3)
-        T.draw_text(s, "＋ 添加武器", add_r.center, 9, T.GREEN if hov else T.TEXT_DIM,
+        T.draw_text(s, "＋ 添加武器", add_r.center, 11, T.GREEN if hov else T.TEXT_DIM,
                     anchor="center")
         self.buttons.append((add_r, "add_weapon", None))
         yy += 20
@@ -1518,7 +1518,7 @@ class Editor:
         entries = t.get("weapons", [])
         if not entries:
             T.draw_text(s, "该兵种尚未装备任何武器（可点击「添加武器」或套用预设挂载）",
-                        (x2, yy + 2), 10, T.TEXT_FAINT)
+                        (x2, yy + 2), 11, T.TEXT_FAINT)
             yy += 22
         for wi, entry in enumerate(entries):
             ref = entry if isinstance(entry, str) else entry.get("ref", "?")
@@ -1529,13 +1529,13 @@ class Editor:
             cw = catalog.get(ref, {})
             T.draw_text(s, str(cw.get("name", ref))[:22], (row.x + 8, row.centery), 11, T.TEXT,
                         anchor="midleft")
-            T.draw_text(s, ref, (row.x + 250, row.centery), 9, T.TEXT_FAINT, anchor="midleft")
+            T.draw_text(s, ref, (row.x + 250, row.centery), 11, T.TEXT_FAINT, anchor="midleft")
             if cw:
                 info = (f"射程 {cw.get('range_min', 0):.1f}-{cw.get('range_max', 0):.1f} · "
                         f"Pk {cw.get('pk', 0) * 100:.0f}% · 伤害 {cw.get('damage', 0):.0f} · "
                         f"{cw.get('kind', '')}")
-                T.draw_text(s, info, (row.x + 370, row.centery), 9, T.TEXT_FAINT, anchor="midleft")
-            T.draw_text(s, "备弹", (row.right - 150, row.centery), 10, T.TEXT_FAINT, anchor="midleft")
+                T.draw_text(s, info, (row.x + 370, row.centery), 11, T.TEXT_FAINT, anchor="midleft")
+            T.draw_text(s, "备弹", (row.right - 150, row.centery), 11, T.TEXT_FAINT, anchor="midleft")
             self._stepper(s, row.right - 112, yy + 3, ammo, ("ammo", (wi, -1)), ("ammo", (wi, 1)))
             xr = pygame.Rect(row.right - 28, yy + 5, 18, 16)
             hov = xr.collidepoint(pygame.mouse.get_pos())
@@ -1546,7 +1546,7 @@ class Editor:
             yy += 28
             if yy > self.h - 96:
                 T.draw_text(s, f"… 另有 {len(entries) - wi - 1} 种武器未显示",
-                            (x2, yy), 9, T.TEXT_FAINT)
+                            (x2, yy), 11, T.TEXT_FAINT)
                 break
 
         # ---- 底部按钮 ----
@@ -1559,7 +1559,7 @@ class Editor:
                           ("del_unit", None), accent=T.RED)
         self._tool_button(s, pygame.Rect(250, by, 120, 30), "保存武器库", False,
                           ("save_armory", None), accent=T.GREEN)
-        T.draw_text(s, "修改后点击保存写入 data/units/armory.json", (382, by + 9), 10,
+        T.draw_text(s, "修改后点击保存写入 data/units/armory.json", (382, by + 9), 11,
                     T.TEXT_FAINT)
 
     def _draw_weapon_picker(self, s: pygame.Surface) -> None:
@@ -1574,12 +1574,12 @@ class Editor:
         t = self._selected_template()
         if t:
             T.draw_text(s, f"目标兵种：{t.get('name', '')}（{t.get('id', '')}）",
-                        (r.x + 110, r.y + 19), 10, T.TEXT_FAINT)
+                        (r.x + 110, r.y + 19), 11, T.TEXT_FAINT)
         close = pygame.Rect(r.right - 84, r.y + 12, 64, 24)
         hov = close.collidepoint(pygame.mouse.get_pos())
         pygame.draw.rect(s, (40, 24, 28) if hov else T.PANEL, close, border_radius=3)
         pygame.draw.rect(s, T.RED if hov else T.BORDER, close, 1, border_radius=3)
-        T.draw_text(s, "关闭", close.center, 10, T.TEXT_DIM, anchor="center")
+        T.draw_text(s, "关闭", close.center, 11, T.TEXT_DIM, anchor="center")
         self.buttons.append((close, "close_picker", None))
 
         list_r = pygame.Rect(r.x + 16, r.y + 46, r.width - 32, r.height - 64)
@@ -1606,22 +1606,22 @@ class Editor:
                 pygame.draw.rect(s, (20, 32, 44), rr)
             T.draw_text(s, str(wd.get("name", wid))[:24], (rr.x + 8, rr.centery), 11,
                         T.TEXT if not has else T.TEXT_FAINT, anchor="midleft")
-            T.draw_text(s, wid, (rr.x + 268, rr.centery), 9, T.TEXT_FAINT,
+            T.draw_text(s, wid, (rr.x + 268, rr.centery), 11, T.TEXT_FAINT,
                         anchor="midleft", mono=True)
             T.draw_text(s, f"{wd.get('range_min', 0):.1f}-{wd.get('range_max', 0):.1f}",
-                        (rr.x + 360, rr.centery), 9, T.TEXT_DIM, anchor="midleft", mono=True)
-            T.draw_text(s, f"Pk {wd.get('pk', 0) * 100:.0f}%", (rr.x + 430, rr.centery), 9,
+                        (rr.x + 360, rr.centery), 11, T.TEXT_DIM, anchor="midleft", mono=True)
+            T.draw_text(s, f"Pk {wd.get('pk', 0) * 100:.0f}%", (rr.x + 430, rr.centery), 11,
                         T.TEXT_DIM, anchor="midleft", mono=True)
-            T.draw_text(s, f"伤害 {wd.get('damage', 0):.0f}", (rr.x + 490, rr.centery), 9,
+            T.draw_text(s, f"伤害 {wd.get('damage', 0):.0f}", (rr.x + 490, rr.centery), 11,
                         T.TEXT_DIM, anchor="midleft", mono=True)
-            T.draw_text(s, str(wd.get("kind", "")), (rr.x + 566, rr.centery), 9,
+            T.draw_text(s, str(wd.get("kind", "")), (rr.x + 566, rr.centery), 11,
                         T.TEXT_FAINT, anchor="midleft")
             if has:
-                T.draw_text(s, "已装备", (rr.right - 8, rr.centery), 9, T.GREEN,
+                T.draw_text(s, "已装备", (rr.right - 8, rr.centery), 11, T.GREEN,
                             anchor="midright")
             self.buttons.append((rr, "pick", wid))
         T.draw_text(s, f"滚轮翻页 · 共 {len(cat)} 种武器 · 点击即加入（备弹取默认值，可再用 ± 调整）",
-                    (list_r.x + 4, list_r.bottom + 4), 9, T.TEXT_FAINT)
+                    (list_r.x + 4, list_r.bottom + 4), 11, T.TEXT_FAINT)
 
     def _stepper(self, s, x: int, y: int, value, minus: tuple, plus: tuple) -> None:
         rm = pygame.Rect(x, y, 20, 20)
@@ -1641,6 +1641,6 @@ class Editor:
         pygame.draw.rect(s, T.PANEL_SUNK, r)
         T.hline(s, 0, self.w, r.y, T.BORDER)
         msg = self.error or self.status
-        T.draw_text(s, msg[:120], (12, r.y + 5), 10, T.RED if self.error else T.TEXT_DIM)
-        T.draw_text(s, "Esc 返回 · Ctrl+S 保存", (self.w - 12, r.y + 5), 9,
+        T.draw_text(s, msg[:120], (12, r.y + 5), 11, T.RED if self.error else T.TEXT_DIM)
+        T.draw_text(s, "Esc 返回 · Ctrl+S 保存", (self.w - 12, r.y + 5), 11,
                     T.TEXT_FAINT, anchor="topright")

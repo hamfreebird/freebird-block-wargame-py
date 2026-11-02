@@ -24,6 +24,13 @@ for _stream in (sys.stdout, sys.stderr):
 import traceback
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
+# 把用户数据目录隔离到临时目录——测试会切换主题/语言并保存配置，
+# 不隔离就会污染玩家真实的 user_config.json、存档与想定。
+import tempfile
+_TEST_USER_DIR = tempfile.mkdtemp(prefix="bw_smoke_")
+os.environ["BLOCKWARGAME_USER_DIR"] = _TEST_USER_DIR
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
@@ -849,6 +856,51 @@ def main() -> int:
     from core.i18n import _BUILTIN_EN as _EN, _BUILTIN_ZH as _ZH
     check(set(_EN.keys()) == set(_ZH.keys()), "本地化：中英词条键集合一致")
 
+    # --- 呈现：系统菜单布局与字号下限 ---
+    from ui import theme as _T2
+    app.mode = "game"
+    app.show_menu = True
+    app._refresh_slots()
+    app.draw()
+    # 底部按钮必须在系统菜单面板内（曾经会顶出右边界 13px）
+    # 菜单项格式为 (矩形, 动作, 槽位)；底部按钮行没有槽位（slot is None）
+    _btns = sorted((r for r, _a, _sl in app.menu_rects if _sl is None),
+                   key=lambda r: r.left)
+    _panel = getattr(app, "menu_panel_rect", None)
+    check(bool(_btns) and _panel is not None
+          and all(b.left >= _panel.left and b.right <= _panel.right
+                  and b.top >= _panel.top and b.bottom <= _panel.bottom
+                  for b in _btns),
+          "系统菜单：底部按钮行全部在面板内")
+    # 相邻按钮之间必须留有间隙——宽度计算漏算间隙会让最后一个顶出面板
+    check(all(_btns[i].right <= _btns[i + 1].left for i in range(len(_btns) - 1)),
+          "系统菜单：底部按钮互不重叠")
+    app.show_menu = False
+
+    # 字号下限：界面里不应再出现小于 FS_TINY 的正文字号
+    import ast as _ast
+    import glob as _glob
+    _too_small: list[str] = []
+    for _f in sorted(_glob.glob("ui/*.py")):
+        _src = open(_f, encoding="utf-8").read()
+        for _node in _ast.walk(_ast.parse(_src)):
+            if (isinstance(_node, _ast.Call)
+                    and isinstance(_node.func, _ast.Attribute)
+                    and _node.func.attr == "draw_text"
+                    and len(_node.args) >= 4
+                    and isinstance(_node.args[3], _ast.Constant)
+                    and isinstance(_node.args[3].value, int)
+                    and _node.args[3].value < _T2.FS_TINY):
+                _too_small.append(f"{_f}:{_node.lineno}")
+    check(not _too_small,
+          f"字号：无小于 {_T2.FS_TINY} 号的正文"
+          + (f"（{_too_small[:3]}）" if _too_small else ""))
+
+    # 含中文的文本不应走等宽字体（Consolas 无中文字形）
+    check(_T2.render_text("传感器 5.0", 12, (255, 255, 255), mono=True).get_width()
+          > _T2.fonts().get(12, mono=True).size("传感器 5.0")[0],
+          "字体：含中文的等宽文本自动降级为中文字体")
+
     # --- 4.2 简报与战斗回顾 ---
     from ui.briefing import (build_briefing, build_debrief, summarize_force)
     app.mode = "menu"
@@ -893,7 +945,10 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        _rc = main()
     except Exception:
         traceback.print_exc()
-        sys.exit(1)
+        _rc = 1
+    finally:
+        shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
+    sys.exit(_rc)

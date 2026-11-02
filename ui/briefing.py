@@ -297,12 +297,12 @@ def _draw_force_column(s: pygame.Surface, r: pygame.Rect, f: ForceSummary,
                     T.mix(T.CYAN, T.TEXT, 0.3))
         y += 17
     # 主要单位
-    T.draw_text(s, "主要单位", (r.x, y), 10, T.TEXT_FAINT)
+    T.draw_text(s, "主要单位", (r.x, y), 11, T.TEXT_FAINT)
     y += 16
     for name, cls in f.top_units[:5]:
         short = name[:12]
         T.draw_text(s, short, (r.x, y), 11, T.TEXT)
-        T.draw_text(s, cls, (r.right, y), 10, T.TEXT_FAINT, anchor="topright")
+        T.draw_text(s, cls, (r.right, y), 11, T.TEXT_FAINT, anchor="topright")
         y += 17
 
 
@@ -370,9 +370,9 @@ def draw_debrief(s: pygame.Surface, d: DebriefData, mouse: tuple[int, int],
                              pygame.Rect(rb_x + bar_w - rw, yy + 2, rw, 12), border_radius=3)
         T.draw_text(s, str(rv), (rb_x + bar_w + 8, yy), 12, T.TEXT, mono=True)
         yy += 24
-    T.draw_text(s, tr("over.blue"), (bar_x, ty + 4), 10, T.side_color(Side.BLUE),
+    T.draw_text(s, tr("over.blue"), (bar_x, ty + 4), 11, T.side_color(Side.BLUE),
                 bold=True)
-    T.draw_text(s, tr("over.red"), (bar_x + bar_w + 80, ty + 4), 10,
+    T.draw_text(s, tr("over.red"), (bar_x + bar_w + 80, ty + 4), 11,
                 T.side_color(Side.RED), bold=True)
 
     # VP 曲线
@@ -423,10 +423,10 @@ def _draw_vp_curve(s: pygame.Surface, rect: pygame.Rect,
     # 末值标注
     last = curve[-1]
     T.draw_text(s, str(last[1]), (pt(n - 1, last[1])[0] - 6,
-                                   pt(n - 1, last[1])[1] - 12), 10,
+                                   pt(n - 1, last[1])[1] - 12), 11,
                 T.side_color(Side.BLUE), anchor="topright", mono=True)
     T.draw_text(s, str(last[2]), (pt(n - 1, last[2])[0] + 6,
-                                  pt(n - 1, last[2])[1] - 12), 10,
+                                  pt(n - 1, last[2])[1] - 12), 11,
                 T.side_color(Side.RED), anchor="topleft", mono=True)
 
 

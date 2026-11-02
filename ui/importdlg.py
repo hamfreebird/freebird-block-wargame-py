@@ -179,7 +179,7 @@ class ImportDialog:
         T.draw_text(s, "导入想定包", (r.x + 22, r.y + 16), 16, T.TEXT, bold=True)
         T.draw_text(s, "从社区包目录选择要导入的 .bwscn 文件",
                     (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
-        T.draw_text(s, self.directory, (r.right - 22, r.y + 20), 10, T.TEXT_FAINT,
+        T.draw_text(s, self.directory, (r.right - 22, r.y + 20), 11, T.TEXT_FAINT,
                     anchor="topright")
         T.hline(s, r.x + 20, r.right - 20, r.y + self.HEADER_H - 8, T.BORDER)
 
@@ -210,9 +210,9 @@ class ImportDialog:
                             bold=active)
                 sub = (f"{item.author} · {item.map_count} 张想定 · {item.size_kb} KB"
                        if item.readable else f"无法读取：{item.error[:28]}")
-                T.draw_text(s, sub, (row.x + 10, row.y + 22), 10,
+                T.draw_text(s, sub, (row.x + 10, row.y + 22), 11,
                             T.TEXT_DIM if item.readable else T.RED)
-                T.draw_text(s, item.mtime, (row.right - 10, row.y + 12), 10, T.TEXT_FAINT,
+                T.draw_text(s, item.mtime, (row.right - 10, row.y + 12), 11, T.TEXT_FAINT,
                             anchor="topright", mono=True)
                 self.rows.append((pygame.Rect(row), item))
 
@@ -239,7 +239,7 @@ class ImportDialog:
             T.draw_text(s, self.message, (r.x + 128, by + 9), 11, self.message_color)
         elif len(self.items) > 1:
             T.draw_text(s, "↑↓ 选择 · Enter 导入 · 悬停点击亦可",
-                        (r.x + 128, by + 9), 10, T.TEXT_FAINT)
+                        (r.x + 128, by + 9), 11, T.TEXT_FAINT)
 
 
 __all__ = ["ImportDialog", "PackageItem", "scan_packages"]

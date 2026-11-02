@@ -121,12 +121,16 @@ python main.py --check          # 数据校验（地图 + 武器库）
 python main.py --sim 16         # 无界面双 AI 推演
 python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档往返）
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
-python tools/smoke_test.py      # 无界面 UI 冒烟测试（163 项断言）
+python tools/smoke_test.py      # 无界面 UI 冒烟测试（167 项断言）
 python tools/test_stack.py      # 同格共存规则测试
 ```
 
 CI 在 Python 3.9–3.13 × Ubuntu/Windows 矩阵上跑完整校验；布局自检与冒烟测试
 会在回归发生时直接让流水线失败。
+
+自检脚本会把用户数据目录重定向到临时目录，**不会污染你的设置与存档**。
+需要手动隔离时设 `BLOCKWARGAME_USER_DIR=<路径>` 即可；无声卡环境另加
+`SDL_AUDIODRIVER=dummy` 与 `BLOCKWARGAME_NO_AUDIO=1`。
 
 ---
 
@@ -150,10 +154,13 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 
 ## 路线图
 
-近期计划见 [ROADMAP.md](ROADMAP.md)。当前进行中的版本：
+近期计划见 [ROADMAP.md](ROADMAP.md)。已发布版本与后续规划：
 
-- **v1.5**（进行中）—— 同格共存机制 · 128×128 大型战役想定 · 美方兵种扩充
-- **v2.0**（规划中）—— 对局回放 · 联机对战 · 模组化扩展
+- **v1.5**（已发布）—— 同格共存机制 · 128×128 大型战役想定 · 美方兵种扩充
+- **v2.0**（规划中）—— 对局回放 · 模组接口 · 教学想定扩写
+- **v2.1** —— 战役编辑器 · 单位图标包 · 性能提升
+- **v2.2** —— AI 战术库 · 大地图寻路优化 · 规则钩子系统 · 平衡体检
+- **v3.0** —— 官方模组 SDK · 多语言扩展 · 无障碍完善
 
 ---
 

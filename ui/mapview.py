@@ -394,7 +394,7 @@ class MapView:
             pygame.draw.line(surf, col, (cx, cy - s), (cx, cy + s), 1)
             if self.tile >= 20:
                 T.draw_text(surf, "射界" if fm.prepared else "标定",
-                            (cx, cy - rad - 12), 9, col, anchor="midbottom")
+                            (cx, cy - rad - 12), 11, col, anchor="midbottom")
 
     def _draw_supply_lines(self, surf: pygame.Surface) -> None:
         """补给线：从后勤枢纽到受补给的部队。
@@ -451,7 +451,7 @@ class MapView:
             pygame.draw.polygon(surf, (250, 250, 250), [(cx, cy - s), (cx + s, cy),
                                                         (cx, cy + s), (cx - s, cy)], 1)
             if self.tile >= 26:
-                T.draw_text(surf, t.objective_name, (cx, r.bottom + 1), 10,
+                T.draw_text(surf, t.objective_name, (cx, r.bottom + 1), 11,
                             (235, 228, 200), anchor="midtop")
 
     def _draw_forts(self, surf: pygame.Surface) -> None:
@@ -544,7 +544,7 @@ class MapView:
                 p1 = (a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1)
                 pygame.draw.line(surf, col, p0, p1, 1)
             pygame.draw.circle(surf, col, b, 3, 1)
-            T.draw_text(surf, f"{m.eta}", (b[0] + 5, b[1] - 12), 10, col, bold=True)
+            T.draw_text(surf, f"{m.eta}", (b[0] + 5, b[1] - 12), 11, col, bold=True)
 
     # -- 单位 -------------------------------------------------------------
     def _draw_units(self, surf: pygame.Surface) -> None:
@@ -585,7 +585,7 @@ class MapView:
                 rr = r.move(-i * 3, -i * 3)
                 self._draw_unit_token(surf, u, rr, lvl, stacked=True)
             if len(air_items) > 1:
-                T.draw_text(surf, f"×{len(air_items)}", (r.right - 1, r.y + 1), 9,
+                T.draw_text(surf, f"×{len(air_items)}", (r.right - 1, r.y + 1), 11,
                             T.mix(T.AMBER, T.WHITE, 0.4), anchor="topright", bold=True)
 
     def _draw_unit_token(self, surf: pygame.Surface, u: Unit, r: pygame.Rect,
@@ -629,7 +629,7 @@ class MapView:
 
         # 名称（放大后显示）
         if ts >= 34:
-            T.draw_text(surf, u.template.short, (r.centerx, r.bottom + 1), 10,
+            T.draw_text(surf, u.template.short, (r.centerx, r.bottom + 1), 11,
                         cols["text"], anchor="midtop")
         # 状态角标
         if u.template.jam_strength > 0 and u.jam_on:

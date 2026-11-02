@@ -239,7 +239,7 @@ class SettingsPanel:
 
         if conflicts:
             msg = f"注意：{len(conflicts)} 个按键被多个动作共用，已按列表优先顺序生效"
-            T.draw_text(s, msg, (r.x + 176, by + 9), 10, T.AMBER)
+            T.draw_text(s, msg, (r.x + 176, by + 9), 11, T.AMBER)
         elif self.message:
             T.draw_text(s, self.message, (r.x + 176, by + 9), 11, self.message_color)
 

@@ -70,10 +70,21 @@ class Button:
         label = self.label
         if self.hotkey:
             label = f"{self.label}"
-        T.draw_text(surf, label, r.center, self.size, fg, bold=self.kind == "primary",
+        # 标签过长时自动降字号——中文标签（如「筑工事 0/3」）在窄按钮里
+        # 会顶到边框，字号自适应比硬编码更省事
+        size = self.size
+        avail = r.width - 10
+        if avail > 10 and T.text_width(label, size) > avail:
+            for cand in range(size - 1, 7, -1):
+                if T.text_width(label, cand) <= avail:
+                    size = cand
+                    break
+            else:
+                size = 8
+        T.draw_text(surf, label, r.center, size, fg, bold=self.kind == "primary",
                     anchor="center")
         if self.hotkey and r.width > 54:
-            T.draw_text(surf, self.hotkey, (r.right - 6, r.centery + 1), self.size - 3,
+            T.draw_text(surf, self.hotkey, (r.right - 6, r.centery + 1), self.size - 11,
                         T.TEXT_FAINT, anchor="midright")
 
 

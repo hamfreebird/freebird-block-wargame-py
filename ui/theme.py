@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -300,6 +301,22 @@ def __dir__() -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
+# 字号规范
+# --------------------------------------------------------------------------- #
+# 小字号在 1500×920 的窗口上确实难读，投影与高分屏上更甚。
+# 这里统一定义字号档位，调用方用常量而不是魔法数字——
+# 想整体调大只需改这一处。
+FS_TINY = 10        # 角标、标签、单位缩写
+FS_SMALL = 11       # 次要说明、状态行
+FS_BODY = 12        # 正文
+FS_LABEL = 13       # 字段名
+FS_SUBTITLE = 14    # 小标题
+FS_TITLE = 16       # 区块标题
+FS_HEAD = 18        # 大标题
+FS_HERO = 24        # 结算大标题
+
+
+# --------------------------------------------------------------------------- #
 # 字体
 # --------------------------------------------------------------------------- #
 _FONT_CANDIDATES_CN = [
@@ -347,9 +364,12 @@ class Fonts:
             return self._cache[key]
         font: pygame.font.Font | None = None
         if mono:
-            path = _first_existing(tuple(_FONT_MONO))
-            if path:
-                font = pygame.font.Font(path, size)
+            # 等宽字体（Consolas 等）**没有中文字形**——直接用会让中文
+            # 渲染成方框或字距错乱。SysFont 可以指定 fallback 链：
+            # 数字走 Consolas，中文回落到雅黑。
+            font = pygame.font.SysFont(
+                "consolas,couriernew,dejavusansmono,monospace,"
+                "microsoftyahei,simhei", size, bold=bold)
         if font is None:
             path = _first_existing(tuple(_FONT_CANDIDATES_BOLD if bold else _FONT_CANDIDATES_CN))
             if path:
@@ -380,8 +400,16 @@ _text_cache: dict[tuple, pygame.Surface] = {}
 _CACHE_LIMIT = 3000
 
 
+_CN_CHARS = re.compile(r"[　-〿一-鿿＀-￯]")
+
+
 def render_text(s: str, size: int, color: tuple[int, int, int],
                 bold: bool = False, mono: bool = False) -> pygame.Surface:
+    # 等宽字体（Consolas 等）**没有中文字形**——用它渲染中文会出现
+    # 方框或字距错乱。含中文的文本一律改用中文字体；
+    # 纯数字 / 纯拉丁文本仍走等宽，保证表格对齐。
+    if mono and _CN_CHARS.search(s):
+        mono = False
     key = (s, size, color, bold, mono)
     surf = _text_cache.get(key)
     if surf is None:

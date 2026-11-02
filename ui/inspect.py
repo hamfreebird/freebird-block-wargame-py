@@ -127,13 +127,13 @@ class InspectCard:
         pygame.draw.rect(surf, side_col, pygame.Rect(r.x + 1, r.y + 1, 3, r.height - 2))
         title_col = T.TEXT if unit.side is viewer_side else T.WHITE
         T.draw_text(surf, unit.name, (r.x + self.PAD, r.y + 6), 12, title_col, bold=True)
-        T.draw_text(surf, unit.side.label, (r.right - self.PAD, r.y + 7), 9, side_col,
+        T.draw_text(surf, unit.side.label, (r.right - self.PAD, r.y + 7), 10, side_col,
                     anchor="topright")
 
         yy = r.y + self.HEAD_H
         for key, val, col in rows:
-            T.draw_text(surf, key, (r.x + self.PAD, yy), 10, T.TEXT_FAINT)
-            T.draw_text(surf, val, (r.right - self.PAD, yy), 10, col, anchor="topright")
+            T.draw_text(surf, key, (r.x + self.PAD, yy), 11, T.TEXT_FAINT)
+            T.draw_text(surf, val, (r.right - self.PAD, yy), 11, col, anchor="topright")
             yy += self.ROW_H
 
 

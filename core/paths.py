@@ -20,7 +20,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _user_data_dir() -> str:
-    """按平台返回用户数据目录。"""
+    """按平台返回用户数据目录。
+
+    环境变量 `BLOCKWARGAME_USER_DIR` 可覆盖整个用户目录——自动化测试
+    用它把配置、存档、想定隔离到临时目录，避免污染玩家的真实数据。
+    """
+    override = os.environ.get("BLOCKWARGAME_USER_DIR", "").strip()
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
     if sys.platform.startswith("win"):
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         return os.path.join(base, "BlockWargame")
