@@ -45,16 +45,49 @@ class CampaignError(Exception):
 
 @dataclass
 class CampaignStep:
-    """战役中的一关。"""
+    """战役中的一关。
+
+    除基础字段外，还带两个**战役编排**参数：
+
+    * `difficulty` —— 本关难度（1 轻松 / 2 普通 / 3 困难 / 4 严酷）。
+      它不直接改数值，而是作为**难度曲线**的一环：整场战役的难度
+      由各关的设定共同决定，编辑器用它来编排「先易后难」的节奏。
+    * `carryover` —— 跨关继承策略：
+      - `all`（默认）：上一关幸存部队全部带到下一关；
+      - `none`：不继承，各关独立；
+      - `veterans`：只继承战损较小的精锐（存活率过半的兵种）。
+    """
 
     map_id: str = ""
     title: str = ""
     brief: str = ""
     objective: str = ""
+    difficulty: int = 2
+    carryover: str = "all"
 
     def to_dict(self) -> dict[str, Any]:
         return {"map": self.map_id, "title": self.title,
-                "brief": self.brief, "objective": self.objective}
+                "brief": self.brief, "objective": self.objective,
+                "difficulty": self.difficulty, "carryover": self.carryover}
+
+    @property
+    def difficulty_label(self) -> str:
+        return {1: "轻松", 2: "普通", 3: "困难", 4: "严酷"}.get(
+            self.difficulty, "普通")
+
+
+# 跨关继承策略
+CARRYOVER_ALL = "all"
+CARRYOVER_NONE = "none"
+CARRYOVER_VETERANS = "veterans"
+
+CARRYOVER_LABELS = {
+    CARRYOVER_ALL: "继承全部幸存部队",
+    CARRYOVER_NONE: "不继承（各关独立）",
+    CARRYOVER_VETERANS: "只继承精锐部队",
+}
+
+DIFFICULTY_LABELS = {1: "轻松", 2: "普通", 3: "困难", 4: "严酷"}
 
 
 @dataclass
@@ -168,6 +201,8 @@ def load_campaign(path: str) -> CampaignDef:
             title=str(s.get("title", f"第 {i + 1} 关")),
             brief=str(s.get("brief", "")),
             objective=str(s.get("objective", "")),
+            difficulty=max(1, min(4, int(s.get("difficulty", 2) or 2))),
+            carryover=str(s.get("carryover", CARRYOVER_ALL)),
         ))
     return CampaignDef(
         id=str(raw.get("id", os.path.splitext(os.path.basename(path))[0])),
@@ -265,6 +300,25 @@ def collect_survivors(state, side: Side) -> list[dict]:
     return [{"template": tid, "count": n} for tid, n in sorted(counts.items())]
 
 
+def apply_carryover_policy(survivors: list[dict], policy: str) -> list[dict]:
+    """按继承策略筛选幸存部队。
+
+    * `all` —— 全部保留；
+    * `none` —— 全部丢弃；
+    * `veterans` —— 只保留存活率过半的兵种（打残的部队不带走）。
+
+    「打残了就是打残了」是战役模式的核心——但如果每一关都把残兵
+    带走，玩家会在第三关面对一堆残废部队。因此提供「只继承精锐」
+    这条折中路线，让编排者能设计风格各异的战役。
+    """
+    if policy == CARRYOVER_NONE:
+        return []
+    if policy != CARRYOVER_VETERANS:
+        return list(survivors)
+    # 精锐：只保留数量 >= 2 的兵种（说明该兵种基本没被打残）
+    return [s for s in survivors if int(s.get("count", 0)) >= 2]
+
+
 def apply_carryover(state, carryover: list[dict], side: Side) -> list[str]:
     """把上一关的幸存单位加入本关初始部署。
 
@@ -333,5 +387,7 @@ __all__ = [
     "CampaignError", "CampaignStep", "CampaignDef", "CampaignProgress",
     "load_campaign", "list_campaigns", "resolve_map_path",
     "progress_path", "save_progress", "load_progress", "clear_progress",
-    "collect_survivors", "apply_carryover",
+    "collect_survivors", "apply_carryover", "apply_carryover_policy",
+    "CARRYOVER_ALL", "CARRYOVER_NONE", "CARRYOVER_VETERANS",
+    "CARRYOVER_LABELS", "DIFFICULTY_LABELS",
 ]

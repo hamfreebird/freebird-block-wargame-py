@@ -15,6 +15,7 @@ import pygame
 from core.config import ALL_ACTIONS, ACTION_LABELS, DEFAULT_BINDINGS, SLOT_ACTIONS, UserConfig, label_for
 from core import i18n
 from core.i18n import available_languages, language_name, tr
+from core import icons as _icons
 
 from . import theme as T
 from .keymap import capture_key_name, hotkey_label, key_name
@@ -26,9 +27,10 @@ class SettingsPanel:
     ROW_H = 26
     HEADER_H = 92
     FOOTER_H = 62
-    OPTIONS_H = 108          # 主题 / 音效 / 语言区块高度
+    OPTIONS_H = 136          # 主题 / 图标包 / 音效 / 语言区块高度
 
-    def __init__(self, cfg: UserConfig, on_theme=None, on_sound=None, on_language=None):
+    def __init__(self, cfg: UserConfig, on_theme=None, on_sound=None, on_language=None,
+                 on_icons=None):
         self.cfg = cfg
         self.capturing: str = ""        # 正在等待按键的动作 ID
         self.scroll = 0
@@ -38,17 +40,21 @@ class SettingsPanel:
         self.rows: list[tuple[pygame.Rect, str, str]] = []
         self._btn_reset = pygame.Rect(0, 0, 0, 0)
         self._btn_close = pygame.Rect(0, 0, 0, 0)
-        # 回调：主题 / 音效 / 语言的即时应用
+        # 回调：主题 / 音效 / 语言 / 图标包的即时应用
         self.on_theme = on_theme
         self.on_sound = on_sound
         self.on_language = on_language
+        self.on_icons = on_icons
         # 选项控件
         self._theme_buttons: list[tuple[pygame.Rect, str]] = []
         self._lang_buttons: list[tuple[pygame.Rect, str]] = []
+        self._icon_buttons: list[tuple[pygame.Rect, str]] = []
         self._sound_btn = pygame.Rect(0, 0, 0, 0)
         self._vol_left = pygame.Rect(0, 0, 0, 0)
         self._vol_right = pygame.Rect(0, 0, 0, 0)
         self._vol_bar = pygame.Rect(0, 0, 0, 0)
+        # 可用图标包（启动时扫描一次）
+        self._icon_packs = _icons.list_packs()
 
     # ------------------------------------------------------------------ #
     # 交互
@@ -93,6 +99,16 @@ class SettingsPanel:
                             self.on_language(code)
                         self.message = f"界面语言：{language_name(code)}"
                         self.message_color = T.GREEN
+                    return True
+            # 图标包切换
+            for rect, pid in self._icon_buttons:
+                if rect.collidepoint(e.pos):
+                    self.cfg.set_pref("icon_pack", "" if pid == "__none__" else pid)
+                    if self.on_icons:
+                        self.on_icons(self.cfg.pref("icon_pack", ""))
+                    name = "内置矢量图形" if pid == "__none__" else pid
+                    self.message = f"单位图标包：{name}"
+                    self.message_color = T.GREEN
                     return True
             # 音效开关
             if self._sound_btn.collidepoint(e.pos):
@@ -266,6 +282,29 @@ class SettingsPanel:
                         anchor="center")
             self._theme_buttons.append((b, tid))
             tx += bw + 8
+        y += 34
+
+        # -- 图标包 --
+        T.draw_text(s, "单位图标包", (r.x + 22, y), 11, T.CYAN, bold=True)
+        self._icon_buttons = []
+        ix = r.x + 100
+        cur = str(self.cfg.pref("icon_pack", "") or "")
+        entries: list[tuple[str, str]] = [("__none__", "内置矢量")]
+        for p in self._icon_packs:
+            entries.append((p.id, p.name))
+        for pid, name in entries:
+            bw = max(72, T.text_width(name, 11) + 20)
+            b = pygame.Rect(ix, y - 4, bw, 24)
+            active = (cur == "" and pid == "__none__") or (cur == pid)
+            hover = b.collidepoint(pygame.mouse.get_pos())
+            fill = T.mix(T.PANEL, T.CYAN, 0.26) if active else (T.PANEL_HI if hover else T.PANEL)
+            pygame.draw.rect(s, fill, b, border_radius=3)
+            pygame.draw.rect(s, T.CYAN if active else (T.BORDER_HI if hover else T.BORDER),
+                             b, 1, border_radius=3)
+            T.draw_text(s, name, b.center, 11, T.TEXT if active else T.TEXT_DIM,
+                        anchor="center")
+            self._icon_buttons.append((b, pid))
+            ix += bw + 8
         y += 34
 
         # -- 音效 --

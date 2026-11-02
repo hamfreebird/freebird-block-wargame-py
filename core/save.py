@@ -273,6 +273,9 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         if tile is not None:
             o.holder = tile.owner
 
+    # 地块状态已从存档恢复，渲染层的地块索引需要重建
+    state.map_epoch += 1
+
     # 3) 在飞弹药
     missiles: list[Missile] = []
     for d in data.get("missiles", []):

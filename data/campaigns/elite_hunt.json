@@ -1,0 +1,25 @@
+{
+ "id": "elite_hunt",
+ "name": "精锐猎杀 · 战役",
+ "description": "两关速攻：第一关轻松开局、允许全部继承；第二关难度拉满，且只带精锐——上一关打残的部队不会跟你来。想赢就得第一关就打得漂亮。",
+ "author": "hamfreebird",
+ "difficulty": "hard",
+ "steps": [
+  {
+   "map": "training_ground",
+   "title": "第一阶段 · 练兵",
+   "brief": "新兵训练场，熟悉各兵种的射程与交战流程。这里不需要拼命——保存实力才是这一关的目的。",
+   "objective": "熟悉战场，保存实力",
+   "difficulty": 1,
+   "carryover": "all"
+  },
+  {
+   "map": "strait_confrontation",
+   "title": "第二阶段 · 决战",
+   "brief": "海峡全面交战。红方投入主力舰艇与远程火力——而你只带得上一关的精锐。打残的部队不会跟来。",
+   "objective": "在大型战役中击溃红方主力",
+   "difficulty": 4,
+   "carryover": "veterans"
+  }
+ ]
+}

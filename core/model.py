@@ -252,6 +252,11 @@ class Unit:
     mission: str = "strike"          # 航空兵任务剖面：strike / cap / ferry
     fire_mission: FireMission | None = None   # 火力准备：已登记的射界
     order: Order | None = None                 # 上级下达的当前指令
+    # 派生值缓存：传感器最大射程（模板在一局内不变，算一次即可）
+    _sensor_range_cache: float | None = field(default=None, repr=False)
+    # 探测世代号：单位状态一变就递增。探测缓存的键包含它，
+    # 状态一变旧结论自动作废，不必逐一维护失效清单。
+    detect_gen: int = field(default=0, repr=False)
 
     @property
     def has_fire_mission(self) -> bool:
@@ -314,7 +319,16 @@ class Unit:
         return any(self.ammo.get(w.id, 0) > 0 for w in self.template.weapons)
 
     def best_sensor_range(self) -> float:
-        return max((s.range_max for s in self.template.sensors), default=0.0)
+        """最大传感器探测距离（格）。
+
+        结果缓存在实例上：探测解算会对每个「观测者×目标」组合反复
+        询问这个值，而传感器列表在一局内是固定的。
+        """
+        cached = self._sensor_range_cache
+        if cached is None:
+            cached = max((s.range_max for s in self.template.sensors), default=0.0)
+            self._sensor_range_cache = cached
+        return cached
 
     def is_emitting(self) -> bool:
         # 雷达诱饵模拟辐射源，可吸引反辐射导弹

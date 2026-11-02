@@ -91,10 +91,13 @@ class Editor:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
         self.w, self.h = screen.get_size()
-        self.tab = "map"        # map / units
+        self.tab = "map"        # map / units / campaign
         self.status = ""
         self.error = ""
         self.quit = False
+        # 战役编辑器（第三个标签页）——单独成模块，避免本文件过长
+        from .campaign_editor import CampaignEditor
+        self.campaign_editor = CampaignEditor(self)
 
         self.tile = 20
         self.ox = 0.0
@@ -353,6 +356,12 @@ class Editor:
     # 事件
     # ------------------------------------------------------------------ #
     def handle_event(self, e: pygame.event.Event) -> None:
+        # 战役标签页有独立的交互体系，全部事件交给它处理
+        if self.tab == "campaign" and e.type != pygame.VIDEORESIZE:
+            self.campaign_editor.handle_event(e)
+            self.status = self.campaign_editor.status
+            self.error = self.campaign_editor.error
+            return
         if e.type == pygame.VIDEORESIZE:
             self.w, self.h = max(1100, e.w), max(720, e.h)
             self._bind_inputs()
@@ -429,6 +438,8 @@ class Editor:
                 self.tab = "map"
             elif pygame.Rect(96, 8, 76, 28).collidepoint(pos):
                 self.tab = "units"
+            elif pygame.Rect(178, 8, 76, 28).collidepoint(pos):
+                self.tab = "campaign"
             elif pygame.Rect(self.w - 96, 8, 82, 28).collidepoint(pos):
                 self.quit = True
             return
@@ -1061,8 +1072,10 @@ class Editor:
         if self.tab == "map":
             self._draw_map(s)
             self._draw_map_panel(s)
-        else:
+        elif self.tab == "units":
             self._draw_units_panel(s)
+        else:
+            self.campaign_editor.draw(s)
         if self.picker_open:
             self.buttons = []          # 弹层独占交互，避免穿透到底层控件
             self._draw_weapon_picker(s)
@@ -1072,13 +1085,14 @@ class Editor:
         pygame.draw.rect(s, T.PANEL, pygame.Rect(0, 0, self.w, 44))
         T.hline(s, 0, self.w, 43, T.BORDER)
         for key, label, rect in (("map", "地图编辑", pygame.Rect(14, 8, 76, 28)),
-                                 ("units", "武器编辑", pygame.Rect(96, 8, 76, 28))):
+                                 ("units", "武器编辑", pygame.Rect(96, 8, 76, 28)),
+                                 ("campaign", "战役编排", pygame.Rect(178, 8, 76, 28))):
             active = self.tab == key
             pygame.draw.rect(s, T.PANEL_HI if active else T.PANEL_SUNK, rect, border_radius=3)
             if active:
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(rect.x, rect.bottom - 2, rect.width, 2))
             T.draw_text(s, label, rect.center, 12, T.TEXT if active else T.TEXT_FAINT, anchor="center")
-        T.draw_text(s, "方块兵棋 · 可视化编辑器", (190, 14), 13, T.TEXT_DIM)
+        T.draw_text(s, "方块兵棋 · 可视化编辑器", (272, 14), 13, T.TEXT_DIM)
         if self.path:
             T.draw_text(s, os.path.basename(self.path), (390, 15), 11, T.TEXT_FAINT)
         # 导出社区想定包
@@ -1642,5 +1656,9 @@ class Editor:
         T.hline(s, 0, self.w, r.y, T.BORDER)
         msg = self.error or self.status
         T.draw_text(s, msg[:120], (12, r.y + 5), 11, T.RED if self.error else T.TEXT_DIM)
-        T.draw_text(s, "Esc 返回 · Ctrl+S 保存", (self.w - 12, r.y + 5), 11,
+        if self.tab == "campaign":
+            hint = "Ctrl+S 保存 · Del 删除关卡 · ↑↓ 调整关卡顺序"
+        else:
+            hint = "Esc 返回 · Ctrl+S 保存"
+        T.draw_text(s, hint, (self.w - 12, r.y + 5), 11,
                     T.TEXT_FAINT, anchor="topright")

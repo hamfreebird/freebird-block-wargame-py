@@ -25,6 +25,7 @@ import pygame
 
 from core import mods as _mods
 from core import rules
+from core import icons
 from core.commands import (CMD_DATALINK, CMD_DECOY, CMD_END_TURN, CMD_FIRE,
                            CMD_FIRE_FACILITY, CMD_FORTIFY, CMD_HOLD, CMD_JAM,
                            CMD_MOVE, CMD_ORDER, CMD_PREPARE, CMD_PROFILE,
@@ -32,7 +33,8 @@ from core.commands import (CMD_DATALINK, CMD_DECOY, CMD_END_TURN, CMD_FIRE,
 from core import pkg as _pkg
 from core import i18n
 from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_carryover,
-                           collect_survivors, list_campaigns, load_campaign,
+                           apply_carryover_policy, collect_survivors, list_campaigns,
+                           load_campaign,
                            load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
 from core.replay import ReplayFile
@@ -175,6 +177,8 @@ class App:
         self.keymap = build_reverse(self.cfg)
         self.settings_panel: SettingsPanel | None = None
         self.show_settings = False
+        # -- v2.1：单位图标包（用户目录优先，空 = 内置矢量图形）--
+        icons.set_current_pack(str(self.cfg.pref("icon_pack", "") or ""))
 
         # -- v2.0：模组加载（用户目录优先，安装目录其次）--
         self.mods = _mods.load_all()
@@ -454,6 +458,16 @@ class App:
             self.audio.set_enabled(enabled)
             self.audio.set_volume(self.cfg.volume)
 
+    def _apply_icon_pack(self, pack_id: str) -> None:
+        """切换单位图标包（立即生效）。"""
+        self.cfg.set_pref("icon_pack", pack_id or "")
+        icons.set_current_pack(pack_id or "")
+        # 棋子与图标缓存都要重建，否则会残留旧图标的像素
+        if self.mapview is not None:
+            self.mapview._token_cache.clear()
+            self.mapview._vector_icons.clear()
+        icons.clear_cache()
+
     def _sfx(self, name: str) -> None:
         """播放音效（静音或混音器不可用时静默）。"""
         if self.audio is not None:
@@ -467,6 +481,7 @@ class App:
                 on_theme=self._apply_theme,
                 on_sound=self._apply_sound,
                 on_language=self._apply_language,
+                on_icons=self._apply_icon_pack,
             )
         self.show_settings = True
 
@@ -570,9 +585,18 @@ class App:
         if prog.vp:
             self.state.vp[Side.BLUE] += prog.vp.get("BLUE", 0)
             self.state.vp[Side.RED] += prog.vp.get("RED", 0)
+        # 难度曲线：难度越高，红方在本关起始就握有一定优势。
+        # 这让「编排难度」成为**可感知**的机制，而不只是个标签。
+        diff_bonus = (step.difficulty - 2) * 3
+        if diff_bonus:
+            self.state.vp[Side.RED] += max(0, diff_bonus)
+            self.state.vp[Side.BLUE] += max(0, -diff_bonus)
         self.state.log_message(None, f"战役「{camp.name}」· {step.title}", "system")
         if step.brief:
             self.state.log_message(None, step.brief, "system")
+        self.state.log_message(
+            None, f"本关难度：{step.difficulty_label}"
+                  + ("（红方起始占优）" if diff_bonus > 0 else ""), "system")
         self._layout_game()
         self._select_first_unit()
         self.set_status(f"{camp.name} · {step.title}", 6)
@@ -590,7 +614,9 @@ class App:
         prog.vp["RED"] = prog.vp.get("RED", 0) + self.state.vp[Side.RED]
         step = camp.steps[prog.step_index]
         prog.completed.append(step.map_id)
-        prog.carryover = collect_survivors(self.state, self.menu_side)
+        # 按本关的继承策略筛选幸存部队——下一关据此决定带多少兵过去
+        prog.carryover = apply_carryover_policy(
+            collect_survivors(self.state, self.menu_side), step.carryover)
         prog.step_index += 1
         prog.log.append(f"完成 {step.title}：累计 "
                         f"{prog.blue_vp}:{prog.red_vp}，幸存 {len(prog.carryover)} 类部队")

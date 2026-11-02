@@ -107,7 +107,19 @@ class GameState:
         self.sfx_events: list[str] = []
         # 位置索引（格坐标 → 单位列表），惰性重建
         self._pos_index: dict[tuple[int, int], list[Unit]] | None = None
+        # 地块版本号：目标点 / 工事 / 设施发生变化时递增。
+        # 渲染层据此判断自己的地块索引是否过期——这样 UI 不必每帧全图扫描，
+        # 而大地图（256×256 = 65536 格）的渲染开销与地图大小基本脱钩。
+        self.map_epoch = 0
         self.detection: dict[Side, dict[int, Detection]] = {Side.BLUE: {}, Side.RED: {}}
+        # 探测增量缓存：{(阵营, 观测者 uid, 目标 uid): 探测等级}。
+        # 玩家每一步操作都会触发一次探测刷新，全量重算在大型想定里
+        # 是可感知的卡顿。缓存 pair 结果并**精确失效**，让刷新只重算
+        # 真正受影响的那几对。
+        self._detect_cache: dict[tuple, Detection] = {}
+        self._detect_gen = 0            # 全局世代号：环境/干扰等全局变化时递增
+        self._detect_fp: dict[int, tuple] = {}   # 单位状态指纹 → 世代号
+        self._detect_global_fp: tuple = ()       # 全局指纹
         self.sat_recon: dict[Side, set[int]] = {Side.BLUE: set(), Side.RED: set()}
         self.sat_track: dict[int, Detection] = {}
         self.vp: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
@@ -291,6 +303,17 @@ class GameState:
                 self.emit_sfx("detect")
                 break          # 一次刷新只响一次，避免多个目标时噪声叠加
 
+    def touch_unit(self, unit: Unit) -> None:
+        """标记单位状态已变化（移动、开关雷达、压制等）。
+
+        探测结论依赖单位状态，因此状态一变就必须让相关缓存失效。
+        用**世代号**而不是逐一清理缓存条目：世代号进了缓存键，
+        状态一变键就变，旧结论自然作废——不必维护「哪些条目要删」的
+        清单，也就不会漏删。
+        """
+        unit.detect_gen += 1
+        self._detect_gen += 1
+
     def _init_gps(self) -> None:
         for side in (Side.BLUE, Side.RED):
             self.gps[side] = self._compute_gps(side)
@@ -429,6 +452,7 @@ class GameState:
         if t.fort > 0 and t.fort_owner is not Side.NEUTRAL and t.fort_owner is not unit.side:
             t.fort = 0
             t.fort_progress = 0
+            self.map_epoch += 1
             self.log_message(unit.side, f"{unit.name} 清除了 ({t.x},{t.y}) 的敌方工事", "combat")
         if t.facility is not Facility.NONE and t.owner is not unit.side:
             old = t.owner
@@ -718,6 +742,7 @@ class GameState:
                 if tgt_tile.fort == 0:
                     tgt_tile.fort_progress = 0
                 if tgt_tile.fort < before:
+                    self.map_epoch += 1
                     self.log_message(attacker.side,
                                      f"（{target.x},{target.y}）敌方工事被削弱至 Lv{tgt_tile.fort}",
                                      "combat")
@@ -813,6 +838,7 @@ class GameState:
             tile.fort = max(0, tile.fort - weapon.anti_fort)
             if tile.fort == 0:
                 tile.fort_progress = 0
+            self.map_epoch += 1
         self.add_fx("explosion", (tile.x, tile.y), None, ttl=0.9, color=(255, 160, 80),
                     text=f"-{total:.0f}")
         status = ""
@@ -1329,6 +1355,7 @@ class GameState:
         before = tile.fort
         tile.fort = min(3, tile.fort + gain)
         tile.fort_owner = unit.side
+        self.map_epoch += 1
         unit.mp = max(0.0, unit.mp - 1.0)
         unit.moved = True          # 构筑工事期间无法同时保持隐蔽机动
         self.refresh_detection()
@@ -1343,6 +1370,7 @@ class GameState:
 
     def _tick_fortifications(self) -> None:
         """工事维护：己方工兵/步兵驻守可修复，无人维护则逐步荒废。"""
+        changed = False
         for t in self.map.iter_tiles():
             if t.fort <= 0:
                 continue
@@ -1353,12 +1381,16 @@ class GameState:
                 if t.fort_progress >= 2 and t.fort < 3:
                     t.fort += 1
                     t.fort_progress = 0
+                    changed = True
             elif t.fort_owner is not Side.NEUTRAL:
                 # 无人维护：每 3 回合衰减 1 级
                 t.fort_progress += 1
                 if t.fort_progress >= 3:
                     t.fort = max(0, t.fort - 1)
                     t.fort_progress = 0
+                    changed = True
+        if changed:
+            self.map_epoch += 1
 
     def _tick_entrench(self) -> None:
         """驻守不动的部队构筑工事；机动后工事尽失。"""

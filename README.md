@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.5.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v2.1.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -82,6 +82,15 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **可复现随机** | 所有随机判定由对局种子派生，同种子必得同结果 |
 | **模组接口** | 第三方 Python 模块可注册新武器、新兵种并订阅规则钩子 |
 
+### 内容与性能（v2.1）
+
+| 机制 | 一句话 |
+|---|---|
+| **战役编辑器** | 可视化编排多关卡战役：关卡顺序、难度曲线、跨关继承策略 |
+| **单位图标包** | 兵种图标可替换成自制资源包，一套素材按阵营着色通用 |
+| **分块渲染** | 大地图只渲染视口内的地形块，内存与地图尺寸脱钩 |
+| **增量探测** | 空间索引 + 世代号缓存，只重算状态真正变化的目标 |
+
 ---
 
 ## 版本历程
@@ -95,6 +104,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v1.4** | 呈现与体验 | 战斗动画、作战简报与战斗回顾、四套主题（含两套色盲友好）、程序化音效、中英本地化 |
 | **v1.5** | 大型战役 | **同格共存机制**、**128×128 大型想定**、美方兵种扩充、性能优化 |
 | **v2.0** | 复现与扩展 | **对局回放**、**可复现随机流**、**模组接口**、**12 步空海天协同教学** |
+| **v2.1** | 内容与性能 | **可视化战役编辑器**、**可替换单位图标包**、**分块渲染 + 增量探测**（渲染提速 4.3 倍） |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -109,6 +119,7 @@ data/
   maps/*.json           想定文件（training_ground 教学想定、strait_confrontation 大型战役）
   units/armory.json     武器库（兵种 / 武器 / 传感器）
   campaigns/*.json      战役定义（多关卡串联）
+  icon_packs/*/         单位图标包（pack.json + 各兵种 PNG）
   lang/*.json           语言包（zh / en，可被用户数据目录覆盖）
 ```
 
@@ -117,6 +128,10 @@ data/
 1. **可视化编辑**——主菜单「地图 / 武器编辑器」，支持框选批量编辑与框选刷地形；
 2. **写 JSON**——照抄一份现有想定改。格式速查见
    [GAME_GUIDE 第 9 章](GAME_GUIDE.md#9-数据文件格式)。
+
+**想做多关卡战役？** 编辑器新增「战役编排」标签页：左边排关卡、右边填内容，
+底部有难度曲线。多关之间的**难度**与**继承策略**（全继承 / 只继承精锐 / 独立）
+都能在界面上直接设——不用写一行 JSON。
 
 **分享想定**——编辑器与系统菜单都能导出 `.bwscn` 想定包；主菜单「导入想定」
 可挑选安装。社区包放进用户数据目录的 `packages/` 即可。
@@ -134,6 +149,10 @@ python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
 python tools/test_mods.py       # 模组接口自检（注册 / 钩子 / 错误隔离）
 python tools/smoke_test.py      # 无界面 UI 冒烟测试（177 项断言）
 python tools/test_stack.py      # 同格共存规则测试
+python tools/test_icons.py      # 单位图标包自检
+python tools/test_campaign_editor.py   # 战役编辑器自检
+python tools/test_perf.py       # 性能回归自检（渲染 / 探测 / 结论一致性）
+python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 
 CI 在 Python 3.9–3.13 × Ubuntu/Windows 矩阵上跑完整校验；布局自检与冒烟测试
@@ -169,7 +188,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 
 - **v1.5**（已发布）—— 同格共存机制 · 128×128 大型战役想定 · 美方兵种扩充
 - **v2.0**（已发布）—— 对局回放 · 可复现随机流 · 模组接口 · 12 步教学
-- **v2.1** —— 战役编辑器 · 单位图标包 · 性能提升
+- **v2.1**（已发布）—— 战役编辑器 · 单位图标包 · 性能提升
 - **v2.2** —— AI 战术库 · 大地图寻路优化 · 规则钩子系统 · 平衡体检
 - **v3.0** —— 官方模组 SDK · 多语言扩展 · 无障碍完善
 

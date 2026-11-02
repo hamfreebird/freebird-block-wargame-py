@@ -344,6 +344,8 @@ def _do_objective(state: "GameState", ev: ScenarioEvent) -> str:
     tile.objective_name = ev.name or tile.objective_name or "新增目标点"
     tile.victory_points = ev.value if ev.value > 0 else tile.victory_points or 3
     tile.owner = owner
+    # 新增目标点会改变渲染层的地块索引，通知其重建
+    state.map_epoch += 1
     # 同步 objectives 列表
     for o in state.map.objectives:
         if o.x == ev.x and o.y == ev.y:

@@ -115,7 +115,27 @@ def has_los(state: "GameState", a: tuple[int, int], b: tuple[int, int],
 
     采用「高度剖面」模型：沿线插值出视线高度，与途经地块海拔比较。
     空中平台默认获得高度优势（可越过地形遮蔽）。
+
+    通视只取决于**地形海拔**——地图在一局内不会变（烟幕影响的是探测
+    距离而非视线），因此结果可以缓存。这是探测解算里第二热的地方。
     """
+    key = (a, b, observer_air, target_air)
+    cached = _los_cache.get(key)
+    if cached is not None:
+        return cached
+    result = _compute_los(state, a, b, observer_air, target_air)
+    if len(_los_cache) > 20000:
+        _los_cache.clear()
+    _los_cache[key] = result
+    return result
+
+
+# 通视缓存：地图地形在一局内不变
+_los_cache: dict[tuple, bool] = {}
+
+
+def _compute_los(state: "GameState", a: tuple[int, int], b: tuple[int, int],
+                  observer_air: bool, target_air: bool) -> bool:
     md = state.map
     ta = md.at(*a)
     tb = md.at(*b)
@@ -159,7 +179,40 @@ def jam_strength_at(state: "GameState", pos: tuple[int, int], victim_side,
     干扰机只能干扰它**实际具备**的频段，因此针对性关闭某类装备
     （关雷达 / 断数据链 / 转惯导）才是有效的反制。
     """
-    total = 0.0
+    return jam_field(state, victim_side, band).at(pos)
+
+
+# --------------------------------------------------------------------------- #
+# 干扰场缓存
+# --------------------------------------------------------------------------- #
+# 每次探测判定都要问「这个位置的雷达干扰有多强」，而每次都遍历全部
+# 单位找干扰机是纯浪费——干扰机的位置与开关在一次解算内是不变的。
+# 缓存整张干扰场，把 O(N) 降到 O(1) 查询。
+
+@dataclass
+class JamField:
+    """某方在某频段上受到的干扰场。
+
+    用「按格累加」的方式构建：遍历所有开机的敌方干扰机，
+    把它对覆盖范围内每一格的贡献累加进一张稀疏字典。
+    """
+
+    cells: dict[tuple[int, int], float] = field(default_factory=dict)
+    max_radius: float = 0.0
+
+    def at(self, pos: tuple[int, int]) -> float:
+        return self.cells.get(pos, 0.0)
+
+
+_jam_cache: dict[tuple, JamField] = {}
+
+
+def jam_field(state: "GameState", victim_side, band: str = "radar") -> JamField:
+    """取（并缓存）针对 victim_side 的指定频段干扰场。
+
+    缓存键包含所有干扰机的状态指纹——任一干扰机移动或开关都会重建。
+    """
+    jammers = []
     for u in state.units:
         if not u.alive or u.side is victim_side:
             continue
@@ -168,17 +221,42 @@ def jam_strength_at(state: "GameState", pos: tuple[int, int], victim_side,
             continue
         if band not in tpl.jam_bands:
             continue
+        if tpl.jam_radius <= 0:
+            continue
+        jammers.append(u)
+    if not jammers:
+        return JamField()
+
+    fp = tuple((u.uid, u.x, u.y, u.jam_on) for u in jammers)
+    key = (id(state), victim_side, band, fp)
+    cached = _jam_cache.get(key)
+    if cached is not None:
+        return cached
+
+    cells: dict[tuple[int, int], float] = {}
+    max_r = 0.0
+    for u in jammers:
+        tpl = u.template
         r = tpl.jam_radius
-        if r <= 0:
-            continue
-        d = dist(pos, (u.x, u.y))
-        if d > r:
-            continue
-        falloff = 1.0 - (d / r) ** 2 * 0.55   # 边缘衰减
-        # 不同频段的干扰效能不同：默认同权重，可由数据文件单独指定
+        max_r = max(max_r, r)
         weight = tpl.jam_band_weights.get(band, 1.0)
-        total += tpl.jam_strength * falloff * weight
-    return min(0.85, total)
+        strength = tpl.jam_strength * weight
+        x0, x1 = int(u.x - r), int(u.x + r) + 1
+        y0, y1 = int(u.y - r), int(u.y + r) + 1
+        for cy in range(y0, y1 + 1):
+            for cx in range(x0, x1 + 1):
+                d = dist((cx, cy), (u.x, u.y))
+                if d > r:
+                    continue
+                falloff = 1.0 - (d / r) ** 2 * 0.55   # 边缘衰减
+                cells[(cx, cy)] = cells.get((cx, cy), 0.0) + strength * falloff
+    # 上限裁剪：与原实现一致
+    field_obj = JamField(cells={k: min(0.85, v) for k, v in cells.items()},
+                         max_radius=max_r)
+    if len(_jam_cache) > 12:
+        _jam_cache.clear()
+    _jam_cache[key] = field_obj
+    return field_obj
 
 
 def gps_integrity(state: "GameState", side) -> float:
@@ -327,6 +405,18 @@ def evaluate_detection(state: "GameState", observer: Unit, target: Unit) -> Dete
 
 def detection_level(state: "GameState", viewer_side, target: Unit) -> Detection:
     """指定阵营对目标单位的探测等级（聚合全部己方传感器与情报来源）。"""
+    return _detection_level(state, viewer_side, target, None)
+
+
+def _detection_level(state: "GameState", viewer_side, target: Unit,
+                     index: "DetectionIndex | None") -> Detection:
+    """探测等级解算（可复用外部构建的空间索引）。
+
+    **增量**：单个「观测者 × 目标」的判定结果被缓存。缓存键包含**双方
+    所有影响判定的状态指纹**——只要任何一项变了，键就变了，旧结论自动
+    作废。这样既不需要在各处维护失效钩子（漏一个就会给出错误结果），
+    又能让「只挪动了一个单位」的操作只重算真正受影响的那几对。
+    """
     if target.side is viewer_side:
         return Detection.TRACKED
     if not target.alive:
@@ -348,19 +438,196 @@ def detection_level(state: "GameState", viewer_side, target: Unit) -> Detection:
     if target.uid in getattr(state, "sat_track", {}):
         base = Detection.TRACKED
 
+    cache = getattr(state, "_detect_cache", None)
+    env_key = _env_key(state)
+
     best = base
-    for obs in state.units:
-        if obs.side is not viewer_side or not obs.alive:
+    for obs in _candidate_observers(state, viewer_side, target, index):
+        # 距离剪枝：超出触及距离的观测者不可能探测到目标。
+        # 与原先的剪枝阈值一致，判定结论不变。
+        if obs.best_sensor_range() * 1.6 + 0.5 < dist_units(obs, target):
             continue
-        # 快速距离剪枝
-        if dist_units(obs, target) > obs.best_sensor_range() * 1.6 + 0.5:
-            continue
-        r = evaluate_detection(state, obs, target)
-        if r.level.level > best.level:
-            best = r.level
+        lvl = None
+        if cache is not None:
+            ck = (viewer_side.value, obs.uid, obs.detect_gen,
+                  target.uid, target.detect_gen, env_key, state._detect_gen)
+            lvl = cache.get(ck)
+        if lvl is None:
+            r = evaluate_detection(state, obs, target)
+            lvl = r.level
+            if cache is not None:
+                cache[ck] = lvl
+        if lvl.level > best.level:
+            best = lvl
             if best is Detection.TRACKED:
                 break
     return best
+
+
+def _env_key(state: "GameState") -> tuple:
+    """环境指纹：时段与天候一变，所有探测距离都要重算。"""
+    env = environment_for(state)
+    return (env.time_of_day, env.weather)
+
+
+# --------------------------------------------------------------------------- #
+# 探测加速：分层空间索引
+# --------------------------------------------------------------------------- #
+# 传感器射程有上限（当前数据里最大 22 格），因此「谁能看见谁」是
+# **强局部性**的：远处单位之间根本不可能互相探测。原先的做法是对每个
+# 目标遍历全部单位，复杂度 O(目标数 × 单位数)——在 256×256 的大型想定里
+# 会变成上万次无效的距离比较。
+#
+# 做法：把观测者按**射程档位**分层，每层按网格分桶。目标按各层的
+# 触及距离查询邻格，取并集。射程短的观测者（占大多数）不会因为少数
+# 远程单位而被迫被查询。
+#
+# 正确性：返回的候选集合是**保守超集**——可能包含最终探测不上的单位，
+# 但绝不会漏掉能探测上的单位，判定结论与全量遍历完全一致。
+
+# 单位数少于该阈值时直接全扫——建索引的固定开销反而更高
+_DIRECT_SCAN_LIMIT = 24
+
+
+class DetectionIndex:
+    """某一方观测者的空间索引。
+
+    **单网格**存所有观测者；查询时取邻格内的候选，再用距离精确剪枝。
+    网格边长按该方**最大观测半径**选取，使邻格查询的格数保持常数级：
+    边长取 reach/2 时，触及距离正好覆盖 5×5 格的邻域。
+
+    相比「按射程分档分层」，单网格的查询格数更少（不会因多档叠加而膨胀），
+    代价是近处会多出一些够不着的候选——但那只是一次廉价的距离比较，
+    比多扫几十个空格子划算得多。
+    """
+
+    __slots__ = ("cells", "cell", "reach")
+
+    def __init__(self, cells: dict[int, list[Unit]], cell: int, reach: float):
+        self.cells = cells
+        self.cell = cell
+        self.reach = reach
+
+    def candidates(self, tx: int, ty: int) -> list[Unit]:
+        """取可能观测到 (tx, ty) 的候选观测者（保守超集）。"""
+        out: list[Unit] = []
+        seen: set[int] = set()
+        cell = self.cell
+        reach = self.reach
+        span = int(reach // cell) + 1
+        cx, cy = tx // cell, ty // cell
+        for by in range(cy - span, cy + span + 1):
+            row = by << 20
+            for bx in range(cx - span, cx + span + 1):
+                bucket = self.cells.get(row + bx)
+                if not bucket:
+                    continue
+                for u in bucket:
+                    if u.uid in seen:
+                        continue
+                    seen.add(u.uid)
+                    out.append(u)
+        return out
+
+
+def _build_detection_index(state: "GameState", viewer_side) -> DetectionIndex | None:
+    """构建（并缓存）某方的观测者空间索引。
+
+    索引只在观测者集合或其位置变化时重建——用状态指纹判断。
+    目标移动不影响索引，所以「目标动、观测者不动」时索引一直复用。
+    """
+    observers = [u for u in state.units
+                 if u.side is viewer_side and u.alive and u.template.sensors]
+    if len(observers) <= _DIRECT_SCAN_LIMIT:
+        return None
+
+    # 指纹：观测者的 uid、位置、射程——任一变化则索引失效
+    fp = tuple((u.uid, u.x, u.y, u.best_sensor_range()) for u in observers)
+    key = (id(state), viewer_side, fp)
+    cached = _index_cache.get(key)
+    if cached is not None:
+        return cached
+
+    # 单网格：所有观测者按格子归档。
+    # 格子边长按最大触及距离的一半选取——触及距离正好覆盖 5×5 格的
+    # 邻域：格子更大则近处候选过多，更小则访问的格子数翻倍。
+    max_range = 0.0
+    for u in observers:
+        max_range = max(max_range, u.best_sensor_range())
+    # 有效距离可能比标称射程大（高度增益 + 目标高度层 + 机动），
+    # 用 1.6 的安全系数，与原先的距离剪枝保持一致。
+    reach = max_range * 1.6 + 0.5
+    cell = max(4, int(reach / 2))
+
+    cells: dict[int, list[Unit]] = {}
+    for u in observers:
+        key = (u.y // cell) * 1048576 + (u.x // cell)
+        cells.setdefault(key, []).append(u)
+
+    idx = DetectionIndex(cells, cell, reach)
+    if len(_index_cache) > 8:
+        _index_cache.clear()
+    _index_cache[key] = idx
+    return idx
+
+
+# 观测者空间索引缓存：(state_id, side, 状态指纹) → DetectionIndex
+_index_cache: dict[tuple, DetectionIndex] = {}
+
+
+# --------------------------------------------------------------------------- #
+# 探测增量：状态世代号
+# --------------------------------------------------------------------------- #
+# 「观测者 × 目标」的判定结果可以缓存，但**只在双方状态都没变时**才有效。
+# 状态变了就必须重算——漏改一处就会给出错误结论（那比慢更糟）。
+#
+# 做法：给每个单位记一个「状态指纹」，解算时算一遍当前指纹，
+# 与上次记录的对比：变了就把该单位的世代号 +1。
+# 缓存键里带上世代号，状态一变键就变，旧结论自动作废。
+#
+# 这样**不需要在引擎各处挂失效钩子**——移动、开火、开关雷达、
+# 被压制、工事建成……无论从哪条路径改的状态，都会被指纹捕获。
+
+def _unit_fingerprint(u: Unit) -> tuple:
+    """单位状态指纹：覆盖所有影响「能否被探测到」的字段。"""
+    return (u.x, u.y, u.radar_on, u.jam_on, u.suppressed, u.mission,
+            u.altitude, u.alive, u.is_decoy, u.decoy_kind, u.entrench,
+            u.revealed_until)
+
+
+def _sync_generations(state: "GameState") -> None:
+    """比对单位状态指纹，给状态已变的单位递增世代号。
+
+    同时维护全局世代号：环境（时段/天候）、干扰机态势与地块遮蔽变化
+    会影响全部探测结论，同样需要作废缓存。
+    """
+    cache = getattr(state, "_detect_fp", None)
+    if cache is None:
+        cache = {}
+        state._detect_fp = cache
+    for u in state.units:
+        fp = _unit_fingerprint(u)
+        old = cache.get(u.uid)
+        if old != fp:
+            cache[u.uid] = fp
+            u.detect_gen += 1
+
+    env = environment_for(state)
+    jammers = tuple(sorted((u.uid, u.x, u.y, u.jam_on) for u in state.units
+                            if u.alive and u.template.jam_strength > 0 and u.jam_on))
+    gfp = (env.time_of_day, env.weather, jammers, state.map_epoch)
+    if state._detect_global_fp != gfp:
+        state._detect_global_fp = gfp
+        state._detect_gen += 1
+
+
+def _candidate_observers(state: "GameState", viewer_side, target: Unit,
+                         index: DetectionIndex | None) -> list[Unit]:
+    """找出可能观测到 target 的候选观测者。"""
+    if index is None:
+        return [u for u in state.units
+                if u.side is viewer_side and u.alive and u.template.sensors]
+    return index.candidates(target.x, target.y)
 
 
 def own_track(state: "GameState", observer: Unit, target: Unit) -> bool:
@@ -378,12 +645,16 @@ def build_detection_map(state: "GameState") -> dict[int, Detection]:
     同时写入双方各自的态势表，供 AI 与 UI 使用。
     """
     result: dict[int, Detection] = {}
+    # 先同步世代号：状态变了的单位会带着新世代号，缓存自然失效
+    _sync_generations(state)
     for side in (state.player_side, state.player_side.foe):
+        # 索引只建一次，供该方所有目标复用
+        index = _build_detection_index(state, side)
         table = {}
         for tgt in state.units:
             if not tgt.alive:
                 continue
-            table[tgt.uid] = detection_level(state, side, tgt)
+            table[tgt.uid] = _detection_level(state, side, tgt, index)
         state.detection[side] = table
         if side is state.player_side:
             result = table

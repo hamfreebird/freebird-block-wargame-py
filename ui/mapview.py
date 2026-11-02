@@ -13,10 +13,20 @@ from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
 from core.env import env_tint, environment_for
 from core.model import Tile, Unit
 from core import anim as anim_mod
+from core.icons import icon_bitmap
 
 from . import theme as T
 
 TILE_STEPS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 46, 52, 60]
+
+# 地形分块渲染：每块边长（格）。
+# 整图预渲染在大地图上不可行——256×256 放大到 tile=60 时需要一张
+# 15360×15360 的 Surface（约 900MB）。改为按块按需构建，只保留视口附近的块。
+CHUNK_TILES = 16
+# 缓存预算按**字节**而非块数计：一块的地图像素量随 tile 变化极大
+# （tile=10 时 102KB，tile=60 时 3.7MB），按块数封顶要么浪费内存、
+# 要么在大 tile 下反复重建（LRU 抖动会让帧率崩掉）。
+CHUNK_CACHE_BYTES = 64 * 1024 * 1024
 
 
 class MapView:
@@ -26,8 +36,17 @@ class MapView:
         self.tile = 22
         self.ox = 0.0
         self.oy = 0.0
-        self._terrain_surf: pygame.Surface | None = None
-        self._terrain_key: tuple | None = None
+        self._chunks: dict[tuple[int, int], pygame.Surface] = {}
+        self._chunk_lru: list[tuple[int, int]] = []
+        self._chunk_bytes = 0
+        self._chunk_epoch: tuple | None = None
+        self._token_cache: dict[tuple, pygame.Surface] = {}
+        self._token_epoch_cache: tuple | None = None
+        self._vector_icons: dict[tuple, pygame.Surface] = {}
+        self._weather_cache: dict[tuple, pygame.Surface] = {}
+        self._tint_cache: dict[tuple, pygame.Surface] = {}
+        self._fx_layer: pygame.Surface | None = None
+        self._anim_layer: pygame.Surface | None = None
         self._ring_cache: dict[tuple, pygame.Surface] = {}
         self.overlay = "none"          # none / sensors / threat
         self.show_grid = True
@@ -109,85 +128,173 @@ class MapView:
         return self.rect.collidepoint(pos)
 
     # ------------------------------------------------------------------ #
-    # 地形层
+    # 地形层（分块）
     # ------------------------------------------------------------------ #
-    def _build_terrain(self) -> None:
+    def _terrain_epoch(self) -> tuple:
+        """地形缓存的失效指纹。
+
+        包含主题 id——换肤后地形颜色必须重画，否则会残留旧配色。
+        """
+        md = self.state.map
+        return (self.tile, self.show_grid, md.width, md.height, id(md),
+                T.current_theme().id)
+
+    def _chunk_bounds(self, cx: int, cy: int) -> tuple[int, int, int, int]:
+        """块的格子范围 (x0, y0, x1, y1)，右开区间。"""
+        md = self.state.map
+        x0 = cx * CHUNK_TILES
+        y0 = cy * CHUNK_TILES
+        return x0, y0, min(md.width, x0 + CHUNK_TILES), min(md.height, y0 + CHUNK_TILES)
+
+    def _build_chunk(self, cx: int, cy: int) -> pygame.Surface:
+        """构建单块地形。
+
+        海岸线与等高线在块边界处会被截断——这是可接受的：块之间存在
+        1 格的取整误差在视觉上不可见，而换取的是内存从 O(全图) 降到
+        O(视口)。**但网格线必须在块内完整画出**，否则块之间会出现缝隙。
+        """
         md = self.state.map
         ts = self.tile
-        surf = pygame.Surface((md.width * ts, md.height * ts))
+        x0, y0, x1, y1 = self._chunk_bounds(cx, cy)
+        w = max(1, x1 - x0)
+        h = max(1, y1 - y0)
+        surf = pygame.Surface((w * ts, h * ts))
         surf.fill(T.BG_MAP)
 
-        for t in md.iter_tiles():
-            x0, y0 = t.x * ts, t.y * ts
-            base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
-            col = T.elevation_shade(base, t.elevation)
-            # 山体阴影：按西北方向高差做明暗，形成柔和的地形起伏
-            if t.terrain is not Terrain.WATER:
-                # 中心差分求坡度，避免单侧差分产生条带状伪影
-                l_ = md.at(t.x - 1, t.y)
-                r_ = md.at(t.x + 1, t.y)
-                u_ = md.at(t.x, t.y - 1)
-                d_ = md.at(t.x, t.y + 1)
-                gx = ((r_.elevation if r_ else t.elevation)
-                      - (l_.elevation if l_ else t.elevation)) / 2.0
-                gy = ((d_.elevation if d_ else t.elevation)
-                      - (u_.elevation if u_ else t.elevation)) / 2.0
-                dh = gx * 0.7 + gy * 0.7
-                f = 1.0 + max(-0.13, min(0.13, dh / 2600.0))
-                col = (max(0, min(255, int(col[0] * f))),
-                       max(0, min(255, int(col[1] * f))),
-                       max(0, min(255, int(col[2] * f))))
-            r = pygame.Rect(x0, y0, ts, ts)
-            pygame.draw.rect(surf, col, r)
-            self._decorate(surf, t, r, col)
+        for ty in range(y0, y1):
+            for tx in range(x0, x1):
+                t = md.at(tx, ty)
+                if t is None:
+                    continue
+                lx = (tx - x0) * ts
+                ly = (ty - y0) * ts
+                base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
+                col = T.elevation_shade(base, t.elevation)
+                # 山体阴影：按西北方向高差做明暗，形成柔和的地形起伏
+                if t.terrain is not Terrain.WATER:
+                    # 中心差分求坡度，避免单侧差分产生条带状伪影
+                    l_ = md.at(tx - 1, ty)
+                    r_ = md.at(tx + 1, ty)
+                    u_ = md.at(tx, ty - 1)
+                    d_ = md.at(tx, ty + 1)
+                    gx = ((r_.elevation if r_ else t.elevation)
+                          - (l_.elevation if l_ else t.elevation)) / 2.0
+                    gy = ((d_.elevation if d_ else t.elevation)
+                          - (u_.elevation if u_ else t.elevation)) / 2.0
+                    dh = gx * 0.7 + gy * 0.7
+                    f = 1.0 + max(-0.13, min(0.13, dh / 2600.0))
+                    col = (max(0, min(255, int(col[0] * f))),
+                           max(0, min(255, int(col[1] * f))),
+                           max(0, min(255, int(col[2] * f))))
+                r = pygame.Rect(lx, ly, ts, ts)
+                pygame.draw.rect(surf, col, r)
+                self._decorate(surf, t, r, col)
 
         # 海岸线：陆地与水域相邻处提亮一道细边
         if ts >= 10:
             shore = (150, 196, 214)
-            for t in md.iter_tiles():
-                if t.terrain is Terrain.WATER:
-                    continue
-                x0, y0 = t.x * ts, t.y * ts
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    n = md.at(t.x + dx, t.y + dy)
-                    if n is None or n.terrain is not Terrain.WATER:
+            for ty in range(y0, y1):
+                for tx in range(x0, x1):
+                    t = md.at(tx, ty)
+                    if t is None or t.terrain is Terrain.WATER:
                         continue
-                    if dx == 1:
-                        pygame.draw.line(surf, shore, (x0 + ts - 1, y0), (x0 + ts - 1, y0 + ts))
-                    elif dx == -1:
-                        pygame.draw.line(surf, shore, (x0, y0), (x0, y0 + ts))
-                    elif dy == 1:
-                        pygame.draw.line(surf, shore, (x0, y0 + ts - 1), (x0 + ts, y0 + ts - 1))
-                    else:
-                        pygame.draw.line(surf, shore, (x0, y0), (x0 + ts, y0))
+                    lx = (tx - x0) * ts
+                    ly = (ty - y0) * ts
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        n = md.at(tx + dx, ty + dy)
+                        if n is None or n.terrain is not Terrain.WATER:
+                            continue
+                        if dx == 1:
+                            pygame.draw.line(surf, shore, (lx + ts - 1, ly), (lx + ts - 1, ly + ts))
+                        elif dx == -1:
+                            pygame.draw.line(surf, shore, (lx, ly), (lx, ly + ts))
+                        elif dy == 1:
+                            pygame.draw.line(surf, shore, (lx, ly + ts - 1), (lx + ts, ly + ts - 1))
+                        else:
+                            pygame.draw.line(surf, shore, (lx, ly), (lx + ts, ly))
 
         # 等高线（每 600 米一级，仅在与邻格分级不同处描一道暗线）
         if ts >= 13:
-            for t in md.iter_tiles():
-                if t.terrain is Terrain.WATER:
-                    continue
-                band = t.elevation // 600
-                x0, y0 = t.x * ts, t.y * ts
-                if t.x + 1 < md.width:
-                    n = md.at(t.x + 1, t.y)
+            for ty in range(y0, y1):
+                for tx in range(x0, x1):
+                    t = md.at(tx, ty)
+                    if t is None or t.terrain is Terrain.WATER:
+                        continue
+                    band = t.elevation // 600
+                    lx = (tx - x0) * ts
+                    ly = (ty - y0) * ts
+                    n = md.at(tx + 1, ty)
                     if n is not None and n.terrain is not Terrain.WATER and n.elevation // 600 != band:
-                        pygame.draw.line(surf, (12, 18, 24), (x0 + ts - 1, y0),
-                                         (x0 + ts - 1, y0 + ts))
-                if t.y + 1 < md.height:
-                    n = md.at(t.x, t.y + 1)
+                        pygame.draw.line(surf, (12, 18, 24), (lx + ts - 1, ly),
+                                         (lx + ts - 1, ly + ts))
+                    n = md.at(tx, ty + 1)
                     if n is not None and n.terrain is not Terrain.WATER and n.elevation // 600 != band:
-                        pygame.draw.line(surf, (12, 18, 24), (x0, y0 + ts - 1),
-                                         (x0 + ts, y0 + ts - 1))
+                        pygame.draw.line(surf, (12, 18, 24), (lx, ly + ts - 1),
+                                         (lx + ts, ly + ts - 1))
 
-        # 网格：低对比度分隔线，避免干扰地形
+        # 网格：低对比度分隔线，避免干扰地形。
+        # 块内自绘完整网格（含块边界），这样相邻块的线正好接上，不留缝。
         if self.show_grid and ts >= 12:
-            for x in range(md.width + 1):
-                pygame.draw.line(surf, T.GRID, (x * ts, 0), (x * ts, md.height * ts), 1)
-            for y in range(md.height + 1):
-                pygame.draw.line(surf, T.GRID, (0, y * ts), (md.width * ts, y * ts), 1)
+            for gx in range(x0, x1 + 1):
+                px = (gx - x0) * ts
+                pygame.draw.line(surf, T.GRID, (px, 0), (px, h * ts), 1)
+            for gy in range(y0, y1 + 1):
+                py = (gy - y0) * ts
+                pygame.draw.line(surf, T.GRID, (0, py), (w * ts, py), 1)
 
-        self._terrain_surf = surf
-        self._terrain_key = (ts, self.show_grid, md.width, md.height, id(md))
+        return surf
+
+    def _get_chunk(self, cx: int, cy: int) -> pygame.Surface:
+        """取块，必要时构建；按字节预算做 LRU 淘汰。"""
+        key = (cx, cy)
+        surf = self._chunks.get(key)
+        if surf is not None:
+            # 移到 LRU 队尾
+            try:
+                self._chunk_lru.remove(key)
+            except ValueError:
+                pass
+            self._chunk_lru.append(key)
+            return surf
+        surf = self._build_chunk(cx, cy)
+        self._chunks[key] = surf
+        self._chunk_lru.append(key)
+        self._chunk_bytes += surf.get_width() * surf.get_height() * 4
+        while self._chunk_bytes > CHUNK_CACHE_BYTES and len(self._chunk_lru) > 1:
+            old = self._chunk_lru.pop(0)
+            victim = self._chunks.pop(old, None)
+            if victim is not None:
+                self._chunk_bytes -= victim.get_width() * victim.get_height() * 4
+        return surf
+
+    def _visible_chunks(self) -> list[tuple[int, int]]:
+        """视口覆盖的块列表。"""
+        md = self.state.map
+        ts = self.tile
+        # 视口在地图坐标系中的格子范围
+        gx0 = int((-self.ox) // ts)
+        gy0 = int((-self.oy) // ts)
+        gx1 = int((self.rect.width - self.ox) // ts) + 1
+        gy1 = int((self.rect.height - self.oy) // ts) + 1
+        cx0 = max(0, gx0 // CHUNK_TILES)
+        cy0 = max(0, gy0 // CHUNK_TILES)
+        cx1 = min((md.width - 1) // CHUNK_TILES, gx1 // CHUNK_TILES)
+        cy1 = min((md.height - 1) // CHUNK_TILES, gy1 // CHUNK_TILES)
+        out: list[tuple[int, int]] = []
+        for cy in range(cy0, cy1 + 1):
+            for cx in range(cx0, cx1 + 1):
+                out.append((cx, cy))
+        return out
+
+    def _draw_terrain(self, surf: pygame.Surface) -> None:
+        """绘制地形块。"""
+        md = self.state.map
+        ts = self.tile
+        for cx, cy in self._visible_chunks():
+            chunk = self._get_chunk(cx, cy)
+            x0, y0, x1, y1 = self._chunk_bounds(cx, cy)
+            surf.blit(chunk, (int(self.rect.x + self.ox + x0 * ts),
+                              int(self.rect.y + self.oy + y0 * ts)))
 
     def _decorate(self, surf: pygame.Surface, t: Tile, r: pygame.Rect, col) -> None:
         ts = self.tile
@@ -232,20 +339,17 @@ class MapView:
     def draw(self, surf: pygame.Surface, hover: tuple[int, int] | None = None,
              reachable: dict | None = None, path: list | None = None,
              pending_target: Unit | None = None) -> None:
-        if self._terrain_key != (self.tile, self.show_grid, self.state.map.width,
-                                 self.state.map.height, id(self.state.map)):
-            self._build_terrain()
+        epoch = self._terrain_epoch()
+        if self._chunk_epoch != epoch:
+            self._chunks.clear()
+            self._chunk_lru.clear()
+            self._chunk_bytes = 0
+            self._chunk_epoch = epoch
         md = self.state.map
         surf.set_clip(self.rect)
         pygame.draw.rect(surf, T.BG, self.rect)
 
-        view = pygame.Rect(int(-self.ox), int(-self.oy),
-                           self.rect.width + self.tile, self.rect.height + self.tile)
-        src = pygame.Rect(max(0, view.x), max(0, view.y),
-                          min(view.width, md.width * self.tile - max(0, view.x)),
-                          min(view.height, md.height * self.tile - max(0, view.y)))
-        if src.width > 0 and src.height > 0:
-            surf.blit(self._terrain_surf, (self.rect.x + self.ox + src.x, self.rect.y + self.oy + src.y), src)
+        self._draw_terrain(surf)
         # 地图边框：让居中的留白看起来是刻意的画框
         frame = pygame.Rect(int(self.rect.x + self.ox), int(self.rect.y + self.oy),
                             md.width * self.tile, md.height * self.tile)
@@ -285,8 +389,16 @@ class MapView:
         env = environment_for(self.state)
         tint, alpha = env_tint(env)
         if alpha > 0:
-            layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-            layer.fill((*tint, alpha))
+            # 色调层按 (颜色, 透明度) 缓存：同一时段/天候下图案完全相同，
+            # 每帧重建一张全屏 SRCALPHA 表面是纯粹的浪费。
+            key = (tint, alpha, self.rect.width, self.rect.height)
+            layer = self._tint_cache.get(key)
+            if layer is None:
+                layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+                layer.fill((*tint, alpha))
+                if len(self._tint_cache) > 6:
+                    self._tint_cache.clear()
+                self._tint_cache[key] = layer
             surf.blit(layer, self.rect.topleft)
 
         # 天气颗粒：雨为竖线，雪为缓慢下落的点
@@ -295,34 +407,50 @@ class MapView:
         elif env.weather.value == "snow":
             self._draw_snow(surf)
 
+    def _weather_layer(self, kind: str) -> pygame.Surface:
+        """取天气图案（雨丝 / 雪花）。
+
+        图案用固定相位生成，因此是**静态**的——每帧重画一遍纯属浪费。
+        缓存成位图后每帧只是一次 blit。
+        """
+        key = (kind, self.rect.width, self.rect.height, max(6, self.tile))
+        cached = self._weather_cache.get(key)
+        if cached is not None:
+            return cached
+        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        if kind == "rain":
+            ts = max(6, self.tile)
+            step = max(14, ts // 2)
+            for i in range(0, self.rect.width + step, step):
+                h = (i * 7919) % 97
+                for j in range(0, self.rect.height + step, step):
+                    k = (i * 31 + j * 17 + h) % 53
+                    if k > 6:
+                        continue
+                    x = i + (k * 3) % step
+                    y = (j + h) % (self.rect.height + step)
+                    pygame.draw.line(layer, (150, 190, 220, 60), (x, y), (x - 3, y + 11), 1)
+        else:
+            step = max(18, self.tile)
+            for i in range(0, self.rect.width + step, step):
+                for j in range(0, self.rect.height + step, step):
+                    k = (i * 37 + j * 61) % 71
+                    if k > 9:
+                        continue
+                    pygame.draw.circle(layer, (225, 238, 250, 95),
+                                       (i + (k * 5) % step, j + (k * 7) % step), 1)
+        if len(self._weather_cache) > 8:
+            self._weather_cache.clear()
+        self._weather_cache[key] = layer
+        return layer
+
     def _draw_rain(self, surf: pygame.Surface) -> None:
         """斜向雨丝：用固定相位的伪随机点，避免每帧跳动造成的视觉噪声。"""
-        ts = max(6, self.tile)
-        step = max(14, ts // 2)
-        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-        for i in range(0, self.rect.width + step, step):
-            h = (i * 7919) % 97
-            for j in range(0, self.rect.height + step, step):
-                k = (i * 31 + j * 17 + h) % 53
-                if k > 6:
-                    continue
-                x = i + (k * 3) % step
-                y = (j + h) % (self.rect.height + step)
-                pygame.draw.line(layer, (150, 190, 220, 60), (x, y), (x - 3, y + 11), 1)
-        surf.blit(layer, self.rect.topleft)
+        surf.blit(self._weather_layer("rain"), self.rect.topleft)
 
     def _draw_snow(self, surf: pygame.Surface) -> None:
         """飘雪：稀疏的白点，越靠下越密（模拟近处视角）。"""
-        step = max(18, self.tile)
-        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-        for i in range(0, self.rect.width + step, step):
-            for j in range(0, self.rect.height + step, step):
-                k = (i * 37 + j * 61) % 71
-                if k > 9:
-                    continue
-                pygame.draw.circle(layer, (225, 238, 250, 95),
-                                   (i + (k * 5) % step, j + (k * 7) % step), 1)
-        surf.blit(layer, self.rect.topleft)
+        surf.blit(self._weather_layer("snow"), self.rect.topleft)
 
     # -- 叠层 -------------------------------------------------------------
     def _draw_overlay(self, surf: pygame.Surface) -> None:
@@ -435,10 +563,51 @@ class MapView:
                 p1 = (a[0] + dx * t1, a[1] + dy * t1)
                 pygame.draw.line(surf, col, p0, p1, 1)
 
+    # ------------------------------------------------------------------ #
+    # 地块索引（避免每帧全图扫描）
+    # ------------------------------------------------------------------ #
+    def _scan_tiles(self) -> None:
+        """扫描全图，建立目标点 / 工事 / 设施三类索引。
+
+        256×256 有 65536 个格子，每帧扫三遍就是 20 万次迭代——
+        这正是大地图掉帧的主因之一。改为一次扫描建索引，之后每帧
+        只遍历索引里的少量条目。
+        """
+        md = self.state.map
+        obj: list[Tile] = []
+        fort: list[Tile] = []
+        fac: list[Tile] = []
+        for t in md.iter_tiles():
+            if t.objective:
+                obj.append(t)
+            if t.fort > 0 and t.fort_owner is not Side.NEUTRAL:
+                fort.append(t)
+            if t.facility is not Facility.NONE:
+                fac.append(t)
+        self._obj_list = obj
+        self._fort_list = fort
+        self._fac_list = fac
+        self._tile_index_epoch = self.state.map_epoch
+
+    def _ensure_tile_index(self) -> None:
+        """确保索引是最新的。"""
+        if getattr(self, "_tile_index_epoch", None) != self.state.map_epoch:
+            self._scan_tiles()
+
+    def _objective_tiles(self) -> list[Tile]:
+        self._ensure_tile_index()
+        return self._obj_list
+
+    def _fort_tiles(self) -> list[Tile]:
+        self._ensure_tile_index()
+        return self._fort_list
+
+    def _facility_tiles(self) -> list[Tile]:
+        self._ensure_tile_index()
+        return self._fac_list
+
     def _draw_objectives(self, surf: pygame.Surface) -> None:
-        for t in self.state.map.iter_tiles():
-            if not t.objective:
-                continue
+        for t in self._objective_tiles():
             r = self.grid_to_rect(t.x, t.y)
             if not self.rect.colliderect(r):
                 continue
@@ -459,9 +628,7 @@ class MapView:
         ts = self.tile
         if ts < 8:
             return
-        for t in self.state.map.iter_tiles():
-            if t.fort <= 0 or t.fort_owner is Side.NEUTRAL:
-                continue
+        for t in self._fort_tiles():
             r = self.grid_to_rect(t.x, t.y)
             if not self.rect.colliderect(r):
                 continue
@@ -477,9 +644,7 @@ class MapView:
         """绘制机场/港口/雷达站等固定设施标记。"""
         if self.tile < 16:
             return
-        for t in self.state.map.iter_tiles():
-            if t.facility is Facility.NONE:
-                continue
+        for t in self._facility_tiles():
             r = self.grid_to_rect(t.x, t.y)
             if not self.rect.colliderect(r):
                 continue
@@ -604,20 +769,13 @@ class MapView:
                         bold=True, anchor="center")
             return
 
-        shadow = body.move(1, 1)
-        pygame.draw.rect(surf, (0, 0, 0), shadow, border_radius=3)
-        fill = cols["fill"]
-        if u.domain is Domain.AIR:
-            fill = T.mix(fill, (140, 150, 170), 0.12)
-        pygame.draw.rect(surf, fill, body, border_radius=3)
-        edge = cols["edge"]
-        if u.template.is_radar_emitter and u.radar_on and self.state.player_side is u.side:
-            edge = T.mix(edge, (120, 255, 190), 0.5)
-        pygame.draw.rect(surf, edge, body, width=1, border_radius=3)
-
-        # 兵种图标
-        icon_col = T.mix(cols["text"], (255, 255, 255), 0.22)
-        self.draw_class_icon(surf, body, u.template.unit_class, icon_col)
+        # 底板（阴影 + 填充 + 边框 + 兵种图标）按 (阵营, 兵种, 尺寸) 缓存：
+        # 这些像素在整局里几乎不变，重画是纯粹的浪费。
+        sprite = self._token_sprite(u, body.width, body.height)
+        if sprite is not None:
+            surf.blit(sprite, (body.x - 1, body.y - 1))
+        else:
+            self._paint_token_body(surf, u, body, cols)
 
         # 血条
         if body.height >= 12:
@@ -639,6 +797,53 @@ class MapView:
 
         if selected:
             self._select_corners(surf, r, (255, 255, 255))
+
+    # -- 棋子精灵缓存 -----------------------------------------------------
+    def _token_epoch(self) -> tuple:
+        """棋子精灵的失效指纹（主题色变化时必须重画）。"""
+        return (self.tile, T.current_theme().id)
+
+    def _token_sprite(self, u: Unit, w: int, h: int) -> pygame.Surface | None:
+        """取棋子的缓存底板；缓存未命中时烘焙一张。"""
+        epoch = self._token_epoch()
+        if self._token_epoch_cache != epoch:
+            self._token_cache.clear()
+            self._token_epoch_cache = epoch
+        # 雷达发射时的边框会变色，这类状态不进缓存
+        key = (u.side.value, u.template.unit_class.value,
+               u.domain is Domain.AIR, u.template.is_radar_emitter and u.radar_on,
+               w, h)
+        surf = self._token_cache.get(key)
+        if surf is not None:
+            return surf
+        cols = T.SIDE_COLORS[u.side]
+        # 精灵比 body 大 2px：阴影向右下各偏 1px，不能被裁掉
+        surf = pygame.Surface((w + 2, h + 2), pygame.SRCALPHA)
+        # 把 body 局部坐标搬到精灵上（body 的原点即精灵内偏移 1px）
+        self._paint_token_body(surf, u, pygame.Rect(1, 1, w, h), cols)
+        if len(self._token_cache) > 400:
+            self._token_cache.clear()
+        self._token_cache[key] = surf
+        return surf
+
+    def _paint_token_body(self, surf: pygame.Surface, u: Unit, body: pygame.Rect,
+                          cols: dict) -> None:
+        """绘制棋子底板：阴影 + 填充 + 边框 + 兵种图标。"""
+        ts = self.tile
+        shadow = body.move(1, 1)
+        pygame.draw.rect(surf, (0, 0, 0), shadow, border_radius=3)
+        fill = cols["fill"]
+        if u.domain is Domain.AIR:
+            fill = T.mix(fill, (140, 150, 170), 0.12)
+        pygame.draw.rect(surf, fill, body, border_radius=3)
+        edge = cols["edge"]
+        if u.template.is_radar_emitter and u.radar_on and self.state.player_side is u.side:
+            edge = T.mix(edge, (120, 255, 190), 0.5)
+        pygame.draw.rect(surf, edge, body, width=1, border_radius=3)
+
+        # 兵种图标
+        icon_col = T.mix(cols["text"], (255, 255, 255), 0.22)
+        self.draw_class_icon(surf, body, u.template.unit_class, icon_col)
 
     def _select_corners(self, surf: pygame.Surface, r: pygame.Rect, col) -> None:
         L = max(4, r.width // 4)
@@ -663,93 +868,63 @@ class MapView:
         pygame.draw.circle(surf, col, rr.center, max(4, rr.width // 3), 1)
 
     # ------------------------------------------------------------------ #
-    # 兵种图标（矢量绘制，无需素材）
+    # 兵种图标（矢量绘制，烘焙后缓存为位图）
     # ------------------------------------------------------------------ #
     def draw_class_icon(self, surf: pygame.Surface, rect: pygame.Rect,
                         cls: UnitClass, color) -> None:
-        cx, cy = rect.center
-        s = min(rect.width, rect.height)
-        h = s / 2
-        w = 1 if s < 16 else 2
-        c = color
+        """绘制兵种图标。
 
-        def P(px: float, py: float) -> tuple[int, int]:
-            return (int(cx + px * h), int(cy + py * h))
+        优先使用图标包提供的位图（core/icons.py）；没有位图时回退到内置
+        矢量图形。矢量图形会被烘焙成位图缓存——每个兵种 + 每个尺寸只画一次。
+        """
+        icon = icon_bitmap(cls, color, min(rect.width, rect.height))
+        if icon is not None:
+            surf.blit(icon, (rect.centerx - icon.get_width() // 2,
+                             rect.centery - icon.get_height() // 2))
+            return
+        icon = self._vector_icon_bitmap(cls, color, min(rect.width, rect.height))
+        if icon is not None:
+            surf.blit(icon, (rect.centerx - icon.get_width() // 2,
+                             rect.centery - icon.get_height() // 2))
+            return
+        self._draw_vector_class_icon(surf, rect, cls, color)
 
-        if cls in (UnitClass.MBT, UnitClass.IFV):
-            k = 0.62 if cls is UnitClass.MBT else 0.5
-            pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * k), int(cy - h * 0.34),
-                                                  int(h * 1.18), int(h * 0.64)), 1)
-            pygame.draw.line(surf, c, P(0.2, 0), P(0.86, 0), w)
-        elif cls is UnitClass.INFANTRY:
-            pygame.draw.circle(surf, c, P(0, -0.25), max(1, int(h * 0.22)), 1)
-            pygame.draw.line(surf, c, P(0, -0.02), P(0, 0.5), w)
-            pygame.draw.line(surf, c, P(-0.35, 0.12), P(0.35, 0.12), w)
-        elif cls is UnitClass.ARTY:
-            pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.6), int(cy - h * 0.2),
-                                                  int(h * 1.2), int(h * 0.5)), 1)
-            pygame.draw.line(surf, c, P(0.1, -0.1), P(0.9, -0.62), w)
-        elif cls is UnitClass.MLRS:
-            pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.6), int(cy - h * 0.1),
-                                                  int(h * 1.2), int(h * 0.45)), 1)
-            for i in (-0.35, 0.0, 0.35):
-                pygame.draw.line(surf, c, P(i, -0.15), P(i + 0.25, -0.7), w)
-        elif cls in (UnitClass.SAM, UnitClass.AAA):
-            pygame.draw.polygon(surf, c, [P(0, -0.65), P(0.35, 0.25), P(-0.35, 0.25)], w)
-            pygame.draw.line(surf, c, P(-0.55, 0.55), P(0.55, 0.55), w)
-        elif cls is UnitClass.EW:
-            for i, rr in enumerate((0.35, 0.6, 0.85)):
-                rr_r = pygame.Rect(0, 0, int(h * rr * 2), int(h * rr * 2))
-                rr_r.center = (cx, cy + int(h * 0.45))
-                pygame.draw.arc(surf, c, rr_r, 0.6, 2.55, w)
-            pygame.draw.circle(surf, c, P(0, 0.45), max(1, int(h * 0.12)))
-        elif cls is UnitClass.RADAR:
-            pygame.draw.arc(surf, c, pygame.Rect(int(cx - h * 0.5), int(cy - h * 0.55),
-                                                 int(h * 0.9), int(h * 1.1)), 0.5, 2.2, w)
-            pygame.draw.line(surf, c, P(-0.1, 0.1), P(0.1, 0.7), w)
-        elif cls is UnitClass.HQ:
-            pygame.draw.polygon(surf, c, [P(0, -0.6), P(0.6, 0.3), P(-0.6, 0.3)], w)
-            pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.5), int(cy + h * 0.3),
-                                                  int(h), int(h * 0.3)), 1)
-        elif cls in (UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.CARRIER):
-            k = 0.72 if cls is UnitClass.CARRIER else 0.6
-            pygame.draw.polygon(surf, c, [P(-k, -0.35), P(k * 0.55, -0.35), P(k, 0), P(k * 0.55, 0.4),
-                                          P(-k, 0.4)], w)
-            pygame.draw.line(surf, c, P(-0.15, -0.35), P(-0.15, 0.4), w)
-        elif cls is UnitClass.SUB:
-            r_ = pygame.Rect(0, 0, int(h * 1.5), int(h * 0.62))
-            r_.center = (cx, cy)
-            pygame.draw.ellipse(surf, c, r_, 1)
-            pygame.draw.line(surf, c, P(-0.05, -0.28), P(-0.05, -0.55), w)
-        elif cls in (UnitClass.FIGHTER, UnitClass.UAV):
-            pygame.draw.polygon(surf, c, [P(0, -0.7), P(0.22, 0.1), P(0.75, 0.45),
-                                          P(0.0, 0.28), P(-0.75, 0.45), P(-0.22, 0.1)], w)
-        elif cls is UnitClass.BOMBER:
-            pygame.draw.polygon(surf, c, [P(0, -0.55), P(0.28, 0.05), P(0.95, 0.4),
-                                          P(0.25, 0.35), P(0.3, 0.62), P(0, 0.45),
-                                          P(-0.3, 0.62), P(-0.25, 0.35), P(-0.95, 0.4),
-                                          P(-0.28, 0.05)], w)
-        elif cls is UnitClass.AEW:
-            pygame.draw.polygon(surf, c, [P(0, -0.5), P(0.3, 0.15), P(0.8, 0.4),
-                                          P(0, 0.25), P(-0.8, 0.4), P(-0.3, 0.15)], w)
-            pygame.draw.circle(surf, c, P(0, -0.15), max(1, int(h * 0.18)), 1)
-        elif cls is UnitClass.TANKER:
-            pygame.draw.polygon(surf, c, [P(0, -0.45), P(0.2, 0.1), P(0.85, 0.35),
-                                          P(0, 0.22), P(-0.85, 0.35), P(-0.2, 0.1)], w)
-            pygame.draw.line(surf, c, P(-0.8, 0.45), P(0.8, 0.45), w)
-        elif cls is UnitClass.SATELLITE:
-            pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.25), int(cy - h * 0.25),
-                                                  int(h * 0.5), int(h * 0.5)), 1)
-            pygame.draw.line(surf, c, P(-0.25, 0), P(-0.9, 0), w)
-            pygame.draw.line(surf, c, P(0.25, 0), P(0.9, 0), w)
-        else:
-            pygame.draw.rect(surf, c, rect.inflate(-4, -4), 1)
+    def _vector_icon_bitmap(self, cls: UnitClass, color, size: int):
+        """烘焙并缓存矢量兵种图形。
+
+        矢量绘制是棋子渲染中最贵的一环（多边形 + 圆弧，每次十几条指令）。
+        同一兵种在同一尺寸下的图形完全相同，烘焙成位图后每次只做一次 blit。
+        """
+        if size <= 0:
+            return None
+        key = (cls.value, tuple(color), size)
+        cached = self._vector_icons.get(key)
+        if cached is not None:
+            return cached
+        try:
+            bmp = pygame.Surface((size, size), pygame.SRCALPHA)
+            self._draw_vector_class_icon(bmp, pygame.Rect(0, 0, size, size), cls, color)
+        except Exception:
+            return None
+        if len(self._vector_icons) > 200:
+            self._vector_icons.clear()
+        self._vector_icons[key] = bmp
+        return bmp
+
+    def _draw_vector_class_icon(self, surf: pygame.Surface, rect: pygame.Rect,
+                                cls: UnitClass, color) -> None:
+        """内置矢量兵种图形——不需要任何素材文件。"""
+        draw_vector_class_icon(surf, rect, cls, color)
 
     # ------------------------------------------------------------------ #
     # 特效
     # ------------------------------------------------------------------ #
     def _draw_fx(self, surf: pygame.Surface) -> None:
-        s = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        # 特效层复用同一张表面：每帧新建一张全屏 SRCALPHA 是纯粹的浪费
+        if self._fx_layer is None or self._fx_layer.get_size() != self.rect.size:
+            self._fx_layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        s = self._fx_layer
+        s.fill((0, 0, 0, 0))
         for f in self.state.fx:
             p = max(0.0, min(1.0, 1.0 - f.ttl / max(0.001, f.life)))
             a = self.grid_center(*f.a)
@@ -805,7 +980,12 @@ class MapView:
         if track is None or not track.events:
             return
 
-        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        layer = self._anim_layer
+        if layer is None or layer.get_size() != self.rect.size:
+            layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+            self._anim_layer = layer
+        else:
+            layer.fill((0, 0, 0, 0))
         for e in track.events:
             p = 1.0 - max(0.0, min(1.0, e.ttl / max(0.001, e.life)))
             a = self.grid_center(e.a[0], e.a[1])
@@ -946,3 +1126,90 @@ class MapView:
         pygame.draw.rect(surf, (255, 255, 255), pygame.Rect(
             int(ox + vx * md.width * cell), int(oy + vy * md.height * cell),
             max(4, int(vw * md.width * cell)), max(4, int(vh * md.height * cell))), 1)
+
+
+def draw_vector_class_icon(surf: pygame.Surface, rect: pygame.Rect,
+                           cls: UnitClass, color) -> None:
+    """内置矢量兵种图形——不需要任何素材文件。
+
+    模块级函数：渲染层与图标包生成工具共用同一份代码，
+    避免「工具生成的图标」与「游戏里画的图标」不一致。
+    """
+    cx, cy = rect.center
+    s = min(rect.width, rect.height)
+    h = s / 2
+    w = 1 if s < 16 else 2
+    c = color
+
+    def P(px: float, py: float) -> tuple[int, int]:
+        return (int(cx + px * h), int(cy + py * h))
+
+    if cls in (UnitClass.MBT, UnitClass.IFV):
+        k = 0.62 if cls is UnitClass.MBT else 0.5
+        pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * k), int(cy - h * 0.34),
+                                              int(h * 1.18), int(h * 0.64)), 1)
+        pygame.draw.line(surf, c, P(0.2, 0), P(0.86, 0), w)
+    elif cls is UnitClass.INFANTRY:
+        pygame.draw.circle(surf, c, P(0, -0.25), max(1, int(h * 0.22)), 1)
+        pygame.draw.line(surf, c, P(0, -0.02), P(0, 0.5), w)
+        pygame.draw.line(surf, c, P(-0.35, 0.12), P(0.35, 0.12), w)
+    elif cls is UnitClass.ARTY:
+        pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.6), int(cy - h * 0.2),
+                                              int(h * 1.2), int(h * 0.5)), 1)
+        pygame.draw.line(surf, c, P(0.1, -0.1), P(0.9, -0.62), w)
+    elif cls is UnitClass.MLRS:
+        pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.6), int(cy - h * 0.1),
+                                              int(h * 1.2), int(h * 0.45)), 1)
+        for i in (-0.35, 0.0, 0.35):
+            pygame.draw.line(surf, c, P(i, -0.15), P(i + 0.25, -0.7), w)
+    elif cls in (UnitClass.SAM, UnitClass.AAA):
+        pygame.draw.polygon(surf, c, [P(0, -0.65), P(0.35, 0.25), P(-0.35, 0.25)], w)
+        pygame.draw.line(surf, c, P(-0.55, 0.55), P(0.55, 0.55), w)
+    elif cls is UnitClass.EW:
+        for i, rr in enumerate((0.35, 0.6, 0.85)):
+            rr_r = pygame.Rect(0, 0, int(h * rr * 2), int(h * rr * 2))
+            rr_r.center = (cx, cy + int(h * 0.45))
+            pygame.draw.arc(surf, c, rr_r, 0.6, 2.55, w)
+        pygame.draw.circle(surf, c, P(0, 0.45), max(1, int(h * 0.12)))
+    elif cls is UnitClass.RADAR:
+        pygame.draw.arc(surf, c, pygame.Rect(int(cx - h * 0.5), int(cy - h * 0.55),
+                                             int(h * 0.9), int(h * 1.1)), 0.5, 2.2, w)
+        pygame.draw.line(surf, c, P(-0.1, 0.1), P(0.1, 0.7), w)
+    elif cls is UnitClass.HQ:
+        pygame.draw.polygon(surf, c, [P(0, -0.6), P(0.6, 0.3), P(-0.6, 0.3)], w)
+        pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.5), int(cy + h * 0.3),
+                                              int(h), int(h * 0.3)), 1)
+    elif cls in (UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.CARRIER):
+        k = 0.72 if cls is UnitClass.CARRIER else 0.6
+        pygame.draw.polygon(surf, c, [P(-k, -0.35), P(k * 0.55, -0.35), P(k, 0), P(k * 0.55, 0.4),
+                                      P(-k, 0.4)], w)
+        pygame.draw.line(surf, c, P(-0.15, -0.35), P(-0.15, 0.4), w)
+    elif cls is UnitClass.SUB:
+        r_ = pygame.Rect(0, 0, int(h * 1.5), int(h * 0.62))
+        r_.center = (cx, cy)
+        pygame.draw.ellipse(surf, c, r_, 1)
+        pygame.draw.line(surf, c, P(-0.05, -0.28), P(-0.05, -0.55), w)
+    elif cls in (UnitClass.FIGHTER, UnitClass.UAV):
+        pygame.draw.polygon(surf, c, [P(0, -0.7), P(0.22, 0.1), P(0.75, 0.45),
+                                      P(0.0, 0.28), P(-0.75, 0.45), P(-0.22, 0.1)], w)
+    elif cls is UnitClass.BOMBER:
+        pygame.draw.polygon(surf, c, [P(0, -0.55), P(0.28, 0.05), P(0.95, 0.4),
+                                      P(0.25, 0.35), P(0.3, 0.62), P(0, 0.45),
+                                      P(-0.3, 0.62), P(-0.25, 0.35), P(-0.95, 0.4),
+                                      P(-0.28, 0.05)], w)
+    elif cls is UnitClass.AEW:
+        pygame.draw.polygon(surf, c, [P(0, -0.5), P(0.3, 0.15), P(0.8, 0.4),
+                                      P(0, 0.25), P(-0.8, 0.4), P(-0.3, 0.15)], w)
+        pygame.draw.circle(surf, c, P(0, -0.15), max(1, int(h * 0.18)), 1)
+    elif cls is UnitClass.TANKER:
+        pygame.draw.polygon(surf, c, [P(0, -0.45), P(0.2, 0.1), P(0.85, 0.35),
+                                      P(0, 0.22), P(-0.85, 0.35), P(-0.2, 0.1)], w)
+        pygame.draw.line(surf, c, P(-0.8, 0.45), P(0.8, 0.45), w)
+    elif cls is UnitClass.SATELLITE:
+        pygame.draw.rect(surf, c, pygame.Rect(int(cx - h * 0.25), int(cy - h * 0.25),
+                                              int(h * 0.5), int(h * 0.5)), 1)
+        pygame.draw.line(surf, c, P(-0.25, 0), P(-0.9, 0), w)
+        pygame.draw.line(surf, c, P(0.25, 0), P(0.9, 0), w)
+    else:
+        pygame.draw.rect(surf, c, rect.inflate(-4, -4), 1)
+

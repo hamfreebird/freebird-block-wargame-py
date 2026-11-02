@@ -79,6 +79,21 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_mods.py
 
+      - name: 单位图标包自检（清单 / 位图 / 降级）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_icons.py
+
+      - name: 战役编辑器自检（编排 / 校验 / 保存）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_campaign_editor.py
+
+      - name: 性能回归自检（渲染 / 探测 / 结论一致性）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_perf.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy
