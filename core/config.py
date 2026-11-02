@@ -13,8 +13,13 @@ import json
 import os
 from typing import Any
 
+from .i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
+
 CONFIG_VERSION = 1
 CONFIG_FILENAME = "user_config.json"
+
+# 可用的界面主题（与 ui/theme.py 中的定义保持一致）
+DEFAULT_THEME = "tactical"
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +172,54 @@ class UserConfig:
 
     def set_pref(self, key: str, value: Any) -> None:
         self.prefs[key] = value
+
+    @property
+    def theme(self) -> str:
+        """当前主题 ID（非法值回退默认）。"""
+        from . import paths  # 延迟导入避免循环
+        theme = str(self.prefs.get("theme", DEFAULT_THEME))
+        valid = {"tactical", "light", "deuteranopia", "protanopia"}
+        return theme if theme in valid else DEFAULT_THEME
+
+    def set_theme(self, theme_id: str) -> bool:
+        """设置主题。返回是否成功（非法主题 ID 会被拒绝）。"""
+        valid = {"tactical", "light", "deuteranopia", "protanopia"}
+        if theme_id not in valid:
+            return False
+        self.prefs["theme"] = theme_id
+        return True
+
+    @property
+    def sound_enabled(self) -> bool:
+        """音效是否开启（默认开启）。"""
+        return bool(self.prefs.get("sound", True))
+
+    def set_sound(self, enabled: bool) -> None:
+        self.prefs["sound"] = bool(enabled)
+
+    @property
+    def volume(self) -> float:
+        """音量（0.0 ~ 1.0，默认 0.6）。"""
+        try:
+            v = float(self.prefs.get("volume", 0.6))
+        except (TypeError, ValueError):
+            return 0.6
+        return max(0.0, min(1.0, v))
+
+    def set_volume(self, value: float) -> None:
+        self.prefs["volume"] = max(0.0, min(1.0, float(value)))
+
+    @property
+    def language(self) -> str:
+        """界面语言（zh / en），非法值回退中文。"""
+        lang = str(self.prefs.get("language", DEFAULT_LANGUAGE))
+        return lang if lang in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+    def set_language(self, lang: str) -> bool:
+        if lang not in SUPPORTED_LANGUAGES:
+            return False
+        self.prefs["language"] = lang
+        return True
 
     @property
     def first_run(self) -> bool:

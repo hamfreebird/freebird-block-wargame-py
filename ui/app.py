@@ -25,6 +25,7 @@ import pygame
 
 from core import rules
 from core import pkg as _pkg
+from core import i18n
 from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_carryover,
                            collect_survivors, list_campaigns, load_campaign,
                            load_progress, resolve_map_path, save_progress)
@@ -38,6 +39,9 @@ from core.save import SaveError, list_slots, load_game, save_game, slot_path
 from core.tutorial import Tutorial, build_tutorial
 
 from . import theme as T
+from .audio import AudioManager
+from .briefing import (BriefingData, DebriefData, build_briefing, build_debrief,
+                       draw_briefing, draw_debrief)
 from .editor import Editor
 from .inspect import InspectCard
 from .keymap import build_reverse, hotkey_label, key_code
@@ -156,6 +160,15 @@ class App:
         self.settings_panel: SettingsPanel | None = None
         self.show_settings = False
 
+        # -- v1.4：主题 / 音效 / 本地化 --
+        # 语言包：先读安装目录，再读用户目录（用户目录优先，可覆盖）
+        i18n.load_language_dir(_paths.lang_dir())
+        i18n.load_language_dir(_paths.user_lang_dir())
+        self._apply_theme(self.cfg.theme)
+        self._apply_language(self.cfg.language)
+        self.audio = AudioManager(enabled=self.cfg.sound_enabled,
+                                  volume=self.cfg.volume)
+
         # -- v1.1：教学引导 --
         self.tutorial: Tutorial | None = None
         self.tutorial_visible = False
@@ -172,6 +185,13 @@ class App:
         self.campaign_pending: bool = False    # 通关后等待玩家确认进入下一关
         self.campaigns: list[CampaignDef] = []
         self.show_campaign_menu: bool = False
+
+        # -- v1.4：简报与战斗回顾 --
+        self.briefing: BriefingData | None = None
+        self.show_briefing: bool = False
+        self.debrief: DebriefData | None = None
+        self._brief_btn = pygame.Rect(0, 0, 0, 0)
+        self._debrief_btn = pygame.Rect(0, 0, 0, 0)
 
         self._scan_scenarios()
         self._layout_menu()
@@ -308,10 +328,41 @@ class App:
     # ------------------------------------------------------------------ #
     # 设置
     # ------------------------------------------------------------------ #
+    def _apply_theme(self, theme_id: str) -> bool:
+        """切换界面主题（立即生效）。"""
+        ok = T.set_theme(theme_id)
+        if ok:
+            self.cfg.set_theme(T.current_theme().id)
+        return ok
+
+    def _apply_language(self, lang: str) -> bool:
+        """切换界面语言（立即生效）。"""
+        ok = i18n.set_language(lang)
+        if ok:
+            self.cfg.set_language(i18n.current_language())
+        return ok
+
+    def _apply_sound(self, enabled: bool) -> None:
+        """开关音效（立即生效）。"""
+        self.cfg.set_sound(enabled)
+        if self.audio is not None:
+            self.audio.set_enabled(enabled)
+            self.audio.set_volume(self.cfg.volume)
+
+    def _sfx(self, name: str) -> None:
+        """播放音效（静音或混音器不可用时静默）。"""
+        if self.audio is not None:
+            self.audio.play(name)
+
     def open_settings(self) -> None:
-        """打开键位设置面板。"""
+        """打开设置面板。"""
         if self.settings_panel is None:
-            self.settings_panel = SettingsPanel(self.cfg)
+            self.settings_panel = SettingsPanel(
+                self.cfg,
+                on_theme=self._apply_theme,
+                on_sound=self._apply_sound,
+                on_language=self._apply_language,
+            )
         self.show_settings = True
 
     def close_settings(self) -> None:
@@ -327,6 +378,21 @@ class App:
     def _game_over(self) -> None:
         """对局结束：战役模式下结算本关并准备进入下一关。"""
         self.mode = "over"
+        # 战斗回顾数据
+        if self.state is not None:
+            try:
+                self.debrief = build_debrief(self.state)
+            except Exception:
+                self.debrief = None
+        # 胜负音效
+        if self.state is not None:
+            w = self.state.winner
+            if w is None:
+                self._sfx("click")
+            elif w is self.side:
+                self._sfx("victory")
+            else:
+                self._sfx("defeat")
         if self.campaign is not None and self.campaign_progress is not None \
                 and self.state is not None and self.state.over:
             self._campaign_step_complete()
@@ -455,9 +521,9 @@ class App:
         h = 130 + max(1, len(camps)) * 86
         r = pygame.Rect((self.w - w) // 2, max(60, (self.h - h) // 2), w, h)
         dim = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        dim.fill((5, 8, 12, 200))
+        dim.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 200))
         s.blit(dim, (0, 0))
-        T.panel(s, r, (14, 19, 27), T.PURPLE, radius=6)
+        T.panel(s, r, T.mix(T.PANEL, T.PURPLE, 0.15), T.PURPLE, radius=6)
         T.draw_text(s, "战役模式", (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
         T.draw_text(s, "连续多张想定共享部队与胜负点——上一关的幸存者会随你进入下一关",
                     (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
@@ -584,7 +650,7 @@ class App:
             T.draw_text(s, title, (r.x + 24, yy), 12, T.TEXT, bold=True)
             yy += 17
             for line in T.wrap_text(desc, 10, r.width - 40):
-                T.draw_text(s, line, (r.x + 24, yy), 10, (146, 164, 184))
+                T.draw_text(s, line, (r.x + 24, yy), 10, T.TEXT_DIM)
                 yy += 14
             yy += 6
 
@@ -602,7 +668,7 @@ class App:
         T.draw_text(s, "n×n 方块战场 · 回合制 · 侦察-打击链 · 电子战 · 防区外打击", (62, 128), 12, T.TEXT_DIM)
         T.hline(s, 60, self.w - 60, 158, T.BORDER)
 
-        T.draw_text(s, "选择想定", (60, 176), 13, T.TEXT_DIM, bold=True)
+        T.draw_text(s, i18n.tr("menu.select_scenario"), (60, 176), 13, T.TEXT_DIM, bold=True)
         card_w = min(430, (self.w - 150) // max(1, len(self.scenarios)) - 16)
         card_h = 208
         x = 60
@@ -614,41 +680,48 @@ class App:
                     T.CYAN if active else T.BORDER, radius=5)
             if active:
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x, r.y, r.w, 2))
+            # 卡片内元素按固定行序排布，避免互相重叠：
+            #   标题行 → 规格行 → 元数据行 → 描述（最多 2 行）
+            head_y = r.y + 14
             if is_tut:
                 # 教学想定：左上角角标 + 高亮边框
                 pygame.draw.rect(s, T.GREEN, r, 1, border_radius=5)
-                badge = pygame.Rect(r.x + 12, r.y + 12, 56, 17)
-                pygame.draw.rect(s, (26, 74, 58), badge, border_radius=3)
-                T.draw_text(s, "教学", badge.center, 10, (170, 255, 210), anchor="center")
-            T.draw_text(s, sc["name"], (r.x + 16, r.y + (38 if is_tut else 16)), 17,
+                badge = pygame.Rect(r.x + 12, head_y, 56, 17)
+                pygame.draw.rect(s, T.mix(T.PANEL, T.GREEN, 0.22), badge, border_radius=3)
+                T.draw_text(s, i18n.tr("menu.tutorial_tag"), badge.center, 10,
+                            T.mix(T.GREEN, T.WHITE, 0.4), anchor="center")
+            T.draw_text(s, sc["name"], (r.x + 16, head_y + (22 if is_tut else 0)), 17,
                         T.TEXT, bold=True)
             T.draw_text(s, f"{sc['size'][0]}×{sc['size'][1]} 格 · {sc['tile_km']} km/格 · "
                             f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
-                        (r.x + 16, r.y + 62), 11, T.TEXT_FAINT)
-            # 元数据：难度标签 + 作者 + 标签
+                        (r.x + 16, head_y + 46), 11, T.TEXT_FAINT)
+            # 元数据：难度标签 + 作者 + 事件数（同一行内横向排布）
             meta = sc.get("meta") or {}
             diff = meta.get("difficulty", "")
+            meta_y = head_y + 64
             bx = r.x + 16
             if diff:
                 col = DIFFICULTY_COLORS.get(diff, T.CYAN)
                 label = DIFFICULTY_LABELS.get(diff, diff)
                 bw = T.text_width(label, 10) + 14
-                chip = pygame.Rect(bx, r.y + 78, bw, 16)
+                chip = pygame.Rect(bx, meta_y, bw, 16)
                 pygame.draw.rect(s, (col[0] // 5, col[1] // 5, col[2] // 5), chip,
                                  border_radius=3)
                 pygame.draw.rect(s, col, chip, 1, border_radius=3)
                 T.draw_text(s, label, chip.center, 10, col, anchor="center")
                 bx += bw + 6
             if meta.get("author"):
-                T.draw_text(s, f"作者 {meta['author']}", (bx, r.y + 80), 10, T.TEXT_FAINT)
-            for i, tag in enumerate(meta.get("tags", [])[:2]):
-                tx = r.x + 16 + i * 62
-                T.draw_text(s, f"#{tag}", (tx, r.y + 96), 9, (140, 165, 190))
+                T.draw_text(s, f"作者 {meta['author']}", (bx, meta_y + 2), 10, T.TEXT_FAINT)
             if sc.get("events"):
-                T.draw_text(s, f"脚本事件 {sc['events']} 条", (r.right - 16, r.y + 80), 10,
+                T.draw_text(s, f"脚本事件 {sc['events']} 条", (r.right - 16, meta_y + 2), 10,
                             T.PURPLE, anchor="topright")
-            yy = r.y + 84
-            for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:3]:
+            # 标签行（单独一行，不与难度标签重叠）
+            for i, tag in enumerate(meta.get("tags", [])[:3]):
+                tx = r.x + 16 + i * 62
+                T.draw_text(s, f"#{tag}", (tx, meta_y + 20), 9, T.mix(T.CYAN, T.TEXT_DIM, 0.5))
+            # 描述：放在元数据下方，最多 2 行
+            yy = meta_y + 38
+            for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:2]:
                 T.draw_text(s, line, (r.x + 16, yy), 12, T.TEXT_DIM)
                 yy += 18
             T.draw_text(s, "点击选择", (r.x + 16, r.bottom - 26), 11,
@@ -685,13 +758,14 @@ class App:
         hover = start.collidepoint(self.mouse)
         pygame.draw.rect(s, (30, 104, 128) if hover else (22, 78, 98), start, border_radius=4)
         pygame.draw.rect(s, T.CYAN, start, 1, border_radius=4)
-        T.draw_text(s, "开始作战  [Enter]", start.center, 16, T.WHITE, bold=True, anchor="center")
+        T.draw_text(s, i18n.tr("menu.start") + "  [Enter]", start.center, 16,
+                    T.WHITE, bold=True, anchor="center")
 
         edit_r = self._menu_edit_rect()
         hover = edit_r.collidepoint(self.mouse)
         pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), edit_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, edit_r, 1, border_radius=4)
-        T.draw_text(s, "地图 / 武器编辑器", edit_r.center, 13,
+        T.draw_text(s, i18n.tr("menu.editor"), edit_r.center, 13,
                     T.WHITE if hover else T.TEXT, anchor="center")
 
         # 快速上手：直接进入教学想定（首次运行时高亮）
@@ -702,7 +776,7 @@ class App:
         pygame.draw.rect(s, fill, tut_r, border_radius=4)
         pygame.draw.rect(s, T.GREEN if (hover or first_run) else T.BORDER_HI, tut_r, 1,
                          border_radius=4)
-        T.draw_text(s, "快速上手  [T]", tut_r.center, 13,
+        T.draw_text(s, i18n.tr("menu.tutorial") + "  [T]", tut_r.center, 13,
                     T.WHITE if hover else (T.TEXT if not first_run else (180, 255, 215)),
                     bold=first_run, anchor="center")
 
@@ -719,7 +793,8 @@ class App:
         hover = set_r.collidepoint(self.mouse)
         pygame.draw.rect(s, (26, 42, 56) if hover else (18, 26, 36), set_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, set_r, 1, border_radius=4)
-        T.draw_text(s, "设置", set_r.center, 13, T.WHITE if hover else T.TEXT, anchor="center")
+        T.draw_text(s, i18n.tr("menu.settings"), set_r.center, 13,
+                    T.WHITE if hover else T.TEXT, anchor="center")
 
         if first_run:
             T.draw_text(s, "首次使用？点「快速上手」用 3 分钟学会核心操作",
@@ -767,6 +842,15 @@ class App:
             self.state.log_message(None, f"教学开始：{self.tutorial.current.title if self.tutorial.current else ''}", "system")
         self._layout_game()
         self._select_first_unit()
+        # 作战简报：开局前先给玩家看敌情与胜利条件
+        self.briefing = build_briefing(self.state)
+        self.show_briefing = True
+
+    def _close_briefing(self) -> None:
+        """关闭作战简报，正式进入战斗。"""
+        self.show_briefing = False
+        self.briefing = None
+        self._sfx("click")
 
     # -- 系统菜单 / 存档 --------------------------------------------------
     def toggle_menu(self) -> None:
@@ -828,18 +912,19 @@ class App:
         self.buttons = []
         x = self.w - 14
         specs = [
-            ("结束回合", self.end_turn, "primary", "end_turn"),
-            ("帮助", self.toggle_help, "ghost", "help"),
+            (i18n.tr("top.end_turn"), self.end_turn, "primary", "end_turn"),
+            (i18n.tr("top.help"), self.toggle_help, "ghost", "help"),
         ]
         for label, cb, kind, act in specs:
-            width = 96 if label == "结束回合" else 62
+            width = 96 if label == i18n.tr("top.end_turn") else 62
             x -= width
             self.buttons.append(Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
                                        size=13, hotkey=hotkey_label(self.cfg, act)))
             x -= 8
         # 叠加层切换
         x -= 6
-        self.overlay_btn = Button(pygame.Rect(x - 84, 9, 84, 32), "覆盖层", self.cycle_overlay,
+        self.overlay_btn = Button(pygame.Rect(x - 84, 9, 84, 32), i18n.tr("top.overlay"),
+                                  self.cycle_overlay,
                                   "ghost", size=12)
         self.buttons.append(self.overlay_btn)
         # 设置
@@ -1083,6 +1168,12 @@ class App:
                 self.running = False
             return
 
+        # 作战简报：回车关闭，其余按键忽略
+        if self.show_briefing:
+            if k == pygame.K_RETURN or k == pygame.K_SPACE or k == pygame.K_ESCAPE:
+                self._close_briefing()
+            return
+
         st = self.state
         if action == "end_turn" and st.phase == "player":
             self.end_turn()
@@ -1143,13 +1234,27 @@ class App:
             return
         if self.mode == "over":
             if e.button == 1:
-                if pygame.Rect(self.w // 2 - 130, self.h // 2 + 108, 260, 44).collidepoint(pos):
+                if self._debrief_btn.collidepoint(pos):
                     if self.campaign_pending:
                         self._campaign_next_step()
                     else:
                         self.mode = "menu"
                         self._scan_scenarios()
                         self._scan_campaigns()
+                elif not self.debrief and pygame.Rect(
+                        self.w // 2 - 130, self.h // 2 + 108, 260, 44).collidepoint(pos):
+                    if self.campaign_pending:
+                        self._campaign_next_step()
+                    else:
+                        self.mode = "menu"
+                        self._scan_scenarios()
+                        self._scan_campaigns()
+            return
+
+        # 作战简报：点击「开始作战」关闭
+        if self.show_briefing:
+            if e.button == 1 and self._brief_btn.collidepoint(pos):
+                self._close_briefing()
             return
 
         if self.show_help:
@@ -1322,6 +1427,7 @@ class App:
         # 侧栏行动按钮（雷达 / 干扰 / 筑工事 / 诱饵 / 剖面 / 烟幕 / 待机）
         for b in self.action_buttons:
             if b.handle_click(pos):
+                self._sfx("click")
                 return
         if self.tab == "unit":
             for rect, wid in self.weapon_rows:
@@ -1346,6 +1452,11 @@ class App:
             return
         st = self.state
         st.tick_fx(dt)
+        # 消费音效信号队列
+        if st.sfx_events:
+            for name in st.sfx_events[:6]:
+                self._sfx(name)
+            del st.sfx_events[:]
         if self.status_t > 0:
             self.status_t -= dt
         if self.mapview:
@@ -1454,6 +1565,9 @@ class App:
             self.settings_panel.draw(s)
         if self.mode == "over":
             self._draw_over(s)
+        if self.show_briefing and self.briefing is not None:
+            self._brief_btn = pygame.Rect(self.w // 2 - 100, self.h // 2 + 232, 200, 42)
+            draw_briefing(s, self.briefing, self.mouse, self._brief_btn)
         pygame.display.flip()
 
     # -- 教学提示条 -------------------------------------------------------
@@ -1471,11 +1585,12 @@ class App:
         h = 40 + len(lines) * 16
         r = pygame.Rect(x, mv.rect.y + 8, w, h)
         surf = pygame.Surface(r.size, pygame.SRCALPHA)
-        surf.fill((12, 24, 30, 236))
+        surf.fill((*T.mix(T.PANEL, T.GREEN, 0.12), 236))
         s.blit(surf, r.topleft)
         pygame.draw.rect(s, T.GREEN, r, 1, border_radius=4)
 
-        T.draw_text(s, step.title, (r.x + 12, r.y + 7), 12, (170, 255, 210), bold=True)
+        T.draw_text(s, step.title, (r.x + 12, r.y + 7), 12,
+                    T.mix(T.GREEN, T.WHITE, 0.4), bold=True)
         T.draw_text(s, self.tutorial.progress_text, (r.right - 12, r.y + 8), 10,
                     T.TEXT_FAINT, anchor="topright")
         if step.goal:
@@ -1484,13 +1599,14 @@ class App:
                 anchor="topright")
         yy = r.y + 26
         for line in lines[:5]:
-            T.draw_text(s, line, (r.x + 12, yy), 11, (200, 220, 235))
+            T.draw_text(s, line, (r.x + 12, yy), 11, T.TEXT)
             yy += 16
 
         # 跳过按钮
         b = pygame.Rect(r.right - 74, r.bottom - 26, 64, 20)
         hover = b.collidepoint(self.mouse)
-        pygame.draw.rect(s, (30, 48, 44) if hover else (20, 32, 30), b, border_radius=3)
+        pygame.draw.rect(s, T.mix(T.PANEL, T.GREEN, 0.22) if hover else T.PANEL,
+                         b, border_radius=3)
         pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, b, 1, border_radius=3)
         T.draw_text(s, "跳过教学", b.center, 10, T.TEXT_DIM, anchor="center")
         self._tutorial_skip_btn = b
@@ -1498,14 +1614,14 @@ class App:
     # -- 系统菜单（存档/读档） --------------------------------------------
     def _draw_system_menu(self, s: pygame.Surface) -> None:
         dim = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        dim.fill((5, 8, 12, 190))
+        dim.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 190))
         s.blit(dim, (0, 0))
 
         slots = self.slot_info or list_slots(ROOT)
         w, row_h = 520, 62
         h = 96 + len(slots) * row_h + 76
         r = pygame.Rect((self.w - w) // 2, (self.h - h) // 2, w, h)
-        T.panel(s, r, (14, 19, 27), T.BORDER_HI, radius=6)
+        T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
         T.draw_text(s, "系统菜单", (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
         T.draw_text(s, "F5 快速保存 · F9 快速读取", (r.right - 22, r.y + 20), 10,
                     T.TEXT_FAINT, anchor="topright")
@@ -1551,7 +1667,7 @@ class App:
         for i, (label, act) in enumerate(btns):
             b = pygame.Rect(r.x + 16 + i * (bw + 8), y, bw, 34)
             hover = b.collidepoint(self.mouse)
-            pygame.draw.rect(s, (24, 34, 46) if not hover else (32, 46, 62), b, border_radius=3)
+            pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL, b, border_radius=3)
             pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, b, 1, border_radius=3)
             T.draw_text(s, label, b.center, 11, T.TEXT if hover else T.TEXT_DIM, anchor="center")
             self.menu_rects.append((b, act, None))
@@ -1660,7 +1776,7 @@ class App:
         mm_size = max(96, min(164, min(mv.rect.width, mv.rect.height) // 5))
         mm = pygame.Rect(mv.rect.right - mm_size - 12, mv.rect.bottom - mm_size - 12,
                          mm_size, mm_size)
-        T.panel(s, mm.inflate(10, 10), (10, 14, 20), T.BORDER, radius=4)
+        T.panel(s, mm.inflate(10, 10), T.PANEL_SUNK, T.BORDER, radius=4)
         mv.draw_minimap(s, mm)
         T.draw_text(s, "战场态势", (mm.x, mm.y - 15), 10, T.TEXT_FAINT)
 
@@ -1670,12 +1786,12 @@ class App:
             h = 14 * len(recent) + 10
             r = pygame.Rect(mv.rect.x + 10, mv.rect.bottom - h - 8, 470, h)
             surf = pygame.Surface(r.size, pygame.SRCALPHA)
-            surf.fill((8, 11, 16, 190))
+            surf.fill((*T.PANEL_SUNK, 190))
             s.blit(surf, r.topleft)
-            pygame.draw.rect(s, (28, 38, 50), r, 1)
+            pygame.draw.rect(s, T.BORDER, r, 1)
             y = r.y + 5
             for e in recent:
-                col = LogView.KIND_COLOR.get(e.kind, T.TEXT_DIM)
+                col = LogView.kind_color(e.kind)
                 T.draw_text(s, f"T{e.turn}", (r.x + 6, y), 10, T.TEXT_FAINT, mono=True)
                 T.draw_text(s, e.text[:58], (r.x + 32, y), 10, col)
                 y += 14
@@ -1686,10 +1802,10 @@ class App:
             w = min(640, T.text_width(self.status, 13) + 28)
             r = pygame.Rect(mv.rect.centerx - w // 2, mv.rect.y + 12, w, 30)
             surf = pygame.Surface(r.size, pygame.SRCALPHA)
-            surf.fill((14, 30, 42, int(230 * a)))
+            surf.fill((*T.mix(T.PANEL, T.CYAN, 0.12), int(230 * a)))
             s.blit(surf, r.topleft)
-            pygame.draw.rect(s, (60, 130, 160), r, 1, border_radius=3)
-            T.draw_text(s, self.status, r.center, 13, (200, 240, 255), anchor="center")
+            pygame.draw.rect(s, T.mix(T.BORDER, T.CYAN, 0.55), r, 1, border_radius=3)
+            T.draw_text(s, self.status, r.center, 13, T.TEXT, anchor="center")
 
     # -- 侧栏 -------------------------------------------------------------
     def _draw_sidebar(self, s: pygame.Surface) -> None:
@@ -1699,7 +1815,9 @@ class App:
         T.vline(s, x, TOP_H, self.h - BOTTOM_H, T.BORDER)
 
         # 页签
-        tabs = [("unit", "单位详情"), ("ops", "战役态势"), ("log", "作战日志")]
+        tabs = [("unit", i18n.tr("tab.unit")),
+                ("ops", i18n.tr("tab.situation")),
+                ("log", i18n.tr("tab.log"))]
         self._tab_rects = []
         r = pygame.Rect(x + 12, TOP_H + 10, (SIDE_W - 24) // 3 - 4, 28)
         for key, label in tabs:
@@ -2075,7 +2193,8 @@ class App:
             rr = pygame.Rect(x, y - 2, 34, 18)
             active = n == cur
             hover = rr.collidepoint(self.mouse)
-            pygame.draw.rect(s, (30, 62, 84) if active else ((26, 34, 46) if hover else T.PANEL_SUNK),
+            pygame.draw.rect(s, T.mix(T.PANEL_SUNK, T.CYAN, 0.28) if active
+                          else (T.PANEL_HI if hover else T.PANEL_SUNK),
                              rr, border_radius=3)
             pygame.draw.rect(s, T.CYAN if active else T.BORDER, rr, 1, border_radius=3)
             T.draw_text(s, f"{n}", rr.center, 11, T.WHITE if active else T.TEXT_DIM,
@@ -2141,7 +2260,7 @@ class App:
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, (128, 40, 44) if hover else (92, 30, 34), btn, border_radius=3)
             pygame.draw.rect(s, T.RED, btn, 1, border_radius=3)
-            T.draw_text(s, "确认开火  [Enter]", btn.center, 12, (255, 235, 235),
+            T.draw_text(s, "确认开火  [Enter]", btn.center, 12, T.mix(T.RED, T.WHITE, 0.6),
                         bold=True, anchor="center")
             self._fire_btn = btn
 
@@ -2199,7 +2318,8 @@ class App:
         pygame.draw.rect(s, (16, 22, 32), r, border_radius=3)
         pygame.draw.rect(s, (60, 84, 110), r, 1, border_radius=3)
 
-        T.draw_text(s, "对手视角", (r.x + 10, r.y + 6), 10, (140, 180, 220), bold=True)
+        T.draw_text(s, "对手视角", (r.x + 10, r.y + 6), 10,
+                        T.mix(T.BLUE, T.CYAN, 0.4), bold=True)
         T.draw_text(s, "这发子弹会遇到什么", (r.right - 10, r.y + 7), 9, T.TEXT_FAINT,
                     anchor="topright")
 
@@ -2258,7 +2378,7 @@ class App:
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, (130, 96, 40) if hover else (94, 68, 28), btn, border_radius=3)
             pygame.draw.rect(s, T.AMBER, btn, 1, border_radius=3)
-            T.draw_text(s, "确认打击  [Enter]", btn.center, 12, (255, 245, 225),
+            T.draw_text(s, "确认打击  [Enter]", btn.center, 12, T.mix(T.AMBER, T.WHITE, 0.5),
                         bold=True, anchor="center")
             self._fire_btn = btn
         return r.bottom + 8
@@ -2292,7 +2412,7 @@ class App:
         if notes:
             yy += 3
             for line in notes:
-                T.draw_text(s, line, (r.x + 10, yy), 10, (120, 150, 150))
+                T.draw_text(s, line, (r.x + 10, yy), 10, T.mix(T.GREEN, T.TEXT_DIM, 0.55))
                 yy += 13
 
     # -- 态势页 -----------------------------------------------------------
@@ -2406,7 +2526,7 @@ class App:
                 if y > body.bottom - 16:
                     break
                 for line in T.wrap_text("· " + tip, 10, body.width)[:2]:
-                    T.draw_text(s, line, (body.x, y), 10, (150, 175, 190))
+                    T.draw_text(s, line, (body.x, y), 10, T.TEXT_DIM)
                     y += 14
                 y += 2
 
@@ -2541,10 +2661,14 @@ class App:
     def _draw_over(self, s: pygame.Surface) -> None:
         st = self.state
         surf = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        surf.fill((5, 8, 12, 200))
+        surf.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 200))
         s.blit(surf, (0, 0))
+        if self.debrief is not None:
+            self._debrief_btn = pygame.Rect(self.w // 2 - 130, self.h // 2 + 218, 260, 44)
+            draw_debrief(s, self.debrief, self.mouse, self._debrief_btn)
+            return
         r = pygame.Rect(self.w // 2 - 260, self.h // 2 - 190, 520, 380)
-        T.panel(s, r, (14, 19, 27), T.BORDER_HI, radius=6)
+        T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
         win = st.winner is self.side
         if st.winner is None:
             title, col = "战 平", T.AMBER

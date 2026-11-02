@@ -76,6 +76,10 @@ def main() -> int:
         check(False, "未找到草原雷霆想定")
         app.menu_index = 0
     app.start_game()
+    # 简报是模态浮层：确认后才进入可交互的战斗界面
+    check(app.show_briefing and app.briefing is not None, "开局简报已弹出")
+    app._close_briefing()
+    check(not app.show_briefing, "简报可关闭")
     st = app.state
     check(st is not None and len(st.units) > 20, f"想定载入（{st.map.name}，{len(st.units)} 单位）")
     check(st.objective_tiles, "目标点存在")
@@ -618,6 +622,131 @@ def main() -> int:
     check(ed.selection_size() == 25, "框选：撤销后选区保持")
     ed.clear_selection()
     check(ed.selection_size() == 0, "框选：可清除选区")
+
+    # ================================================================== #
+    # v1.4：呈现与体验
+    # ================================================================== #
+    # --- 4.1 战斗动画 ---
+    from core import anim as _anim
+    st3 = app.state
+    _before = st3.anim.count
+    st3.anim.add("trail", (2, 2), (8, 8), ttl=1.0)
+    st3.anim.add("burst", (8, 8), None, ttl=0.6)
+    st3.anim.add("intercept", (5, 5), None, ttl=0.6)
+    st3.anim.add("smoke", (4, 4), None, ttl=0.8)
+    st3.anim.add("flash", (3, 3), None, ttl=0.2)
+    st3.anim.add("ping", (6, 6), None, ttl=0.8)
+    st3.anim.add("move", (1, 1), (4, 1), ttl=0.4)
+    st3.anim.add("label", (7, 7), None, ttl=0.9, text="命中")
+    check(st3.anim.count == _before + 8, "动画：事件已入队")
+    # 拖尾采样点应沿弹道分布
+    _pts = _anim.trail_points((0.0, 0.0), (10.0, 0.0), 0.5)
+    check(len(_pts) == 8 and _pts[-1][0] > _pts[0][0], "动画：拖尾沿弹道采样")
+    # 推进后过期事件被剔除
+    for _ in range(40):
+        st3.tick_fx(0.05)
+    check(st3.anim.count < _before + 8, "动画：过期事件被剔除")
+    # 关闭动画后不再接收事件
+    st3.anim.enabled = False
+    _n0 = st3.anim.count
+    st3.anim.add("burst", (1, 1), None, ttl=1.0)
+    check(st3.anim.count == _n0, "动画：关闭后不接收新事件")
+    st3.anim.enabled = True
+    st3.anim.clear()
+
+    # --- 4.4 音效系统 ---
+    from ui.audio import ALL_SOUNDS as _SOUNDS, AudioManager as _Audio
+    _am = _Audio(enabled=True, volume=0.5)
+    check(_am.preload() == len(_SOUNDS), f"音效：{len(_SOUNDS)} 个音效合成成功")
+    for _s in _SOUNDS:
+        _am.play(_s)
+    check(True, "音效：全部音效播放无异常")
+    _am.set_enabled(False)
+    _am.play("fire")
+    check(True, "音效：静音时播放不报错")
+    _am.set_volume(0.2)
+    check(abs(_am.volume - 0.2) < 1e-6, "音效：音量可调")
+    _am.stop_all()
+
+    # --- 4.3 主题系统 ---
+    from ui import theme as _T
+    _orig_theme = _T.current_theme().id
+    _ok_all = True
+    for _tid in _T.theme_ids():
+        if not _T.set_theme(_tid):
+            _ok_all = False
+    check(_ok_all, "主题：全部主题可切换")
+    check(_T.current_theme().id != _orig_theme, "主题：切换后当前主题已改变")
+    _T.set_theme(_orig_theme)
+    check(_T.current_theme().id == _orig_theme, "主题：可还原")
+    # 不同主题的正文色应不同（亮色主题用深色文字）
+    _T.set_theme("tactical")
+    _dark_text = sum(_T.TEXT)
+    _dark_bg = sum(_T.BG)
+    _T.set_theme("light")
+    check(_T.BG != _dark_bg, "主题：亮色主题背景不同")
+    # 亮色主题：背景浅、文字深（明度对比方向与暗色主题相反）
+    check(sum(_T.TEXT) < _dark_text and sum(_T.BG) > _dark_bg,
+          "主题：亮色主题使用深色文字与浅色背景")
+    # 色盲主题：敌方色不应与友方色接近（避免红绿混淆）
+    _T.set_theme("tactical")
+    _tac_blue = _T.SIDE_COLORS[Side.BLUE]["edge"]
+    _tac_red = _T.SIDE_COLORS[Side.RED]["edge"]
+    _T.set_theme("deuteranopia")
+    _deu_blue = _T.SIDE_COLORS[Side.BLUE]["edge"]
+    _deu_red = _T.SIDE_COLORS[Side.RED]["edge"]
+    check(_deu_blue != _deu_red and abs(sum(_deu_red) - sum(_tac_red)) > 20,
+          "主题：色盲主题改用蓝黄配色区分敌我")
+    _T.set_theme(_orig_theme)
+
+    # --- 4.5 本地化 ---
+    from core import i18n as _i18n
+    _zh = _i18n.tr("menu.start")
+    check(_zh == "开始作战", "本地化：中文界面显示中文")
+    check(_i18n.set_language("en"), "本地化：可切换到英文")
+    _en = _i18n.tr("menu.start")
+    check(_en == "Start Operation", "本地化：英文界面显示英文")
+    check(_i18n.tr("no.such.key") == "no.such.key", "本地化：缺失键回退为键名")
+    check(not _i18n.set_language("fr"), "本地化：拒绝不支持的语言")
+    _i18n.set_language("zh")
+    check(_i18n.tr("menu.start") == "开始作战", "本地化：可切回中文")
+    # 两个语言包的键集合应一致
+    from core.i18n import _BUILTIN_EN as _EN, _BUILTIN_ZH as _ZH
+    check(set(_EN.keys()) == set(_ZH.keys()), "本地化：中英词条键集合一致")
+
+    # --- 4.2 简报与战斗回顾 ---
+    from ui.briefing import (build_briefing, build_debrief, summarize_force)
+    app.mode = "menu"
+    app.menu_index = scenario_index("草原雷霆")
+    app.start_game()
+    check(app.show_briefing and app.briefing is not None, "简报：开局自动弹出")
+    _b = app.briefing
+    check(_b.foe.total > 0 and _b.own.total > 0, "简报：敌我编成已统计")
+    check(_b.env_label != "", "简报：初始环境已读取")
+    check("VP" in _b.victory_hint or "胜" in _b.victory_hint, "简报：胜利条件已生成")
+    app.draw()
+    check(True, "简报：可渲染")
+    app._close_briefing()
+    # 战斗统计与回顾
+    st4 = app.state
+    st4.stats[Side.BLUE].update({"shots": 8, "hits": 5, "intercepted": 2,
+                                  "kills": 2, "damage": 120})
+    st4.stats[Side.RED].update({"shots": 6, "hits": 2, "intercepted": 3,
+                                "kills": 1, "damage": 70})
+    st4.vp_history = [(1, 2, 1), (2, 5, 3), (3, 9, 6)]
+    st4.vp[Side.BLUE] = 9
+    st4.vp[Side.RED] = 6
+    st4.over = True
+    st4.winner = Side.BLUE
+    st4.win_reason = "测试结束"
+    app._game_over()
+    check(app.debrief is not None, "回顾：对局结束后生成")
+    _d = app.debrief
+    check(_d.shots_blue == 8 and _d.hits_blue == 5, "回顾：交战统计正确")
+    check(len(_d.vp_curve) == 3, "回顾：VP 曲线已记录")
+    check(bool(_d.highlights), "回顾：要点已生成")
+    app.draw()
+    check(True, "回顾：可渲染")
 
     print()
     if FAILED:

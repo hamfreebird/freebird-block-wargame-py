@@ -12,6 +12,7 @@ import pygame
 from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
 from core.env import env_tint, environment_for
 from core.model import Tile, Unit
+from core import anim as anim_mod
 
 from . import theme as T
 
@@ -260,6 +261,7 @@ class MapView:
         self._draw_path(surf, path)
         self._draw_missiles(surf)
         self._draw_units(surf)
+        self._draw_anim(surf)
         self._draw_fx(surf)
 
         if hover:
@@ -588,7 +590,8 @@ class MapView:
         if lvl is Detection.CONTACT:
             pygame.draw.rect(surf, (26, 30, 38), body, border_radius=2)
             pygame.draw.rect(surf, (150, 120, 90), body, width=1, border_radius=2)
-            T.draw_text(surf, "?", body.center, max(9, ts // 2), (220, 180, 120),
+            T.draw_text(surf, "?", body.center, max(9, ts // 2),
+                        T.mix(T.AMBER, T.WHITE, 0.3),
                         bold=True, anchor="center")
             return
 
@@ -779,6 +782,123 @@ class MapView:
                 b = (b[0] - self.rect.x, b[1] - self.rect.y)
                 pygame.draw.line(s, (*f.color, int(180 * (1 - p))), a, b, 1)
         surf.blit(s, self.rect.topleft)
+
+    # ------------------------------------------------------------------ #
+    # 逐帧战斗动画
+    # ------------------------------------------------------------------ #
+    def _draw_anim(self, surf: pygame.Surface) -> None:
+        """绘制动画轨道中的事件。
+
+        动画只在渲染层发生，不参与任何规则结算——关掉动画不影响战局。
+        所有绘制都在地图视口的裁剪范围内进行。
+        """
+        track = getattr(self.state, "anim", None)
+        if track is None or not track.events:
+            return
+
+        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        for e in track.events:
+            p = 1.0 - max(0.0, min(1.0, e.ttl / max(0.001, e.life)))
+            a = self.grid_center(e.a[0], e.a[1])
+            a = (int(a[0] - self.rect.x), int(a[1] - self.rect.y))
+            col = e.color
+
+            if e.kind == "trail" and e.b is not None:
+                # 弹道拖尾：彗尾状，头部最亮
+                pts = anim_mod.trail_points(e.a, e.b, p)
+                for i, pt in enumerate(pts):
+                    q = self.grid_center(pt[0], pt[1])
+                    q = (int(q[0] - self.rect.x), int(q[1] - self.rect.y))
+                    fade = (i + 1) / len(pts)
+                    alpha = int(210 * fade * (1.0 - p * 0.35))
+                    if alpha <= 3:
+                        continue
+                    rad = max(1, int(self.tile * 0.055 * fade))
+                    pygame.draw.circle(layer, (*col, alpha), q, rad)
+                # 弹头
+                head = self.grid_center(*pts[-1])
+                head = (int(head[0] - self.rect.x), int(head[1] - self.rect.y))
+                pygame.draw.circle(layer, (*col, 240), head, max(1, int(self.tile * 0.07)))
+
+            elif e.kind == "burst":
+                # 爆炸：扩散冲击环 + 火花射线 + 闪光核心
+                rad = max(2, int(self.tile * anim_mod.burst_radius(p, e.size)))
+                alpha = int(230 * (1.0 - p))
+                if alpha <= 3:
+                    continue
+                pygame.draw.circle(layer, (*col, alpha), a, rad, max(1, int(self.tile * 0.07)))
+                inner = max(1, int(rad * 0.55))
+                pygame.draw.circle(layer, (255, 240, 210, int(alpha * 0.55)), a, inner)
+                for dx, dy in anim_mod.burst_sparks(e.seed, 8):
+                    tip = (int(a[0] + dx * rad), int(a[1] + dy * rad))
+                    pygame.draw.line(layer, (*col, int(alpha * 0.8)), a, tip, 1)
+
+            elif e.kind == "intercept":
+                # 拦截：环形涟漪 + 六向射线
+                rad = max(2, int(self.tile * (0.25 + p * 0.85)))
+                alpha = int(235 * (1.0 - p))
+                if alpha <= 3:
+                    continue
+                pygame.draw.circle(layer, (*col, alpha), a, rad, 2)
+                for ang in range(0, 360, 60):
+                    dx = math.cos(math.radians(ang)) * rad
+                    dy = math.sin(math.radians(ang)) * rad
+                    pygame.draw.line(layer, (*col, int(alpha * 0.85)), a,
+                                     (int(a[0] + dx), int(a[1] + dy)), 1)
+
+            elif e.kind == "smoke":
+                # 烟幕：数团缓慢膨胀、逐渐淡出
+                rad = max(2, int(self.tile * (0.22 + p * 0.42) * e.size))
+                alpha = int(165 * (1.0 - p * 0.85))
+                if alpha <= 3:
+                    continue
+                for i in range(3):
+                    ox, oy = anim_mod.smoke_offset(e.seed, i)
+                    q = (int(a[0] + ox * self.tile), int(a[1] + oy * self.tile))
+                    pygame.draw.circle(layer, (*col, alpha // 2), q, rad)
+
+            elif e.kind == "flash":
+                # 命中闪光：短促的高亮圆
+                rad = max(2, int(self.tile * (0.35 + p * 0.3)))
+                alpha = int(215 * (1.0 - p))
+                if alpha <= 3:
+                    continue
+                pygame.draw.circle(layer, (*col, alpha), a, rad)
+
+            elif e.kind == "ping":
+                # 探测脉冲：向外扩散的圆环
+                rad = max(2, int(self.tile * (0.2 + p * 1.1)))
+                alpha = int(200 * (1.0 - p))
+                if alpha <= 3:
+                    continue
+                pygame.draw.circle(layer, (*col, alpha), a, rad, 2)
+
+            elif e.kind == "move" and e.b is not None:
+                # 机动轨迹：移动方向的虚线
+                b = self.grid_center(e.b[0], e.b[1])
+                b = (int(b[0] - self.rect.x), int(b[1] - self.rect.y))
+                alpha = int(190 * (1.0 - p))
+                if alpha <= 3:
+                    continue
+                steps = 7
+                for i in range(steps):
+                    t0 = i / steps
+                    t1 = t0 + 0.5 / steps
+                    p0 = (int(a[0] + (b[0] - a[0]) * t0), int(a[1] + (b[1] - a[1]) * t0))
+                    p1 = (int(a[0] + (b[0] - a[0]) * t1), int(a[1] + (b[1] - a[1]) * t1))
+                    pygame.draw.line(layer, (*col, alpha), p0, p1, 1)
+
+            elif e.kind == "label":
+                # 飘字：向上飘并淡出
+                alpha = int(240 * (1.0 - p * p))
+                if alpha <= 3 or not e.text:
+                    continue
+                pos = (a[0], a[1] - int(p * self.tile * 0.9))
+                T.draw_text(layer, e.text, pos, 12, col, anchor="center", bold=True,
+                            alpha=alpha)
+
+        layer.set_clip(self.rect)
+        surf.blit(layer, self.rect.topleft)
 
     # ------------------------------------------------------------------ #
     # 缩略图

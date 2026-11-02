@@ -148,6 +148,18 @@ def maps_dir() -> str:
     return os.path.join(data_root(), "data", "maps")
 
 
+def lang_dir() -> str:
+    """语言包目录（`data/lang/<code>.json`）。"""
+    return os.path.join(data_root(), "data", "lang")
+
+
+def user_lang_dir() -> str:
+    """用户自定义语言包目录（可放社区翻译，不影响安装目录）。"""
+    d = os.path.join(user_writable_dir(), "lang")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def armory_path() -> str:
     return os.path.join(data_root(), "data", "units", "armory.json")
 

@@ -122,6 +122,8 @@ def game_to_dict(state: GameState) -> dict[str, Any]:
         "vp": {s.value: v for s, v in state.vp.items()},
         "gps": {s.value: round(v, 3) for s, v in state.gps.items()},
         "casualties": {s.value: v for s, v in state.casualties.items()},
+        "stats": {s.value: dict(v) for s, v in state.stats.items()},
+        "vp_history": [list(t) for t in state.vp_history],
         "units": [_unit_dict(u) for u in state.units],
         "tiles": [_tile_dict(t) for t in state.map.iter_tiles()
                   if t.owner is not Side.NEUTRAL or t.smoke or t.facility is not Facility.NONE
@@ -313,6 +315,19 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         state.gps[Side(s)] = float(v)
     for s, v in data.get("casualties", {}).items():
         state.casualties[Side(s)] = int(v)
+    for s, v in data.get("stats", {}).items():
+        try:
+            side = Side(s)
+        except ValueError:
+            continue
+        if isinstance(v, dict):
+            for k, n in v.items():
+                if k in state.stats[side]:
+                    state.stats[side][k] = int(n)
+    state.vp_history = []
+    for row in data.get("vp_history", []):
+        if isinstance(row, (list, tuple)) and len(row) == 3:
+            state.vp_history.append((int(row[0]), int(row[1]), int(row[2])))
 
     state.log = []
     for e in data.get("log", []):

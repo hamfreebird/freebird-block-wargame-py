@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.3.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -346,6 +346,59 @@ Pk_i  = 拦截弹基础 Pk × (1 − 弹药突防能力) × (1 − 干扰 × 0.6
 编辑器新增「框选」工具：左键拖拽圈定矩形区域，切换到任意工具后点击地图，
 工具会**批量应用到整个选区**。配合撤销 / 重做（`Ctrl+Z` / `Ctrl+Y`）可放心试错。
 
+## v1.4 新增功能（呈现与体验）
+
+### 1. 战斗动画
+
+开火到命中的过程有了连续视觉反馈，而不是瞬间跳变：
+
+| 动画 | 表现 |
+|---|---|
+| **弹道拖尾** | 导弹沿弹道推进的彗尾，头部最亮、尾部渐隐 |
+| **爆炸** | 扩散冲击环 + 8 向火花射线 + 闪光核心 |
+| **拦截** | 环形涟漪 + 六向射线 |
+| **烟幕** | 数团缓慢膨胀、逐渐淡出的烟团 |
+| **命中闪光** | 目标位置的短促高亮 |
+| **探测脉冲** | 向外扩散的圆环（发现目标 / 夺取目标点） |
+| **机动轨迹** | 移动方向的虚线 + 落点尘土 |
+| **飘字** | 「击毁」「拦截」「中段拦截」等向上飘出的文字 |
+
+动画**只影响观感**，不参与任何命中与拦截判定——关掉动画战局结果完全不变。
+
+### 2. 想定简报与战斗回顾
+
+- **作战简报**：开局前展示敌情编成、我方编成、目标点与胜利条件、
+  初始环境与已知的预定事件。看完再动手。
+- **战斗回顾**：战后展示交战效能对比（开火 / 命中 / 被拦截 / 击毁 / 损失 /
+  剩余兵力，双方并排条形对比）、**胜负点走势曲线**，以及自动提炼的要点
+  （如「命中率仅 22%，情报或射界准备不足」）。
+
+### 3. 界面主题与色盲友好配色
+
+设置面板 → 界面主题，四套配色即时切换：
+
+| 主题 | 说明 |
+|---|---|
+| **深色战术终端** | 默认，低饱和地形 + 高对比阵营色 |
+| **亮色简报风** | 浅底深字，适合白天与投影 |
+| **色盲友好（蓝黄）** | 敌方改用琥珀色系，彻底避免红绿混淆 |
+| **色盲友好（蓝青）** | 敌方改用金黄色系 |
+
+### 4. 音效
+
+9 种战斗音效（探测 / 开火 / 拦截 / 爆炸 / 警报 / 点击 / 机动 / 胜利 / 失败），
+**全部由数学函数实时合成**——不需要任何音频素材文件，打包后开箱即用，
+且体积为零。可在设置面板开关并调节音量；没有声卡时自动静默降级。
+
+### 5. 本地化框架
+
+界面文案抽离到语言文件，支持**中 / 英**即时切换（设置面板 → 界面语言）。
+
+- 语言包位于 `data/lang/<代码>.json`，**用户目录的 `lang/` 可覆盖它**，
+  社区翻译无需改动安装目录；
+- 缺失词条自动回退（当前语言 → 另一语言 → 键名），绝不会显示空白；
+- 想定数据里的中文描述属于内容而非界面，不随语言切换。
+
 ---
 
 ## 存档与读档
@@ -607,6 +660,8 @@ core/
   report.py             战报导出：Markdown / 纯文本
   env.py                战场环境：时段 / 天候与探测系数
   events.py             想定脚本：按回合触发的事件（天候 / 增援 / 空袭 / 目标点）
+  anim.py               战斗动画轨道（数据驱动，core 不依赖 pygame）
+  i18n.py               本地化：词条查表与语言切换
   validate.py           想定深度校验：连通性、目标点可达性、兵力配比
   pkg.py                社区想定包：.bwscn 导入导出
   campaign.py           战役模式：跨关共享部队与胜负点、进度存档
@@ -617,19 +672,22 @@ ui/
   mapview.py            地形预渲染、棋子、射程环、特效、缩略图
   app.py                主循环、布局、事件、面板
   editor.py             地图 / 武器可视化编辑器
-  settings.py           设置面板：键位自定义
+  settings.py           设置面板：键位 / 主题 / 音效 / 语言
+  audio.py              音效系统：程序化合成（无需音频素材）
+  briefing.py           作战简报与战斗回顾
   inspect.py            悬停信息卡
   keymap.py             键名 ↔ 键码转换与动作反查
 data/
   maps/*.json           可编辑地图与想定（training_ground.json 为教学想定）
   units/armory.json     可编辑武器库
   campaigns/*.json      战役定义（多关卡串联）
+  lang/*.json           语言包（zh / en，可被用户目录覆盖）
 saves/                  存档槽位（运行时生成）
 tools/
   make_maps.py          地图生成脚本（开发用）
   make_icon.py          图标生成（多尺寸 PNG + ICO + SVG）
   simcheck.py           双 AI 推演诊断脚本（开发用）
-  diag.py               作战逻辑自检：21 条不变量 + 存档往返校验
+  diag.py               作战逻辑自检：25 条不变量 + 存档往返校验
   smoke_test.py         无界面 UI 冒烟测试（CI 使用）
 assets/icon/            应用图标（PNG / ICO / SVG）
 packaging/              打包流程（PyInstaller + 便携版 + 源码包）
@@ -649,8 +707,8 @@ python -m pip install -r requirements.txt
 python main.py                 # 运行游戏
 python main.py --check         # 数据校验（地图 + 武器库）
 python main.py --sim 16        # 无界面双 AI 推演
-python tools/diag.py 20        # 作战逻辑自检（21 条不变量）
-python tools/smoke_test.py     # 无界面 UI 冒烟测试（102 项断言）
+python tools/diag.py 20        # 作战逻辑自检（25 条不变量）
+python tools/smoke_test.py     # 无界面 UI 冒烟测试（136 项断言）
 ```
 
 工作流：`main` 分支受保护 → `feature/<主题>` 分支开发 → PR 触发 CI（多版本 + 多平台）

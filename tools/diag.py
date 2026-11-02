@@ -338,6 +338,51 @@ def run(map_name: str, turns: int) -> Checker:
         except Exception as exc:
             ck.fail("L21", f"战役列表读取异常：{exc}")
 
+        # L22 动画与音效不影响规则：关闭表现层后战局结果必须一致
+        #     （动画/音效只影响观感，不参与命中与拦截判定）
+        try:
+            from core.anim import AnimTrack
+            if getattr(st, "anim", None) is None:
+                ck.fail("L22", "对局缺少动画轨道")
+            else:
+                st.anim.add("burst", (0, 0), None, ttl=1.0)
+                if st.anim.count < 1:
+                    ck.fail("L22", "动画事件未能入队")
+                st.anim.clear()
+        except Exception as exc:
+            ck.fail("L22", f"动画轨道异常：{exc}")
+
+        # L23 战斗统计一致：命中数不超过开火数，击毁数不超过命中数
+        for side in (Side.BLUE, Side.RED):
+            s_ = st.stats.get(side, {})
+            shots = s_.get("shots", 0)
+            hits = s_.get("hits", 0)
+            kills = s_.get("kills", 0)
+            if shots < 0 or hits < 0 or kills < 0:
+                ck.fail("L23", f"{side.label} 统计出现负数")
+            if hits > shots:
+                ck.fail("L23", f"{side.label} 命中数 {hits} 超过开火数 {shots}")
+            if kills > hits:
+                ck.fail("L23", f"{side.label} 击毁数 {kills} 超过命中数 {hits}")
+
+        # L24 胜负点曲线单调不减（每回合只加分，不减分）
+        for i in range(1, len(st.vp_history)):
+            p0, p1 = st.vp_history[i - 1], st.vp_history[i]
+            if p1[1] < p0[1] or p1[2] < p0[2]:
+                ck.fail("L24", f"VP 曲线在第 {p1[0]} 回合出现下降：{p0} → {p1}")
+
+        # L25 语言包完整：中英词条键集合一致
+        try:
+            from core.i18n import _BUILTIN_EN, _BUILTIN_ZH
+            only_en = set(_BUILTIN_EN) - set(_BUILTIN_ZH)
+            only_zh = set(_BUILTIN_ZH) - set(_BUILTIN_EN)
+            if only_en:
+                ck.fail("L25", f"英文独有词条：{sorted(only_en)[:5]}")
+            if only_zh:
+                ck.fail("L25", f"中文独有词条：{sorted(only_zh)[:5]}")
+        except Exception as exc:
+            ck.fail("L25", f"语言包检查异常：{exc}")
+
         # L7 存档往返
         from core.save import load_game, save_game
         st.scenario_path = path

@@ -73,7 +73,7 @@ class TextInput:
 
     def draw(self, s: pygame.Surface, mouse) -> None:
         hov = self.rect.collidepoint(mouse)
-        pygame.draw.rect(s, (10, 14, 20) if not self.active else (14, 26, 36),
+        pygame.draw.rect(s, T.PANEL_SUNK if not self.active else T.PANEL_HI,
                          self.rect, border_radius=3)
         pygame.draw.rect(s, T.CYAN if self.active else (T.BORDER_HI if hov else T.BORDER),
                          self.rect, 1, border_radius=3)
@@ -1044,7 +1044,7 @@ class Editor:
             T.draw_text(s, os.path.basename(self.path), (390, 15), 11, T.TEXT_FAINT)
         quit_r = pygame.Rect(self.w - 96, 8, 82, 28)
         hover = quit_r.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(s, (24, 34, 46) if not hover else (32, 46, 62), quit_r, border_radius=3)
+        pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL, quit_r, border_radius=3)
         T.draw_text(s, "返回菜单", quit_r.center, 11, T.TEXT_DIM, anchor="center")
         self.buttons.append((quit_r, "quit", None))
 
@@ -1089,7 +1089,7 @@ class Editor:
                 continue
             col = T.side_color(Side(f.get("owner", "NEUTRAL")), "edge")
             w = max(1, int((self.tile - 5) * min(3, lvl) / 3.0))
-            pygame.draw.rect(s, (10, 14, 20), (cell.x + 2, cell.bottom - 4, self.tile - 5, 3))
+            pygame.draw.rect(s, T.PANEL_SUNK, (cell.x + 2, cell.bottom - 4, self.tile - 5, 3))
             pygame.draw.rect(s, col, (cell.x + 2, cell.bottom - 4, w, 2))
 
         # 部署单位
@@ -1296,9 +1296,13 @@ class Editor:
         T.draw_text(s, "中键平移 · 滚轮缩放", (x, y + 13), 9, T.TEXT_FAINT)
 
     def _tool_button(self, s, r: pygame.Rect, label: str, active: bool,
-                     action: tuple, accent=T.CYAN) -> None:
+                     action: tuple, accent=None) -> None:
+        # accent 延迟解析：默认参数会在函数定义时固化颜色，主题切换后就改不掉了
+        if accent is None:
+            accent = T.CYAN
         hov = r.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(s, (20, 46, 60) if active else ((26, 34, 46) if hov else T.PANEL_SUNK),
+        pygame.draw.rect(s, T.mix(T.PANEL_SUNK, T.CYAN, 0.30) if active
+                         else (T.PANEL_HI if hov else T.PANEL_SUNK),
                          r, border_radius=3)
         pygame.draw.rect(s, accent if active else (T.BORDER_HI if hov else T.BORDER),
                          r, 1, border_radius=3)
@@ -1310,7 +1314,8 @@ class Editor:
             r = pygame.Rect(x + i * 76, y, 72, 24)
             active = self.brush_side is side
             c = T.side_color(side)
-            pygame.draw.rect(s, (26, 46, 60) if active else T.PANEL_SUNK, r, border_radius=3)
+            pygame.draw.rect(s, T.mix(T.PANEL_SUNK, T.CYAN, 0.30) if active else T.PANEL_SUNK,
+                         r, border_radius=3)
             pygame.draw.rect(s, c if active else T.BORDER, r, 2 if active else 1, border_radius=3)
             T.draw_text(s, side.label, r.center, 10, c if active else T.TEXT_DIM, anchor="center")
             self.buttons.append((r, "side", side))

@@ -44,17 +44,21 @@ class Button:
     # -- 绘制 -------------------------------------------------------------
     def draw(self, surf: pygame.Surface) -> None:
         r = self.rect
+        # 填充色由主题色派生，保证亮色 / 色盲主题下按钮依然协调
         if not self.enabled:
-            fill, border, fg = T.PANEL_SUNK, (30, 38, 50), T.TEXT_FAINT
+            fill, border, fg = T.PANEL_SUNK, T.BORDER, T.TEXT_FAINT
         elif self.kind == "primary":
-            fill = (28, 92, 120) if self.hover else (22, 74, 98)
-            border, fg = (T.CYAN if self.hover else (48, 130, 158)), T.WHITE
+            fill = T.mix(T.PANEL, T.CYAN, 0.30 if self.hover else 0.20)
+            border = T.CYAN if self.hover else T.mix(T.BORDER, T.CYAN, 0.55)
+            fg = T.TEXT if T.current_theme().id == "light" else T.WHITE
         elif self.kind == "danger":
-            fill = (110, 36, 40) if self.hover else (78, 28, 32)
-            border, fg = (T.RED if self.hover else (120, 60, 66)), T.WHITE
+            fill = T.mix(T.PANEL, T.RED, 0.32 if self.hover else 0.20)
+            border = T.RED if self.hover else T.mix(T.BORDER, T.RED, 0.55)
+            fg = T.TEXT if T.current_theme().id == "light" else T.WHITE
         elif self.active:
-            fill = (30, 82, 70) if self.hover else (24, 66, 58)
-            border, fg = T.GREEN, (200, 255, 220)
+            fill = T.mix(T.PANEL, T.GREEN, 0.26 if self.hover else 0.16)
+            border = T.GREEN
+            fg = T.mix(T.TEXT, T.GREEN, 0.4)
         else:
             fill = T.PANEL_HI if self.hover else T.PANEL
             border = T.BORDER_HI if self.hover else T.BORDER
@@ -77,15 +81,18 @@ class Button:
 class LogView:
     """可滚动的作战日志。"""
 
-    KIND_COLOR = {
-        "info": T.TEXT_DIM,
-        "combat": (255, 176, 120),
-        "detect": (140, 200, 255),
-        "ew": (186, 150, 255),
-        "move": (150, 190, 170),
-        "system": T.CYAN,
-        "victory": (255, 226, 130),
-    }
+    # 颜色按当前主题动态解析：写成类属性会在导入时固化，主题切换后不生效
+    @staticmethod
+    def kind_color(kind: str) -> tuple[int, int, int]:
+        return {
+            "info": T.TEXT_DIM,
+            "combat": T.mix(T.AMBER, T.RED, 0.35),
+            "detect": T.mix(T.BLUE, T.CYAN, 0.4),
+            "ew": T.PURPLE,
+            "move": T.mix(T.GREEN, T.TEXT_DIM, 0.5),
+            "system": T.CYAN,
+            "victory": T.mix(T.AMBER, T.WHITE, 0.4),
+        }.get(kind, T.TEXT_DIM)
 
     def __init__(self, rect: pygame.Rect, size: int = 12):
         self.rect = pygame.Rect(rect)
@@ -99,7 +106,7 @@ class LogView:
     def _build(self, entries, width: int) -> list[tuple[str, tuple[int, int, int]]]:
         lines: list[tuple[str, tuple[int, int, int]]] = []
         for e in entries:
-            color = self.KIND_COLOR.get(e.kind, T.TEXT_DIM)
+            color = self.kind_color(e.kind)
             prefix = f"T{e.turn} "
             for i, seg in enumerate(theme_wrap(prefix + e.text, self.size, width - 10)):
                 lines.append((seg, color if i == 0 else T.TEXT_FAINT))
@@ -140,7 +147,7 @@ def draw_tooltip(surf: pygame.Surface, text: str, pos: tuple[int, int],
     if y + h > sh - 8:
         y = y - h - 10
     rect = pygame.Rect(x, y, w, h)
-    pygame.draw.rect(surf, (14, 19, 27), rect, border_radius=4)
+    pygame.draw.rect(surf, T.PANEL, rect, border_radius=4)
     pygame.draw.rect(surf, T.BORDER_HI, rect, width=1, border_radius=4)
     yy = y + 5
     for l in lines:
@@ -159,7 +166,12 @@ def section(surf: pygame.Surface, rect: pygame.Rect, title: str,
 
 
 def kv(surf: pygame.Surface, x: int, y: int, key: str, value: str,
-       width: int, key_color=T.TEXT_FAINT, val_color=T.TEXT, size: int = 12) -> int:
+       width: int, key_color=None, val_color=None, size: int = 12) -> int:
+    # 颜色延迟解析：默认参数会在定义时固化，主题切换后就改不动了
+    if key_color is None:
+        key_color = T.TEXT_FAINT
+    if val_color is None:
+        val_color = T.TEXT
     T.draw_text(surf, key, (x, y), size, key_color)
     T.draw_text(surf, value, (x + width, y), size, val_color, anchor="topright", mono=True)
     return y + size + 4

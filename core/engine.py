@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
 from .events import ScenarioEvent, apply_events, parse_events
 from .model import FireMission, Missile, Order, Tile, Unit, Weapon
+from .anim import AnimTrack
 from . import rules
 from .env import EnvironmentTrack, environment_for
 
@@ -80,12 +81,23 @@ class GameState:
         self.missiles: list[Missile] = []
         self.log: list[LogEntry] = []
         self.fx: list[Fx] = []
+        # 逐帧战斗动画（core 不依赖 pygame，具体绘制在 ui/mapview.py）
+        self.anim = AnimTrack()
+        # 音效信号队列（由 UI 层消费）
+        self.sfx_events: list[str] = []
         self.detection: dict[Side, dict[int, Detection]] = {Side.BLUE: {}, Side.RED: {}}
         self.sat_recon: dict[Side, set[int]] = {Side.BLUE: set(), Side.RED: set()}
         self.sat_track: dict[int, Detection] = {}
         self.vp: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
         self.gps: dict[Side, float] = {Side.BLUE: 1.0, Side.RED: 1.0}
         self.casualties: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
+        # 战斗统计（用于战后回顾）：按阵营累计
+        self.stats: dict[Side, dict[str, int]] = {
+            Side.BLUE: {"shots": 0, "hits": 0, "intercepted": 0, "kills": 0, "damage": 0},
+            Side.RED: {"shots": 0, "hits": 0, "intercepted": 0, "kills": 0, "damage": 0},
+        }
+        # 胜负点曲线：每回合记录双方的累计 VP
+        self.vp_history: list[tuple[int, int, int]] = []   # (回合, 蓝VP, 红VP)
 
         self._ai_queue: list = []
         self._ai_planner = None
@@ -175,9 +187,32 @@ class GameState:
         if len(self.fx) > 200:
             del self.fx[:100]
 
+    def emit_sfx(self, name: str) -> None:
+        """发出一个音效信号（由 UI 层消费；core 不依赖 pygame）。
+
+        与动画同理：音效只影响观感，不参与规则结算。
+        """
+        self.sfx_events.append(name)
+        if len(self.sfx_events) > 40:
+            del self.sfx_events[:20]
+
     # -- 探测与态势 -------------------------------------------------------
     def refresh_detection(self) -> None:
+        """重算探测态势。
+
+        顺带检测「新发现」——某个敌方目标从不可见变为可见时发出探测提示音，
+        这样玩家能第一时间注意到战场变化。
+        """
+        before = dict(self.detection.get(self.player_side, {}))
         rules.build_detection_map(self)
+        after = self.detection.get(self.player_side, {})
+        for uid, lvl in after.items():
+            old = before.get(uid)
+            if old is not None and old is lvl:
+                continue
+            if old is not None and old.level == 0 and lvl.level > 0:
+                self.emit_sfx("detect")
+                break          # 一次刷新只响一次，避免多个目标时噪声叠加
 
     def _init_gps(self) -> None:
         for side in (Side.BLUE, Side.RED):
@@ -282,6 +317,12 @@ class GameState:
         unit.moved = True
         unit.entrench = 0
         self.add_fx("move", start, (unit.x, unit.y), ttl=0.6, color=(120, 210, 255))
+        # 逐帧动画：机动轨迹 + 落点尘土
+        self.anim.add("move", start, (unit.x, unit.y), ttl=0.5,
+                      color=(120, 210, 255))
+        self.anim.add("burst", (unit.x, unit.y), None, ttl=0.4,
+                      color=(170, 160, 140), size=0.35)
+        self.emit_sfx("move")
         if mines:
             unit.apply_damage(mine_dmg)
             unit.suppressed = max(unit.suppressed, 1)
@@ -315,11 +356,15 @@ class GameState:
             old = t.owner
             t.owner = unit.side
             self.add_fx("ping", (t.x, t.y), None, ttl=1.2, color=(140, 255, 190))
+            # 逐帧动画：夺取设施的绿色脉冲
+            self.anim.add("ping", (t.x, t.y), None, ttl=1.0, color=(140, 255, 190))
             self.log_message(unit.side,
                              f"{unit.name} 夺取 {t.facility.label} ({t.x},{t.y})，原属{old.label}", "combat")
         if t.objective and t.owner is not unit.side:
             t.owner = unit.side
             self.add_fx("ping", (unit.x, unit.y), None, ttl=1.2, color=(255, 230, 140))
+            # 逐帧动画：占领目标点的金色脉冲
+            self.anim.add("ping", (unit.x, unit.y), None, ttl=1.0, color=(255, 230, 140))
             self.log_message(unit.side, f"{unit.name} 占领 {t.objective_name or '目标点'} ({t.x},{t.y})", "combat")
 
     # -- 传感器开关 -------------------------------------------------------
@@ -402,6 +447,12 @@ class GameState:
         self.missiles.append(missile)
         self.add_fx("missile", (attacker.x, attacker.y), (target.x, target.y),
                     ttl=1.0, color=(255, 150, 90))
+        # 逐帧动画：弹道拖尾 + 发射闪光
+        self.anim.add("trail", (attacker.x, attacker.y), (target.x, target.y),
+                      ttl=1.2, color=(255, 170, 100))
+        self.anim.add("burst", (attacker.x, attacker.y), None,
+                      ttl=0.35, color=(255, 220, 160), size=0.45)
+        self.emit_sfx("fire")
         self.log_message(attacker.side,
                          f"{attacker.name} 发射 {weapon.name} × {n} → {target.name}"
                          f"（{prof.distance:.1f} 格，预计 {missile.eta} 回合后抵达）", "combat")
@@ -428,6 +479,12 @@ class GameState:
                     if rules.roll(pk):
                         self.add_fx("intercept", mid, None, ttl=1.2, color=(150, 220, 255),
                                     text="中段拦截")
+                        # 逐帧动画：中段拦截的冷色调涟漪
+                        self.anim.add("intercept", mid, None, ttl=1.0,
+                                      color=(150, 220, 255))
+                        self.anim.add("label", mid, None, ttl=1.1,
+                                      color=(180, 235, 255), text="中段拦截")
+                        self.emit_sfx("intercept")
                         self.log_message(defended,
                                          f"{d.name} 发射 {w.name} 在中段成功拦截 {m.label}"
                                          f"（单发 Pk {pk * 100:.0f}%）", "combat")
@@ -488,8 +545,19 @@ class GameState:
         salvo = max(1, salvo)
         leakers, events = rules.resolve_salvo_interception(
             self, (target.x, target.y), target.side, weapon, salvo, self_unit=target)
+        # 统计：开火数与被拦截数
+        st_att = self.stats[attacker.side]
+        st_att["shots"] += salvo
+        if leakers < salvo:
+            st_att["intercepted"] += salvo - leakers
         if events:
             self.add_fx("intercept", (target.x, target.y), None, ttl=0.9, color=(120, 255, 200))
+            # 逐帧动画：拦截涟漪 + 飘字
+            self.anim.add("intercept", (target.x, target.y), None,
+                          ttl=0.8, color=(120, 255, 210))
+            self.anim.add("label", (target.x, target.y), None, ttl=0.9,
+                          color=(150, 255, 215), text="拦截")
+            self.emit_sfx("intercept")
             for ev in events[:4]:
                 self.log_message(target.side, f"{target.name} 防空网：{ev}", "combat")
         if leakers <= 0:
@@ -510,11 +578,16 @@ class GameState:
                 dmg = rules.jitter(prof.damage)
                 total_damage += dmg
                 hits += 1
+        st_att["hits"] += hits
+        st_att["damage"] += int(total_damage)
 
         self.add_fx("tracer", (attacker.x, attacker.y), (target.x, target.y),
                     ttl=0.55, color=(255, 220, 120))
         if hits == 0:
             self.add_fx("ping", (target.x, target.y), None, ttl=0.6, color=(150, 150, 170))
+            # 未命中：只留一道淡去的弹道痕迹
+            self.anim.add("trail", (attacker.x, attacker.y), (target.x, target.y),
+                          ttl=0.6, color=(200, 190, 140))
             self.log_message(attacker.side,
                              f"{attacker.name} → {target.name}｜{weapon.name} 未命中（Pk {prof.pk * 100:.0f}%）", "combat")
             return FireResult(True, "未命中")
@@ -534,6 +607,12 @@ class GameState:
         target.revealed_until = self.turn_count + 1
         self.add_fx("explosion", (target.x, target.y), None, ttl=0.8, color=(255, 140, 60),
                     text=f"-{total_damage:.0f}")
+        # 逐帧动画：命中闪光 + 冲击环
+        self.anim.add("flash", (target.x, target.y), None, ttl=0.28,
+                      color=(255, 240, 200))
+        self.anim.add("burst", (target.x, target.y), None, ttl=0.7,
+                      color=(255, 160, 80))
+        self.emit_sfx("explode")
 
         # 命中同时破坏敌方工事（面杀伤武器效率更高）
         if weapon.anti_fort > 0:
@@ -553,7 +632,13 @@ class GameState:
         prep_note = f"（{prof.notes[0]}）" if prof.notes else ""
         if killed:
             self.casualties[target.side] += 1
+            st_att["kills"] += 1
             self.add_fx("explosion", (target.x, target.y), None, ttl=1.6, color=(255, 90, 60))
+            # 逐帧动画：更大的爆炸 + 击毁飘字
+            self.anim.add("burst", (target.x, target.y), None, ttl=1.1,
+                          color=(255, 110, 70), size=1.5)
+            self.anim.add("label", (target.x, target.y), None, ttl=1.3,
+                          color=(255, 160, 130), text="击毁")
             self.log_message(attacker.side,
                              f"{attacker.name} 以 {weapon.name} 击毁 {target.name}"
                              f"（{hits} 发命中 / 伤害 {total_damage:.0f}）{prep_note}", "combat")
@@ -692,6 +777,10 @@ class GameState:
         for t in tiles:
             t.smoke = 3
         self.add_fx("ping", pos, None, ttl=1.0, color=(200, 205, 215), text="烟幕")
+        # 逐帧动画：烟幕逐团膨胀扩散
+        for i, t in enumerate(tiles):
+            self.anim.add("smoke", (t.x, t.y), None, ttl=1.6,
+                          color=(205, 208, 216), size=0.8 + 0.15 * (i % 3))
         self.log_message(unit.side,
                          f"{unit.name} 对 ({pos[0]},{pos[1]}) 施放烟幕"
                          f"（遮蔽 {len(tiles)} 格，持续 3 回合）", "combat")
@@ -1280,6 +1369,9 @@ class GameState:
             if t.owner in (Side.BLUE, Side.RED):
                 self.vp[t.owner] += t.victory_points
 
+        # 胜负点曲线：每回合记录一次
+        self.vp_history.append((self.turn_count, self.vp[Side.BLUE], self.vp[Side.RED]))
+
         self.refresh_detection()
         if self.over:
             return                  # 后勤/全歼可能导致对局在中途结束，不要覆盖 over 相位
@@ -1456,6 +1548,7 @@ class GameState:
         for f in self.fx:
             f.ttl -= dt
         self.fx = [f for f in self.fx if f.ttl > 0]
+        self.anim.tick(dt)
 
 
 __all__ = ["GameState", "LogEntry", "Fx", "FireResult"]
