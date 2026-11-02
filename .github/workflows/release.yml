@@ -14,6 +14,11 @@ env:
   # 统一强制 UTF-8（脚本内部也有兜底，此处为双保险）
   PYTHONIOENCODING: utf-8
   PYTHONUTF8: "1"
+  # CI 运行器没有声卡：SDL 若访问真实音频设备会刷出大量 ALSA 报错。
+  # 配合 dummy 驱动与禁播放开关，音效逻辑仍被完整测试，只是不真正发声。
+  SDL_AUDIODRIVER: dummy
+  SDL_VIDEODRIVER: dummy
+  BLOCKWARGAME_NO_AUDIO: "1"
 
 permissions:
   contents: write

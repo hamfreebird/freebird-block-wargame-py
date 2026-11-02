@@ -12,6 +12,12 @@ env:
   # 统一强制 UTF-8（脚本内部也有兜底，此处为双保险）
   PYTHONIOENCODING: utf-8
   PYTHONUTF8: "1"
+  # CI 运行器没有声卡：SDL 若尝试访问真实音频设备会刷出大量 ALSA 报错
+  # 并可能拖慢测试。统一用 dummy 音频驱动并让音效层完全不初始化混音器
+  # ——音效的波形合成逻辑仍会被完整测试，只是不真正发声。
+  SDL_AUDIODRIVER: dummy
+  SDL_VIDEODRIVER: dummy
+  BLOCKWARGAME_NO_AUDIO: "1"
 
 concurrency:
   group: ci-${{ github.ref }}

@@ -655,12 +655,32 @@ def main() -> int:
     st3.anim.clear()
 
     # --- 4.4 音效系统 ---
-    from ui.audio import ALL_SOUNDS as _SOUNDS, AudioManager as _Audio
+    from ui.audio import (ALL_SOUNDS as _SOUNDS, AudioManager as _Audio,
+                          SAMPLE_RATE as _SR, SOUND_DUR as _DUR, render_wave as _wave)
+    # 波形合成不依赖混音器——无声卡环境（CI 容器）也能完整验证合成逻辑
+    _wavs = {s: _wave(s) for s in _SOUNDS}
+    check(all(v is not None and len(v) > 0 for v in _wavs.values()),
+          f"音效：{len(_SOUNDS)} 个音效波形合成成功")
+    check(_wave("no_such_sound") is None, "音效：未知音效名返回 None")
+    # 波形长度应与声明时长一致（±2 采样）
+    _lens_ok = all(abs(len(v) // 2 - int(_SR * _DUR[s])) <= 2
+                    for s, v in _wavs.items())
+    check(_lens_ok, "音效：波形长度与声明时长一致")
+
     _am = _Audio(enabled=True, volume=0.5)
-    check(_am.preload() == len(_SOUNDS), f"音效：{len(_SOUNDS)} 个音效合成成功")
+    _pre = _am.preload()
+    # 契约：有混音器则全部音效合成成功；无混音器（无声卡机器）
+    # 必须优雅降级而不是崩溃——两种情况都算通过。
+    if _am.available:
+        check(_pre == len(_SOUNDS), "音效：混音器可用时全部音效预加载成功")
+    else:
+        check(_pre == 0, "音效：无混音器时优雅降级（无声卡环境）")
     for _s in _SOUNDS:
         _am.play(_s)
     check(True, "音效：全部音效播放无异常")
+    # 播放后缓存里应有 Sound 对象——证明合成 + Sound 构造路径确实执行过
+    if _am.available:
+        check(_am.cached_count == len(_SOUNDS), "音效：播放后全部音效已缓存")
     _am.set_enabled(False)
     _am.play("fire")
     check(True, "音效：静音时播放不报错")
