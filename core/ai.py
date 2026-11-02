@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from . import rules
-from .enums import Detection, Domain, Facility, Side, UnitClass, WeaponKind
+from .enums import Detection, Domain, Facility, SensorKind, Side, UnitClass, WeaponKind
+from .env import environment_for
 from .model import Unit
 
 FACILITY_VALUE = {
@@ -57,6 +58,7 @@ class AIPlanner:
         self.decoy_done: set[int] = set()
         self.returning: set[int] = set()
         self.smoke_done: set[int] = set()
+        self.cmd_done: set[int] = set()
 
     def pending(self) -> bool:
         return bool(self.queue)
@@ -143,6 +145,16 @@ class AIPlanner:
                 self.smoke_done.add(unit.uid)
                 return act
 
+        # 火力准备：间瞄火力对已识别但打不着的目标登记射界
+        prep = self._fire_mission_action(state, unit)
+        if prep is not None:
+            return prep
+
+        # 指挥单位：向下级下达指令
+        cmd = self._command_action(state, unit)
+        if cmd is not None:
+            return cmd
+
         # 没有可打的目标时，在防御阵位上构筑工事
         if unit.template.can_fortify and unit.uid not in self.move_done \
                 and self._should_fortify(state, unit):
@@ -176,20 +188,83 @@ class AIPlanner:
                             if random.random() < 0.75:
                                 return AIAction("radar", unit.uid,
                                                 note=f"{unit.name} 察觉反辐射威胁，雷达关机")
+        # 环境适应：雨雾/夜间光电失效 → 主动雷达开机补足态势
+        env_act = self._environment_decision(state, unit)
+        if env_act is not None:
+            return env_act
         # 干扰机：附近有敌情则开机
         if unit.template.jam_strength > 0 and not unit.jam_on:
             for enemy in state.enemies_of(self.side):
                 if state.known_level(self.side, enemy) is Detection.NONE:
                     continue
                 if rules.dist((enemy.x, enemy.y), (unit.x, unit.y)) <= unit.template.jam_radius * 1.3:
-                    return AIAction("jam", unit.uid,
-                                    note=f"{unit.name} 启动电子干扰")
+                    # 按敌方构成选择最有价值的干扰频段
+                    band = self._best_jam_band(state, unit, enemy)
+                    note = f"{unit.name} 启动电子干扰"
+                    if band:
+                        names = {"radar": "雷达", "comm": "通信", "nav": "导航"}
+                        note += f"（重点压制{names[band]}频段）"
+                    return AIAction("jam", unit.uid, note=note)
+        return None
+
+    def _best_jam_band(self, state: "GameState", unit: Unit, enemy: Unit) -> str:
+        """按目标特征选择最有效的干扰频段。
+
+        * 目标依赖雷达 → 压雷达（直接削掉对方的探测与照射能力）
+        * 目标依赖数据链 → 压通信（切断信火一体）
+        * 目标依赖卫星导航 → 压导航（使精确制导弹药退化）
+        """
+        bands = set(unit.template.jam_bands)
+        if not bands:
+            return ""
+        radar = any(sc.kind.value == "radar" for sc in enemy.template.sensors)
+        if "radar" in bands and radar:
+            return "radar"
+        if "comm" in bands and enemy.template.datalink:
+            return "comm"
+        if "nav" in bands and any(w.guidance.value == "gps_ins"
+                                  for w in enemy.template.weapons):
+            return "nav"
+        # 退而求其次：优先雷达频段（对战果影响最直接）
+        for b in ("radar", "comm", "nav"):
+            if b in bands:
+                return b
+        return ""
+
+    def _environment_decision(self, state: "GameState", unit: Unit) -> AIAction | None:
+        """按天候与时段调整侦察手段。
+
+        * 雨雾或夜间：光学探测几乎失效，主动雷达成为唯一可靠的远程手段，
+          因此雷达应当开机（哪怕因此暴露）。
+        * 晴朗白天：光学与雷达都有效，雷达可关机降低暴露。
+        """
+        has_radar = any(s.kind.value == "radar" for s in unit.template.sensors)
+        if not has_radar:
+            return None
+        env = environment_for(state)
+        optics_degraded = (env.factor(SensorKind.OPTICAL) < 0.7
+                           or env.factor(SensorKind.RADAR) < 0.9)
+        if optics_degraded and not unit.radar_on:
+            return AIAction("radar", unit.uid,
+                            note=f"{unit.name} 因{env.label}天候开机雷达")
+        if not optics_degraded and unit.radar_on:
+            # 白天晴天：关雷达可显著降低被反辐射导弹锁定的风险
+            if random.random() < 0.35:
+                return AIAction("radar", unit.uid,
+                                note=f"{unit.name} 天气良好，关闭雷达降低暴露")
         return None
 
     # ------------------------------------------------------------------ #
     def _best_shot(self, state: "GameState", unit: Unit):
         best = None
         best_val = 3.0
+        # 集中火力指令：优先打击指定目标
+        ordered = getattr(unit, "order", None)
+        focus = None
+        if ordered is not None and ordered.kind == "focus_fire" and ordered.target_uid:
+            focus = state.unit_by_uid(ordered.target_uid)
+            if focus is not None and (not focus.alive or focus.side is unit.side):
+                focus = None
         for enemy in state.enemies_of(self.side):
             if not enemy.alive:
                 continue
@@ -204,6 +279,9 @@ class AIPlanner:
                 val = p.pk * (1.0 - p.intercept_pk) * p.damage
                 val += enemy.template.cost / 90.0
                 val += (1.0 - enemy.hp_ratio) * 2.5
+                # 集中火力：指定目标获得显著加成
+                if focus is not None and enemy is focus:
+                    val *= 2.2
                 if val > best_val:
                     best_val, best = val, (enemy, w, val)
         return best
@@ -307,6 +385,102 @@ class AIPlanner:
             return "ir"
         return "visual"
 
+    def _fire_mission_action(self, state: "GameState", unit: Unit) -> AIAction | None:
+        """登记射界：射界已准备完成时优先用准备加成射击。
+
+        * 射界已就绪 → 尝试对射界内目标开火（准备加成）
+        * 尚无射界 → 对高价值、已识别的敌方目标登记射界
+        """
+        if not unit.can_prepare_fire or unit.is_decoy:
+            return None
+        fm = unit.fire_mission
+        if fm is not None and fm.ready:
+            # 射界就绪：对射界内已跟踪目标开火
+            for e in state.enemies_of(self.side):
+                if not e.alive:
+                    continue
+                if rules.dist((fm.x, fm.y), (e.x, e.y)) > state.FIRE_PREPARE_RADIUS + rules.RANGE_TOLERANCE:
+                    continue
+                if state.known_level(self.side, e).level < Detection.TRACKED.level:
+                    continue
+                for w in unit.usable_weapons():
+                    p = rules.shot_profile(state, unit, e, w)
+                    if p.ok:
+                        return AIAction("fire", unit.uid, target_uid=e.uid, weapon_id=w.id,
+                                        note=f"{unit.name} 以射界加成射击 {e.name}")
+            return None
+        if fm is not None and fm.active:
+            return None      # 射界准备中
+        if unit.mp < state.FIRE_PREPARE_MP:
+            return None
+        # 挑一个高价值、已识别、且在射程内的敌方目标登记射界
+        best = None
+        best_val = 0.0
+        for e in state.enemies_of(self.side):
+            if not e.alive:
+                continue
+            lvl = state.known_level(self.side, e)
+            if lvl.level < Detection.CLASSIFIED.level:
+                continue
+            if not any(w.is_indirect for w in unit.usable_weapons()
+                       if rules.dist((unit.x, unit.y), (e.x, e.y)) <= w.range_max):
+                continue
+            val = e.template.cost / 100.0 + (1.0 - e.hp_ratio) * 2.0
+            if val > best_val:
+                best_val, best = val, e
+        if best is None:
+            return None
+        return AIAction("prepare_fire", unit.uid, tile=(best.x, best.y),
+                        note=f"{unit.name} 对 ({best.x},{best.y}) 登记射界")
+
+    def _command_action(self, state: "GameState", unit: Unit) -> AIAction | None:
+        """指挥单位下达指令。
+
+        决策逻辑：
+        * 出现高价值目标（防空阵地 / 雷达 / 指挥所）→ 集中火力；
+        * 多个下级同时具备攻击同一目标的条件 → 集中火力；
+        * 己方要点受威胁 → 固守。
+        """
+        if unit.template.command_radius <= 0:
+            return None
+        if unit.uid in self.cmd_done:
+            return None
+        subs = state.subordinates_of(unit)
+        if not subs:
+            self.cmd_done.add(unit.uid)
+            return None
+        self.cmd_done.add(unit.uid)
+
+        # -- 集中火力：挑选高价值目标 --
+        best = None
+        best_val = 0.0
+        for e in state.enemies_of(self.side):
+            if not e.alive:
+                continue
+            if state.known_level(self.side, e).level < Detection.TRACKED.level:
+                continue
+            d = rules.dist((unit.x, unit.y), (e.x, e.y))
+            if d > unit.template.command_range + rules.RANGE_TOLERANCE:
+                continue
+            # 价值：单位造价 + 类别权重（防空与雷达值得优先打掉）
+            val = e.template.cost / 100.0
+            if e.template.unit_class.value in ("sam", "aaa"):
+                val += 4.0
+            elif e.template.unit_class.value == "radar":
+                val += 3.0
+            elif e.template.unit_class.value == "hq":
+                val += 3.5
+            val += (1.0 - e.hp_ratio) * 1.5
+            if val > best_val:
+                best_val, best = val, e
+        if best is None:
+            return None
+        ok, _ = state.issue_order(unit, "focus_fire", target=best)
+        if ok:
+            return AIAction("command", unit.uid, target_uid=best.uid,
+                            note=f"{unit.name} 下达集中火力：{best.name}")
+        return None
+
     def _should_fortify(self, state: "GameState", unit: Unit) -> bool:
         """防御态势：站在己方目标点上、工事未满、附近无敌情时构筑工事。"""
         tile = state.map.at(unit.x, unit.y)
@@ -353,7 +527,28 @@ class AIPlanner:
         if len(reach) <= 1:
             return None
         here = (unit.x, unit.y)
-        goal = self._assign_for(state, unit)
+        ordered = getattr(unit, "order", None)
+
+        # 固守指令：不脱离当前阵位，只在原地附近择优（不前出）
+        if ordered is not None and ordered.kind == "hold":
+            base = self._score_tile(state, unit, here, 0.0)
+            best_pos, best_score = None, base + 0.4
+            for pos, cost in reach.items():
+                if pos == here or cost <= 1e-6 or cost > 2.5:
+                    continue
+                sc = self._score_tile(state, unit, pos, cost)
+                if sc > best_score:
+                    best_score, best_pos = sc, pos
+            if best_pos is not None:
+                return rules.find_path(state, unit, best_pos)
+            return None
+
+        # 强攻指令：以指定方向为目标点推进
+        goal = None
+        if ordered is not None and ordered.kind == "assault":
+            goal = (ordered.x, ordered.y)
+        if goal is None:
+            goal = self._assign_for(state, unit)
 
         # 主策略：沿目标距离场下降，保证持续推进
         if goal is not None and goal != here:

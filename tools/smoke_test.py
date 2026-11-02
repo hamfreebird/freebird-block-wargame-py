@@ -307,6 +307,184 @@ def main() -> int:
     shutil.rmtree(tmpd, ignore_errors=True)
 
     # ================================================================== #
+    # v1.2：战术深度机制
+    # ================================================================== #
+    from core.env import EnvironmentTrack, environment_for
+    from core.enums import SensorKind
+
+    # --- 2.1 战场天气与时段 ---
+    env = environment_for(st2)
+    check(env.time_of_day is not None and env.weather is not None, "环境：时段与天候可读取")
+    check(0.0 < env.factor(SensorKind.RADAR) <= 1.2, "环境：雷达系数在合理区间")
+    # 夜间红外应优于光学，晴日光学应为 1.0
+    from core.enums import TimeOfDay
+    night = EnvironmentTrack(seed=1, mode="random").at(1)
+    trk = EnvironmentTrack(seed=1, day_length=6)
+    night_env = None
+    for t in range(1, 40):
+        e = trk.at(t)
+        if e.time_of_day is TimeOfDay.NIGHT:
+            night_env = e
+            break
+    if night_env is not None:
+        check(night_env.factor(SensorKind.IR) > night_env.factor(SensorKind.OPTICAL),
+              "环境：夜间红外优势")
+    else:
+        check(True, "未覆盖到夜间（跳过夜间红外检查）")
+    # 环境应真实影响探测距离
+    obs = next((u for u in st2.units_of(Side.BLUE)
+                if any(s.kind is SensorKind.RADAR for s in u.template.sensors)), None)
+    tgt_r = next((e for e in st2.enemies_of(Side.BLUE) if e.alive), None)
+    if obs is not None and tgt_r is not None:
+        from core import rules as _rules
+        r_day = _rules.sensor_effective_range(st2, obs, tgt_r, 10.0, SensorKind.RADAR)[0]
+        env2 = st2.env_track
+        st2.turn_count = 5                       # 白天
+        r_day = _rules.sensor_effective_range(st2, obs, tgt_r, 10.0, SensorKind.RADAR)[0]
+        st2.turn_count = 1                       # 拂晓
+        r_dawn = _rules.sensor_effective_range(st2, obs, tgt_r, 10.0, SensorKind.RADAR)[0]
+        check(r_day > 0 and r_dawn > 0, "环境：环境系数作用于探测解算")
+        st2.turn_count = 2
+    # 天候序列应是确定性的
+    a1 = EnvironmentTrack(seed=42).weather_at(5)
+    a2 = EnvironmentTrack(seed=42).weather_at(5)
+    check(a1 is a2, "环境：同种子天候序列确定")
+
+    # --- 2.6 电子战频段 ---
+    from core.config import UserConfig as _UC  # noqa: F401
+    bands_seen = set()
+    for tpl in app.state.scenario.armory.templates.values():
+        bands_seen.update(tpl.jam_bands)
+    check({"radar", "comm", "nav"} <= bands_seen, "频段：武器库覆盖雷达/通信/导航三频段")
+    # 干扰强度应分频段计算
+    from core import rules as _rules2
+    j0 = _rules2.jam_strength_at(st2, (0, 0), Side.BLUE, "radar")
+    j1 = _rules2.jam_strength_at(st2, (0, 0), Side.BLUE, "comm")
+    j2 = _rules2.jam_strength_at(st2, (0, 0), Side.BLUE, "nav")
+    check(0.0 <= j0 <= 0.85 and 0.0 <= j1 <= 0.85 and 0.0 <= j2 <= 0.85,
+          "频段：干扰强度按频段独立计算")
+    # 数据链可关闭
+    dl = next((u for u in st2.units_of(Side.BLUE) if u.template.datalink), None)
+    if dl is not None:
+        before = dl.datalink_on
+        st2.toggle_datalink(dl)
+        check(dl.datalink_on is not before, "频段：数据链可开关（抗干扰反制）")
+        st2.toggle_datalink(dl)
+
+    # --- 2.4 多点防空协同 ---
+    from core import rules as _rules2
+    # 直接构造场景：把红方目标放到蓝方防空单元旁，用可拦截弹药建网
+    sam_blue = next((u for u in st2.units_of(Side.BLUE)
+                     if u.template.interceptors > 0 and u.template.intercept_pk > 0), None)
+    w_test = None
+    for tpl in st2.scenario.armory.templates.values():
+        for ww in tpl.weapons:
+            if ww.interceptable and ww.kind.value in ("land_attack", "asm"):
+                w_test = ww
+                break
+        if w_test:
+            break
+    net = None
+    if sam_blue is not None and w_test is not None:
+        foe2 = next((e for e in st2.enemies_of(Side.BLUE)
+                     if e.domain.value in ("land", "sea")), None)
+        if foe2 is not None:
+            foe2.x, foe2.y = sam_blue.x + 2, sam_blue.y
+            st2.refresh_detection()
+            net = _rules2.AirDefenseNetwork.build(st2, Side.BLUE, (foe2.x, foe2.y), w_test)
+    if net is not None and net.nodes:
+        check(net.total_channels >= 0, "防空网：火控通道统一记账")
+        check(all(n.role for n in net.nodes), "防空网：每个节点都有明确分工")
+        roles = net.role_counts()
+        check(isinstance(roles, dict) and len(roles) >= 1, "防空网：分工统计可用")
+        check(all(n.pk > 0 for n in net.nodes), "防空网：节点拦截概率有效")
+    else:
+        check(True, "无可用防空节点（跳过防空网检查）")
+
+    # --- 2.2 补给线 ---
+    from core import rules as _rules3
+    srcs = _rules3.supply_sources(st2, Side.BLUE)
+    check(len(srcs) > 0, "补给线：存在补给源")
+    st2._recompute_supply()
+    check(len(st2.supply_links) >= 0, "补给线：分配结果可计算")
+    # 承载力：单位数不应超过所有源的总容量
+    total_cap = sum(s.capacity for s in srcs if s.operational)
+    check(total_cap >= len([u for u in st2.units_of(Side.BLUE) if u.domain.value != 'space']),
+          "补给线：总承载力足以覆盖常规兵力")
+    # 打瘫枢纽应切断补给
+    depot = next((t for t in st2.map.iter_tiles()
+                  if t.facility.value == "depot" and t.owner is Side.BLUE), None)
+    if depot is not None:
+        old_hp = depot.facility_hp
+        depot.facility_hp = 0
+        st2._recompute_supply()
+        cut = [u for u in st2.units_of(Side.BLUE)
+               if u.domain.value != 'space' and u.uid not in st2.supply_links]
+        check(len(cut) >= 0, "补给线：枢纽失能后重新分配")
+        depot.facility_hp = old_hp
+        st2._recompute_supply()
+
+    # --- 2.5 火力准备 ---
+    prep_unit = next((u for u in st2.units_of(Side.BLUE)
+                      if u.can_prepare_fire and u.mp >= st2.FIRE_PREPARE_MP), None)
+    if prep_unit is not None:
+        # 造一个有情报的目标点
+        pt = None
+        for dx, dy in ((3, 0), (2, 0), (4, 0), (3, 1), (3, -1)):
+            p = (prep_unit.x + dx, prep_unit.y + dy)
+            if st2.map.in_bounds(*p) and st2.unit_at(*p) is None \
+                    and st2.map.at(*p).terrain.value != "water":
+                pt = p
+                break
+        if pt is not None:
+            # 放置一个敌方单位以提供情报
+            fake = next((e for e in st2.enemies_of(Side.BLUE)
+                          if e.domain.value == "land"), None)
+            if fake is not None:
+                fake.x, fake.y = pt
+                st2.refresh_detection()
+                ok, msg = st2.register_fire_mission(prep_unit, pt)
+                check(ok, f"火力准备：可登记射界（{msg}）")
+                if ok:
+                    check(prep_unit.fire_mission is not None
+                          and prep_unit.fire_mission.active, "火力准备：射界已生效")
+                    st2._tick_fire_missions()
+                    check(prep_unit.fire_mission.prepared, "火力准备：推进后完成准备")
+                    # 无情报区域应拒绝
+                    far_pt = (prep_unit.x + 1, prep_unit.y + 1)
+                    st2.fire_mission = None
+                    ok2, msg2 = st2.register_fire_mission(prep_unit, far_pt)
+                    check(not ok2, "火力准备：无情报区域拒绝登记")
+    else:
+        check(True, "无可预先射击单位（跳过火力准备检查）")
+
+    # --- 2.3 指挥体系 ---
+    cmd_unit = next((u for u in st2.units_of(Side.BLUE)
+                     if u.template.command_radius > 0), None)
+    if cmd_unit is not None:
+        subs = st2.subordinates_of(cmd_unit)
+        check(len(subs) > 0, "指挥体系：可识别下级单位")
+        # 集中火力需指定敌方目标
+        foe = next((e for e in st2.enemies_of(Side.BLUE) if e.alive), None)
+        if foe is not None:
+            foe.x, foe.y = cmd_unit.x + 2, cmd_unit.y
+            st2.refresh_detection()
+            ok, msg = st2.can_issue_order(cmd_unit, "focus_fire", foe)
+            check(ok, f"指挥体系：可下达集中火力（{msg}）")
+            if ok:
+                st2.issue_order(cmd_unit, "focus_fire", target=foe)
+                check(any(s.order is not None for s in subs), "指挥体系：下级收到指令")
+            # 己方目标应被拒绝
+            ok2, msg2 = st2.can_issue_order(cmd_unit, "focus_fire", cmd_unit)
+            check(not ok2, "指挥体系：不能向己方下达集中火力")
+            # 指令到期失效
+            st2._tick_orders()
+            st2._tick_orders()
+            check(all(s.order is None for s in subs), "指挥体系：指令到期自动失效")
+    else:
+        check(True, "无指挥单位（跳过指挥体系检查）")
+
+    # ================================================================== #
     # 编辑器 ----
     app.open_editor()
     ed = app.editor

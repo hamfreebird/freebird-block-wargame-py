@@ -1536,7 +1536,8 @@
       ],
       "can_capture": true,
       "cost": 340,
-      "notes": "贫铀复合装甲 + 猎歼式火控，正面交战能力突出"
+      "notes": "贫铀复合装甲 + 猎歼式火控，正面交战能力突出",
+      "echelon": "platoon"
     },
     {
       "id": "bradley",
@@ -1564,7 +1565,8 @@
       ],
       "can_capture": true,
       "cost": 220,
-      "notes": "机械化步兵输送与反装甲支援"
+      "notes": "机械化步兵输送与反装甲支援",
+      "echelon": "platoon"
     },
     {
       "id": "usmc",
@@ -1595,7 +1597,8 @@
       "cost": 280,
       "notes": "两栖投送能力：可越过海峡夺取岛屿要点，涉水航渡代价较高",
       "datalink": false,
-      "entrench_bonus": 0.18
+      "entrench_bonus": 0.18,
+      "echelon": "platoon"
     },
     {
       "id": "paladin",
@@ -1617,7 +1620,8 @@
         }
       ],
       "cost": 260,
-      "notes": "营属间瞄火力，对识别级目标实施压制"
+      "notes": "营属间瞄火力，对识别级目标实施压制",
+      "echelon": "platoon"
     },
     {
       "id": "himars",
@@ -1644,7 +1648,8 @@
         }
       ],
       "cost": 300,
-      "notes": "高机动、快打快撤；PrSM 可打击 500 km 级纵深目标"
+      "notes": "高机动、快打快撤；PrSM 可打击 500 km 级纵深目标",
+      "echelon": "platoon"
     },
     {
       "id": "patriot",
@@ -1667,7 +1672,8 @@
       "interceptors": 5,
       "intercept_pk": 0.62,
       "cost": 420,
-      "notes": "区域防空 + 末段反导，是敌方弹道导弹的首要目标"
+      "notes": "区域防空 + 末段反导，是敌方弹道导弹的首要目标",
+      "echelon": "platoon"
     },
     {
       "id": "nasams",
@@ -1690,7 +1696,8 @@
       "interceptors": 3,
       "intercept_pk": 0.5,
       "cost": 260,
-      "notes": "中近程要地防空"
+      "notes": "中近程要地防空",
+      "echelon": "platoon"
     },
     {
       "id": "ew_us",
@@ -1709,8 +1716,19 @@
       "jam_radius": 4.5,
       "jam_strength": 0.55,
       "cost": 240,
-      "notes": "通信与雷达压制；同时削弱敌方卫星导航精度",
-      "decoy_charges": 2
+      "notes": "通信/雷达双频段干扰：压制敌方雷达探测并切断协同交战数据链",
+      "decoy_charges": 2,
+      "jam_bands": [
+        "radar",
+        "comm"
+      ],
+      "jam_band_weights": {
+        "radar": 1.0,
+        "comm": 0.85
+      },
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
     },
     {
       "id": "radar_tpy2",
@@ -1728,7 +1746,10 @@
       "weapons": [],
       "is_radar_emitter": true,
       "cost": 380,
-      "notes": "全战区空情与弹道预警；开机即成为反辐射导弹的靶子"
+      "notes": "全战区空情与弹道预警；开机即成为反辐射导弹的靶子",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
     },
     {
       "id": "f35",
@@ -1762,7 +1783,8 @@
       ],
       "cost": 620,
       "notes": "低可探测性 + 传感器融合，可先敌发现、先敌发射",
-      "sortie_shots": 2
+      "sortie_shots": 2,
+      "echelon": "platoon"
     },
     {
       "id": "f15e",
@@ -1796,7 +1818,8 @@
       ],
       "cost": 480,
       "notes": "重载对地打击平台",
-      "sortie_shots": 3
+      "sortie_shots": 3,
+      "echelon": "platoon"
     },
     {
       "id": "mq9",
@@ -1822,7 +1845,8 @@
       ],
       "cost": 180,
       "notes": "长航时持续监视；面对现代化防空系统生存性低",
-      "sortie_shots": 2
+      "sortie_shots": 2,
+      "echelon": "platoon"
     },
     {
       "id": "e3",
@@ -1844,7 +1868,8 @@
       "cost": 700,
       "notes": "空中指挥所：为全战区提供探测与制导支援，高价值目标",
       "sortie_shots": 1,
-      "one_shot_kill": false
+      "one_shot_kill": false,
+      "echelon": "platoon"
     },
     {
       "id": "b52",
@@ -1870,7 +1895,8 @@
       "cost": 640,
       "notes": "防区外弹药投射平台，严禁进入敌方防空包线",
       "sortie_shots": 2,
-      "one_shot_kill": false
+      "one_shot_kill": false,
+      "echelon": "platoon"
     },
     {
       "id": "ddg_burke",
@@ -1915,7 +1941,8 @@
       "can_capture": true,
       "cost": 720,
       "notes": "宙斯盾舰：区域防空 + 对陆纵深打击",
-      "decoy_charges": 1
+      "decoy_charges": 1,
+      "echelon": "platoon"
     },
     {
       "id": "cvn",
@@ -1947,7 +1974,8 @@
       "intercept_pk": 0.46,
       "cost": 900,
       "notes": "力量投送核心；一旦被反舰导弹命中即丧失作战能力",
-      "decoy_charges": 1
+      "decoy_charges": 1,
+      "echelon": "platoon"
     },
     {
       "id": "ssn_va",
@@ -1976,7 +2004,8 @@
       ],
       "cost": 700,
       "notes": "隐蔽突防，可对陆纵深发射巡航导弹",
-      "decoy_charges": 1
+      "decoy_charges": 1,
+      "echelon": "platoon"
     },
     {
       "id": "t90m",
@@ -2005,7 +2034,8 @@
       "can_capture": true,
       "cost": 330,
       "notes": "化石反应装甲 + 主动防护系统",
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "bmp3",
@@ -2033,7 +2063,8 @@
       ],
       "can_capture": true,
       "cost": 200,
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "naval_inf",
@@ -2064,7 +2095,8 @@
       "cost": 260,
       "notes": "两栖投送能力：可越过海峡夺取岛屿要点，涉水航渡代价较高",
       "datalink": false,
-      "entrench_bonus": 0.18
+      "entrench_bonus": 0.18,
+      "echelon": "platoon"
     },
     {
       "id": "msta",
@@ -2086,7 +2118,8 @@
         }
       ],
       "cost": 240,
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "smerch",
@@ -2109,7 +2142,8 @@
       ],
       "cost": 250,
       "notes": "面杀伤火力，对集结部队威胁极大",
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "s400",
@@ -2140,7 +2174,8 @@
       "interceptors": 6,
       "intercept_pk": 0.62,
       "cost": 480,
-      "notes": "400 km 级区域拒止核心，迫使敌方航空兵远离"
+      "notes": "400 km 级区域拒止核心，迫使敌方航空兵远离",
+      "echelon": "platoon"
     },
     {
       "id": "pantsir",
@@ -2169,7 +2204,8 @@
       "intercept_pk": 0.38,
       "cost": 180,
       "notes": "要地末端防御，专打巡航导弹与无人机",
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "ew_ru",
@@ -2188,8 +2224,21 @@
       "jam_radius": 5.5,
       "jam_strength": 0.65,
       "cost": 300,
-      "notes": "宽频段压制，可使敌方雷达与精确制导弹药效能大幅下降",
-      "decoy_charges": 2
+      "notes": "宽带干扰系统：雷达/通信/导航三频段全覆盖，可针对不同目标切换重点",
+      "decoy_charges": 2,
+      "jam_bands": [
+        "radar",
+        "comm",
+        "nav"
+      ],
+      "jam_band_weights": {
+        "radar": 1.0,
+        "comm": 0.8,
+        "nav": 0.75
+      },
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
     },
     {
       "id": "radar_container",
@@ -2207,7 +2256,10 @@
       "weapons": [],
       "is_radar_emitter": true,
       "cost": 360,
-      "notes": "超视距天波雷达，可发现数百公里外的空中与海面目标"
+      "notes": "超视距天波雷达，可发现数百公里外的空中与海面目标",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
     },
     {
       "id": "su35",
@@ -2241,7 +2293,8 @@
       ],
       "cost": 520,
       "notes": "超机动性 + 超远程空空导弹，专猎预警机",
-      "sortie_shots": 3
+      "sortie_shots": 3,
+      "echelon": "platoon"
     },
     {
       "id": "su34",
@@ -2274,7 +2327,8 @@
         }
       ],
       "cost": 450,
-      "sortie_shots": 3
+      "sortie_shots": 3,
+      "echelon": "platoon"
     },
     {
       "id": "a50",
@@ -2296,7 +2350,8 @@
       "cost": 680,
       "notes": "空中雷达与指挥节点",
       "sortie_shots": 1,
-      "one_shot_kill": false
+      "one_shot_kill": false,
+      "echelon": "platoon"
     },
     {
       "id": "tu22m3",
@@ -2321,7 +2376,8 @@
       ],
       "cost": 600,
       "sortie_shots": 2,
-      "one_shot_kill": false
+      "one_shot_kill": false,
+      "echelon": "platoon"
     },
     {
       "id": "iskander",
@@ -2349,7 +2405,8 @@
       ],
       "cost": 460,
       "notes": "机动发射车，打击纵深指挥所与机场；发射即需转移",
-      "datalink": false
+      "datalink": false,
+      "echelon": "platoon"
     },
     {
       "id": "mig31k",
@@ -2375,7 +2432,8 @@
       ],
       "cost": 560,
       "notes": "高空高速发射平台，投放后立即脱离",
-      "sortie_shots": 1
+      "sortie_shots": 1,
+      "echelon": "platoon"
     },
     {
       "id": "slava",
@@ -2412,7 +2470,8 @@
       "can_capture": true,
       "cost": 660,
       "notes": "重型反舰火力平台，P-800 饱和攻击是航母的主要威胁",
-      "decoy_charges": 1
+      "decoy_charges": 1,
+      "echelon": "platoon"
     },
     {
       "id": "kilo",
@@ -2446,7 +2505,8 @@
       "cost": 460,
       "notes": "静音性能优异，适合近岸伏击",
       "datalink": false,
-      "decoy_charges": 1
+      "decoy_charges": 1,
+      "echelon": "platoon"
     },
     {
       "id": "sat_blue",
@@ -2462,7 +2522,8 @@
       "weapons": [],
       "cost": 500,
       "notes": "每 3 回合过顶一次，全图揭示敌方目标（识别级）",
-      "evasion": 0.55
+      "evasion": 0.55,
+      "echelon": "platoon"
     },
     {
       "id": "sat_red",
@@ -2478,7 +2539,8 @@
       "weapons": [],
       "cost": 500,
       "notes": "每 3 回合过顶一次，全图揭示敌方目标（识别级）",
-      "evasion": 0.55
+      "evasion": 0.55,
+      "echelon": "platoon"
     },
     {
       "id": "thaad",
@@ -2503,7 +2565,8 @@
       "interceptors": 6,
       "intercept_pk": 0.66,
       "cost": 520,
-      "notes": "末段高空拦截，兼顾反卫星；对高超音速目标效果有限"
+      "notes": "末段高空拦截，兼顾反卫星；对高超音速目标效果有限",
+      "echelon": "platoon"
     },
     {
       "id": "inf_light",
@@ -2533,7 +2596,8 @@
       "entrench_bonus": 0.2,
       "datalink": false,
       "cost": 120,
-      "notes": "徒步步兵：目标小、易隐蔽，驻守可构筑工事；面杀伤火力对其威胁极大"
+      "notes": "徒步步兵：目标小、易隐蔽，驻守可构筑工事；面杀伤火力对其威胁极大",
+      "echelon": "platoon"
     },
     {
       "id": "inf_motor",
@@ -2563,7 +2627,8 @@
       "entrench_bonus": 0.18,
       "datalink": false,
       "cost": 130,
-      "notes": "摩托化步兵：机动性好，城区与林地防御效率高"
+      "notes": "摩托化步兵：机动性好，城区与林地防御效率高",
+      "echelon": "platoon"
     },
     {
       "id": "j20",
@@ -2593,7 +2658,8 @@
       ],
       "cost": 680,
       "sortie_shots": 2,
-      "notes": "低可探测性 + 超视距空战：先敌发现、先敌发射；机腹弹舱限制载弹量"
+      "notes": "低可探测性 + 超视距空战：先敌发现、先敌发射；机腹弹舱限制载弹量",
+      "echelon": "platoon"
     },
     {
       "id": "j16",
@@ -2627,7 +2693,8 @@
       ],
       "cost": 560,
       "sortie_shots": 3,
-      "notes": "重型多用途平台：制空、反舰、对地一机通吃，挂架多、可持续输出"
+      "notes": "重型多用途平台：制空、反舰、对地一机通吃，挂架多、可持续输出",
+      "echelon": "platoon"
     },
     {
       "id": "kj500",
@@ -2649,7 +2716,8 @@
       "cost": 700,
       "one_shot_kill": false,
       "sortie_shots": 1,
-      "notes": "数字阵列雷达：为整个战区提供跟踪诸元，是信火一体的核心节点"
+      "notes": "数字阵列雷达：为整个战区提供跟踪诸元，是信火一体的核心节点",
+      "echelon": "platoon"
     },
     {
       "id": "type055",
@@ -2694,7 +2762,8 @@
       "can_capture": true,
       "decoy_charges": 1,
       "cost": 820,
-      "notes": "万吨大驱：112 单元垂发，反舰/防空/对陆全能，可控制海上要点"
+      "notes": "万吨大驱：112 单元垂发，反舰/防空/对陆全能，可控制海上要点",
+      "echelon": "platoon"
     },
     {
       "id": "type052d",
@@ -2735,7 +2804,8 @@
       "can_capture": true,
       "decoy_charges": 1,
       "cost": 640,
-      "notes": "通用驱逐舰：以反舰为主，兼顾区域防空"
+      "notes": "通用驱逐舰：以反舰为主，兼顾区域防空",
+      "echelon": "platoon"
     },
     {
       "id": "type054a",
@@ -2771,7 +2841,8 @@
       "intercept_pk": 0.48,
       "can_capture": true,
       "cost": 380,
-      "notes": "护航主力：中程防空 + 反舰，适合编队屏卫"
+      "notes": "护航主力：中程防空 + 反舰，适合编队屏卫",
+      "echelon": "platoon"
     },
     {
       "id": "df17_bde",
@@ -2794,7 +2865,8 @@
         }
       ],
       "cost": 780,
-      "notes": "陆基高超声速打击：射程覆盖整个战区，几乎无法拦截，但备弹极少"
+      "notes": "陆基高超声速打击：射程覆盖整个战区，几乎无法拦截，但备弹极少",
+      "echelon": "platoon"
     },
     {
       "id": "b1b",
@@ -2825,7 +2897,8 @@
       "cost": 900,
       "one_shot_kill": false,
       "sortie_shots": 2,
-      "notes": "防区外饱和打击平台：一次可投射十余枚隐身巡航导弹"
+      "notes": "防区外饱和打击平台：一次可投射十余枚隐身巡航导弹",
+      "echelon": "platoon"
     },
     {
       "id": "df26_bde",
@@ -2849,7 +2922,8 @@
       ],
       "cost": 760,
       "can_fortify": true,
-      "notes": "反舰弹道导弹：射程覆盖整个战区，可打击海上机动目标"
+      "notes": "反舰弹道导弹：射程覆盖整个战区，可打击海上机动目标",
+      "echelon": "platoon"
     },
     {
       "id": "df41_bde",
@@ -2874,7 +2948,8 @@
       "cost": 1200,
       "can_fortify": true,
       "fort_power": 2,
-      "notes": "战略底牌：一次只能发射一枚，命中即摧毁任何目标"
+      "notes": "战略底牌：一次只能发射一枚，命中即摧毁任何目标",
+      "echelon": "platoon"
     },
     {
       "id": "hq17",
@@ -2901,7 +2976,8 @@
       "intercept_pk": 0.62,
       "cost": 300,
       "can_fortify": true,
-      "notes": "随伴防空：专门拦截巡航导弹与精确制导弹药"
+      "notes": "随伴防空：专门拦截巡航导弹与精确制导弹药",
+      "echelon": "platoon"
     },
     {
       "id": "eng",
@@ -2933,7 +3009,186 @@
       "entrench_bonus": 0.22,
       "datalink": false,
       "cost": 160,
-      "notes": "工兵：可在要点快速构筑/修复工事，也能用火箭筒破障攻坚"
+      "notes": "工兵：可在要点快速构筑/修复工事，也能用火箭筒破障攻坚",
+      "echelon": "platoon"
+    },
+    {
+      "id": "ew_radar_us",
+      "name": "AN/TLQ-32 雷达干扰连",
+      "short": "TLQ32",
+      "class": "ew",
+      "domain": "land",
+      "hp": 65,
+      "mp": 3.0,
+      "armor": 0.05,
+      "stealth": 0.2,
+      "evasion": 0.15,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [],
+      "jam_radius": 6.0,
+      "jam_strength": 0.7,
+      "jam_bands": [
+        "radar"
+      ],
+      "jam_band_weights": {
+        "radar": 1.0
+      },
+      "is_radar_emitter": false,
+      "cost": 280,
+      "notes": "专用雷达干扰机：压制范围大但只打雷达频段，对数据链与卫星导航无效",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
+    },
+    {
+      "id": "ew_comm_us",
+      "name": "通信干扰连",
+      "short": "COMJ",
+      "class": "ew",
+      "domain": "land",
+      "hp": 62,
+      "mp": 3.2,
+      "armor": 0.04,
+      "stealth": 0.24,
+      "evasion": 0.18,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [],
+      "jam_radius": 4.0,
+      "jam_strength": 0.75,
+      "jam_bands": [
+        "comm"
+      ],
+      "jam_band_weights": {
+        "comm": 1.0
+      },
+      "is_radar_emitter": false,
+      "cost": 220,
+      "notes": "专断数据链：切断敌方信火一体协同，迫使其各自为战",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
+    },
+    {
+      "id": "ew_nav_us",
+      "name": "导航压制连",
+      "short": "NAVJ",
+      "class": "ew",
+      "domain": "land",
+      "hp": 60,
+      "mp": 2.8,
+      "armor": 0.04,
+      "stealth": 0.26,
+      "evasion": 0.16,
+      "sensors": [
+        "esm_std"
+      ],
+      "weapons": [],
+      "jam_radius": 5.0,
+      "jam_strength": 0.6,
+      "jam_bands": [
+        "nav"
+      ],
+      "jam_band_weights": {
+        "nav": 1.0
+      },
+      "is_radar_emitter": false,
+      "cost": 260,
+      "notes": "压制北斗/ GPS 导航：使敌方精确制导弹药退化到惯导精度",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
+    },
+    {
+      "id": "ew_wide_ru",
+      "name": "宽带干扰站",
+      "short": "BWJ",
+      "class": "ew",
+      "domain": "land",
+      "hp": 75,
+      "mp": 2.6,
+      "armor": 0.07,
+      "stealth": 0.18,
+      "evasion": 0.12,
+      "sensors": [
+        "esm_adv"
+      ],
+      "weapons": [],
+      "jam_radius": 7.0,
+      "jam_strength": 0.6,
+      "jam_bands": [
+        "radar",
+        "comm",
+        "nav"
+      ],
+      "jam_band_weights": {
+        "radar": 0.9,
+        "comm": 0.9,
+        "nav": 0.9
+      },
+      "is_radar_emitter": false,
+      "cost": 340,
+      "notes": "宽带干扰站：三频段均衡压制，但单位造价高、机动性差",
+      "echelon": "company",
+      "command_radius": 5.0,
+      "command_range": 6.0
+    },
+    {
+      "id": "hq_battalion",
+      "name": "营指挥所",
+      "short": "HQ营",
+      "class": "hq",
+      "domain": "land",
+      "hp": 55,
+      "mp": 3.4,
+      "armor": 0.1,
+      "stealth": 0.16,
+      "evasion": 0.1,
+      "sensors": [
+        "esm_adv"
+      ],
+      "weapons": [
+        {
+          "ref": "mg_762",
+          "ammo": 6
+        }
+      ],
+      "can_capture": true,
+      "echelon": "company",
+      "command_radius": 6.0,
+      "command_range": 7.0,
+      "cost": 180,
+      "notes": "营级指挥所：可向连级下达集中火力与固守指令，本身火力有限"
+    },
+    {
+      "id": "hq_brigade",
+      "name": "旅指挥所",
+      "short": "HQ旅",
+      "class": "hq",
+      "domain": "land",
+      "hp": 70,
+      "mp": 3.0,
+      "armor": 0.12,
+      "stealth": 0.14,
+      "evasion": 0.08,
+      "sensors": [
+        "esm_elint"
+      ],
+      "weapons": [
+        {
+          "ref": "mg_762",
+          "ammo": 8
+        }
+      ],
+      "can_capture": true,
+      "echelon": "brigade",
+      "command_radius": 9.0,
+      "command_range": 10.0,
+      "cost": 320,
+      "notes": "旅级指挥所：可指挥营级单位，跨区域下达集中火力指令"
     }
   ],
   "presets": {

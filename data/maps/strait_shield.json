@@ -378,6 +378,11 @@
     "template": "ssn_va",
     "x": 18,
     "y": 33
+   },
+   {
+    "template": "hq_battalion",
+    "x": 6,
+    "y": 0
    }
   ],
   "RED": [
@@ -480,6 +485,11 @@
     "template": "kilo",
     "x": 24,
     "y": 30
+   },
+   {
+    "template": "hq_battalion",
+    "x": 27,
+    "y": 0
    }
   ]
  }

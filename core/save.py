@@ -12,7 +12,7 @@ from typing import Any
 from .engine import GameState, LogEntry
 from .enums import Altitude, Facility, Side
 from .loader import LoadError, load_scenario
-from .model import Missile, Unit, ensure_uid_above
+from .model import FireMission, Missile, Order, Unit, ensure_uid_above
 
 SAVE_VERSION = 5
 
@@ -36,6 +36,7 @@ def _unit_dict(u: Unit) -> dict[str, Any]:
         "altitude": u.altitude.value,
         "radar_on": u.radar_on,
         "jam_on": u.jam_on,
+        "datalink_on": u.datalink_on,
         "fired": u.fired,
         "moved": u.moved,
         "destroyed": u.destroyed,
@@ -54,6 +55,21 @@ def _unit_dict(u: Unit) -> dict[str, Any]:
         "decoy_ttl": u.decoy_ttl,
         "mission": u.mission,
         "intercepts_used": u.intercepts_used,
+        "fire_mission": (None if u.fire_mission is None else {
+            "x": u.fire_mission.x, "y": u.fire_mission.y,
+            "turns_left": u.fire_mission.turns_left,
+            "prepared": u.fire_mission.prepared,
+            "total": u.fire_mission.total,
+            "intel_level": u.fire_mission.intel_level,
+        }),
+        "order": (None if u.order is None else {
+            "kind": u.order.kind,
+            "issuer_uid": u.order.issuer_uid,
+            "target_uid": u.order.target_uid,
+            "priority_class": u.order.priority_class,
+            "turns_left": u.order.turns_left,
+            "x": u.order.x, "y": u.order.y,
+        }),
     }
 
 
@@ -179,6 +195,7 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         u.altitude = Altitude(d.get("altitude", "ground"))
         u.radar_on = bool(d.get("radar_on", True))
         u.jam_on = bool(d.get("jam_on", False))
+        u.datalink_on = bool(d.get("datalink_on", True))
         u.fired = bool(d.get("fired", False))
         u.moved = bool(d.get("moved", False))
         u.destroyed = bool(d.get("destroyed", False))
@@ -202,6 +219,25 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         u.entrench = max(0, int(d.get("entrench", 0)))
         u.mission = str(d.get("mission", "strike"))
         u.intercepts_used = max(0, int(d.get("intercepts_used", 0)))
+        fm = d.get("fire_mission")
+        if isinstance(fm, dict):
+            u.fire_mission = FireMission(
+                x=int(fm.get("x", 0)), y=int(fm.get("y", 0)),
+                turns_left=max(0, int(fm.get("turns_left", 0))),
+                prepared=bool(fm.get("prepared", False)),
+                total=max(1, int(fm.get("total", 2))),
+                intel_level=str(fm.get("intel_level", "contact")),
+            )
+        od = d.get("order")
+        if isinstance(od, dict):
+            u.order = Order(
+                kind=str(od.get("kind", "focus_fire")),
+                issuer_uid=int(od.get("issuer_uid", 0)),
+                target_uid=int(od.get("target_uid", 0)),
+                priority_class=str(od.get("priority_class", "")),
+                turns_left=max(0, int(od.get("turns_left", 0))),
+                x=int(od.get("x", 0)), y=int(od.get("y", 0)),
+            )
         units.append(u)
     state.units = units
     ensure_uid_above(max_uid)

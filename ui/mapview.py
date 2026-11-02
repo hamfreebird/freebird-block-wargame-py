@@ -10,6 +10,7 @@ import math
 import pygame
 
 from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
+from core.env import env_tint, environment_for
 from core.model import Tile, Unit
 
 from . import theme as T
@@ -250,6 +251,8 @@ class MapView:
         pygame.draw.rect(surf, T.BORDER_HI, frame, 1)
 
         self._draw_forts(surf)
+        self._draw_fire_missions(surf)
+        self._draw_supply_lines(surf)
         self._draw_overlay(surf)
         self._draw_objectives(surf)
         self._draw_facilities(surf)
@@ -266,7 +269,58 @@ class MapView:
             r = self.grid_to_rect(pending_target.x, pending_target.y)
             self._draw_reticle(surf, r)
 
+        self._draw_environment(surf)
+
         surf.set_clip(None)
+
+    # -- 昼夜与天候的视觉表现 --------------------------------------------
+    def _draw_environment(self, surf: pygame.Surface) -> None:
+        """按当前时段与天候给战场加一层色调与天气效果。
+
+        夜间压暗并偏蓝、雾天加白纱、雨雪加动态颗粒——让玩家**看一眼地图**
+        就知道当前的侦察条件，而不必要读文字。
+        """
+        env = environment_for(self.state)
+        tint, alpha = env_tint(env)
+        if alpha > 0:
+            layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+            layer.fill((*tint, alpha))
+            surf.blit(layer, self.rect.topleft)
+
+        # 天气颗粒：雨为竖线，雪为缓慢下落的点
+        if env.weather.value == "rain":
+            self._draw_rain(surf)
+        elif env.weather.value == "snow":
+            self._draw_snow(surf)
+
+    def _draw_rain(self, surf: pygame.Surface) -> None:
+        """斜向雨丝：用固定相位的伪随机点，避免每帧跳动造成的视觉噪声。"""
+        ts = max(6, self.tile)
+        step = max(14, ts // 2)
+        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        for i in range(0, self.rect.width + step, step):
+            h = (i * 7919) % 97
+            for j in range(0, self.rect.height + step, step):
+                k = (i * 31 + j * 17 + h) % 53
+                if k > 6:
+                    continue
+                x = i + (k * 3) % step
+                y = (j + h) % (self.rect.height + step)
+                pygame.draw.line(layer, (150, 190, 220, 60), (x, y), (x - 3, y + 11), 1)
+        surf.blit(layer, self.rect.topleft)
+
+    def _draw_snow(self, surf: pygame.Surface) -> None:
+        """飘雪：稀疏的白点，越靠下越密（模拟近处视角）。"""
+        step = max(18, self.tile)
+        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        for i in range(0, self.rect.width + step, step):
+            for j in range(0, self.rect.height + step, step):
+                k = (i * 37 + j * 61) % 71
+                if k > 9:
+                    continue
+                pygame.draw.circle(layer, (225, 238, 250, 95),
+                                   (i + (k * 5) % step, j + (k * 7) % step), 1)
+        surf.blit(layer, self.rect.topleft)
 
     # -- 叠层 -------------------------------------------------------------
     def _draw_overlay(self, surf: pygame.Surface) -> None:
@@ -312,6 +366,72 @@ class MapView:
                 self._ring_cache.clear()
             self._ring_cache[key] = cached
         surf.blit(cached, (cx - r - 2, cy - r - 2))
+
+    def _draw_fire_missions(self, surf: pygame.Surface) -> None:
+        """火力准备射界：标定中的虚线圈与准备完成的实线圈。"""
+        for u in self.state.units:
+            fm = getattr(u, "fire_mission", None)
+            if fm is None or not fm.active or u.side is not self.state.player_side:
+                continue
+            cx, cy = self.grid_center(fm.x, fm.y)
+            rad = max(4, int(self.tile * 1.5))
+            col = (255, 205, 120) if fm.prepared else (170, 150, 110)
+            # 圆环：准备完成为实线，准备中为虚线
+            if fm.prepared:
+                pygame.draw.circle(surf, col, (cx, cy), rad, 2)
+            else:
+                for i in range(0, 360, 30):
+                    a0 = math.radians(i)
+                    a1 = math.radians(i + 15)
+                    p0 = (cx + int(rad * math.cos(a0)), cy + int(rad * math.sin(a0)))
+                    p1 = (cx + int(rad * math.cos(a1)), cy + int(rad * math.sin(a1)))
+                    pygame.draw.line(surf, col, p0, p1, 2)
+            # 十字标星
+            s = max(3, self.tile // 5)
+            pygame.draw.line(surf, col, (cx - s, cy), (cx + s, cy), 1)
+            pygame.draw.line(surf, col, (cx, cy - s), (cx, cy + s), 1)
+            if self.tile >= 20:
+                T.draw_text(surf, "射界" if fm.prepared else "标定",
+                            (cx, cy - rad - 12), 9, col, anchor="midbottom")
+
+    def _draw_supply_lines(self, surf: pygame.Surface) -> None:
+        """补给线：从后勤枢纽到受补给的部队。
+
+        断线的部队（无补给）用红色虚线标出——一眼看出谁在饿肚子。
+        """
+        st = self.state
+        links = getattr(st, "supply_links", {}) or {}
+        if not links:
+            return
+        for u in st.units_of(st.player_side):
+            if not u.alive or u.is_decoy:
+                continue
+            src = links.get(u.uid)
+            if src is None:
+                # 断粮：画一个红色叉
+                r = self.grid_to_rect(u.x, u.y)
+                if not self.rect.colliderect(r):
+                    continue
+                c = r.center
+                s = max(3, self.tile // 4)
+                pygame.draw.line(surf, (200, 80, 80), (c[0] - s, c[1] - s),
+                                 (c[0] + s, c[1] + s), 1)
+                pygame.draw.line(surf, (200, 80, 80), (c[0] - s, c[1] + s),
+                                 (c[0] + s, c[1] - s), 1)
+                continue
+            a = self.grid_center(src.x, src.y)
+            b = self.grid_center(u.x, u.y)
+            col = (70, 190, 150)
+            # 虚线
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length = max(1.0, math.hypot(dx, dy))
+            steps = int(length // 9)
+            for i in range(steps):
+                t0 = i / max(1, steps)
+                t1 = (i + 0.55) / max(1, steps)
+                p0 = (a[0] + dx * t0, a[1] + dy * t0)
+                p1 = (a[0] + dx * t1, a[1] + dy * t1)
+                pygame.draw.line(surf, col, p0, p1, 1)
 
     def _draw_objectives(self, surf: pygame.Surface) -> None:
         for t in self.state.map.iter_tiles():

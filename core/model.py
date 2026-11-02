@@ -113,6 +113,8 @@ class UnitTemplate:
     weapons: list[Weapon] = field(default_factory=list)
     jam_radius: float = 0.0          # 电子干扰半径（格）
     jam_strength: float = 0.0        # 干扰强度 0..1
+    jam_bands: tuple[str, ...] = ()  # 可干扰频段：radar / comm / nav
+    jam_band_weights: dict[str, float] = field(default_factory=dict)
     interceptors: int = 0            # 每回合可拦截的来袭弹药数
     intercept_pk: float = 0.0        # 单次拦截成功率
     can_capture: bool = False        # 能否占领目标点
@@ -129,6 +131,9 @@ class UnitTemplate:
     one_shot_kill: bool = False      # 被命中即毁（空中平台）
     can_fortify: bool = False        # 可构筑 / 修复野战工事（工兵、步兵）
     fort_power: int = 1              # 单次构筑提升的工事等级
+    echelon: str = "platoon"         # 部队层级：platoon 连 / company 营 / brigade 旅
+    command_radius: float = 0.0      # 指挥半径（格）：可下达指令的距离
+    command_range: float = 0.0       # 火力协调半径：集中火力时可协调的距离
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -226,6 +231,7 @@ class Unit:
     altitude: Altitude = Altitude.GROUND
     radar_on: bool = True
     jam_on: bool = False
+    datalink_on: bool = True      # 数据链开关：通信受扰时可主动切断
     fired: bool = False
     moved: bool = False
     destroyed: bool = False
@@ -244,6 +250,17 @@ class Unit:
     decoy_ttl: int = 0               # 诱饵剩余存在回合
     intercepts_used: int = 0         # 本回合已消耗的拦截通道数
     mission: str = "strike"          # 航空兵任务剖面：strike / cap / ferry
+    fire_mission: FireMission | None = None   # 火力准备：已登记的射界
+    order: Order | None = None                 # 上级下达的当前指令
+
+    @property
+    def has_fire_mission(self) -> bool:
+        return self.fire_mission is not None and self.fire_mission.active
+
+    @property
+    def can_prepare_fire(self) -> bool:
+        """是否具备预先射击能力：间瞄火力（炮兵/火箭炮）。"""
+        return any(w.is_indirect for w in self.template.weapons)
 
     def __post_init__(self) -> None:
         if self.hp <= 0:
@@ -387,6 +404,63 @@ class Missile:
 
 
 # --------------------------------------------------------------------------- #
+# 指挥指令
+# --------------------------------------------------------------------------- #
+@dataclass
+class Order:
+    """上级单位向下属下达的作战指令。
+
+    指令是**有期限**的（通常 2 回合），过期后下属恢复自主决策——
+    这样指挥链既有价值，又不会把 AI 变成只会执行命令的傀儡。
+    """
+
+    kind: str = "focus_fire"     # focus_fire / priority / hold / assault
+    issuer_uid: int = 0          # 下达指令的上级单位 uid
+    target_uid: int = 0          # 集中火力/强攻的目标 uid
+    priority_class: str = ""     # 优先目标类别：sam / radar / hq / air
+    turns_left: int = 2          # 剩余有效回合
+    x: int = 0                   # 强攻方向的目标格
+    y: int = 0
+
+    @property
+    def active(self) -> bool:
+        return self.turns_left > 0
+
+
+# --------------------------------------------------------------------------- #
+# 火力准备
+# --------------------------------------------------------------------------- #
+@dataclass
+class FireMission:
+    """预先射击任务：炮兵登记的射界与目标格。
+
+    间瞄火力的真实打法不是"看见就打"，而是先侦察、登记射界、
+    等目标进入预设火力诸元覆盖区再开火。本作把它抽象为：
+
+    * 登记时消耗机动点，并要求对该区域有情报；
+    * 登记后进入「已准备」状态，持续 N 回合；
+    * 对射界内目标射击时获得显著命中率与毁伤加成；
+    * 若目标不在射界内，准备状态失效（射界需要重新侦察）。
+    """
+
+    x: int = 0
+    y: int = 0
+    turns_left: int = 0             # 剩余准备回合数
+    prepared: bool = False          # 是否已完成准备（登记当回合为 False）
+    total: int = 2                  # 准备所需回合数
+    intel_level: str = "contact"    # 登记时的情报等级
+
+    @property
+    def active(self) -> bool:
+        return self.turns_left > 0
+
+    @property
+    def ready(self) -> bool:
+        """已准备完毕——可以对射界内目标打出准备加成。"""
+        return self.active and self.prepared
+
+
+# --------------------------------------------------------------------------- #
 # 目标点
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -407,4 +481,4 @@ class Objective:
 
 
 __all__ = ["Weapon", "Sensor", "UnitTemplate", "Tile", "Unit", "Missile", "Objective",
-           "ensure_uid_above"]
+           "FireMission", "Order", "ensure_uid_above"]

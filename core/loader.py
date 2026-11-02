@@ -176,6 +176,9 @@ def _parse_unit(d: dict, index: int, weapons: dict[str, Weapon], sensors: dict[s
         weapons=wps,
         jam_radius=float(d.get("jam_radius", 0.0)),
         jam_strength=float(d.get("jam_strength", 0.0)),
+        jam_bands=tuple(str(b) for b in d.get("jam_bands", ())),
+        jam_band_weights={str(k): float(v)
+                          for k, v in (d.get("jam_band_weights", {}) or {}).items()},
         interceptors=int(d.get("interceptors", 0)),
         intercept_pk=float(d.get("intercept_pk", 0.0)),
         can_capture=bool(d.get("can_capture", False)),
@@ -192,6 +195,9 @@ def _parse_unit(d: dict, index: int, weapons: dict[str, Weapon], sensors: dict[s
         one_shot_kill=bool(d.get("one_shot_kill", domain is Domain.AIR)),
         can_fortify=bool(d.get("can_fortify", uclass is UnitClass.INFANTRY)),
         fort_power=max(1, int(d.get("fort_power", 1))),
+        echelon=str(d.get("echelon", "platoon")),
+        command_radius=float(d.get("command_radius", 0.0)),
+        command_range=float(d.get("command_range", 0.0)),
     )
 
 

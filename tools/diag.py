@@ -237,6 +237,66 @@ def run(map_name: str, turns: int) -> Checker:
         if checked == 0:
             ck.warn("L13", "无可用单位组合，跳过对手视角检查")
 
+        # L14 环境状态合法：时段与天候取值有效，系数在合理区间
+        from core.env import environment_for
+        from core.enums import SensorKind
+        env = environment_for(st)
+        for kind in (SensorKind.RADAR, SensorKind.IR, SensorKind.OPTICAL, SensorKind.ESM):
+            f = env.factor(kind)
+            if not (0.05 <= f <= 2.0):
+                ck.fail("L14", f"环境系数越界 {kind.value}={f:.2f}")
+        if not (0.0 <= env.turn >= 0):
+            ck.fail("L14", f"环境回合数异常 {env.turn}")
+
+        # L15 补给线一致：分配结果中每个单位都指向可用且在半径内的源
+        from core import rules as _rules
+        for side in (Side.BLUE, Side.RED):
+            links = _rules.assign_supply(st, side)
+            for uid, src in links.items():
+                u = st.unit_by_uid(uid)
+                if u is None:
+                    ck.fail("L15", f"补给线指向不存在的单位 uid={uid}")
+                    continue
+                if not src.operational:
+                    ck.fail("L15", f"{u.name} 的补给源 {src.name} 不可用")
+                if not src.covers(u):
+                    ck.fail("L15", f"{u.name} 超出补给源 {src.name} 的半径")
+            # 承载力不得超限（用坐标作键：id() 在对象回收后可能被复用）
+            cnt: dict[tuple[int, int], int] = {}
+            for src in links.values():
+                key = (src.x, src.y)
+                cnt[key] = cnt.get(key, 0) + 1
+            for src in links.values():
+                if cnt[(src.x, src.y)] > src.capacity:
+                    ck.fail("L15", f"补给源 {src.name} 承载超限 "
+                                   f"{cnt[(src.x, src.y)]}>{src.capacity}")
+
+        # L16 火力准备状态合法
+        for u in st.units:
+            fm = getattr(u, "fire_mission", None)
+            if fm is None:
+                continue
+            if fm.turns_left < 0:
+                ck.fail("L16", f"{u.name} 射界剩余回合为负 {fm.turns_left}")
+            if not st.map.in_bounds(fm.x, fm.y):
+                ck.fail("L16", f"{u.name} 射界坐标越界 ({fm.x},{fm.y})")
+
+        # L17 指挥指令合法：下达者必须存活且层级高于受令者
+        for u in st.units:
+            od = getattr(u, "order", None)
+            if od is None:
+                continue
+            issuer = st.unit_by_uid(od.issuer_uid)
+            if issuer is None or not issuer.alive:
+                ck.fail("L17", f"{u.name} 的指令下达者已失效")
+                continue
+            if issuer.side is not u.side:
+                ck.fail("L17", f"{u.name} 收到敌方指令")
+            if issuer.template.command_radius <= 0:
+                ck.fail("L17", f"{issuer.name} 无指挥能力却下达了指令")
+            if od.turns_left < 0:
+                ck.fail("L17", f"{u.name} 的指令剩余回合为负 {od.turns_left}")
+
         # L7 存档往返
         from core.save import load_game, save_game
         st.scenario_path = path
@@ -247,9 +307,16 @@ def run(map_name: str, turns: int) -> Checker:
         def sig(units):
             out = []
             for u in units:
+                fm = getattr(u, "fire_mission", None)
+                fm_sig = (None if fm is None
+                          else (fm.x, fm.y, fm.turns_left, fm.prepared, fm.total))
+                od = getattr(u, "order", None)
+                od_sig = (None if od is None
+                          else (od.kind, od.issuer_uid, od.target_uid,
+                                od.priority_class, od.turns_left, od.x, od.y))
                 out.append((u.template.id, u.x, u.y, round(u.hp, 2), tuple(sorted(u.ammo.items())),
                             u.radar_on, round(u.fuel, 3), u.shots_left, u.entrench,
-                            u.decoy_left, u.is_decoy))
+                            u.decoy_left, u.is_decoy, u.datalink_on, fm_sig, od_sig))
             return out
 
         a, b = sig(st.units), sig(st2.units)

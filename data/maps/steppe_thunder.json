@@ -291,6 +291,11 @@
     "template": "sat_blue",
     "x": 0,
     "y": 0
+   },
+   {
+    "template": "hq_battalion",
+    "x": 6,
+    "y": 17
    }
   ],
   "RED": [
@@ -359,6 +364,11 @@
     "template": "sat_red",
     "x": 35,
     "y": 0
+   },
+   {
+    "template": "hq_brigade",
+    "x": 28,
+    "y": 22
    }
   ]
  }

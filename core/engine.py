@@ -17,8 +17,9 @@ import random
 from dataclasses import dataclass
 
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
-from .model import Missile, Tile, Unit, Weapon
+from .model import FireMission, Missile, Order, Tile, Unit, Weapon
 from . import rules
+from .env import EnvironmentTrack, environment_for
 
 
 # --------------------------------------------------------------------------- #
@@ -93,11 +94,16 @@ class GameState:
         self.salvo_setting: int = 1        # 玩家选择的齐射发数
         self.scenario_path: str = ""       # 存档回放所需的想定路径
         self.armory_path: str = ""
+        self.supply_links: dict[int, rules.SupplySource] = {}   # 单位 → 补给源
 
         self._init_gps()
+        self.env_track = EnvironmentTrack.from_scenario(scenario)
+        self._recompute_supply()
         self.refresh_detection()
+        env = environment_for(self)
         self.log_message(None, f"作战开始：{self.map.name}｜{self.map.width}×{self.map.height} 格"
                                f"（1 格 = {self.map.tile_km:.0f} km）｜限 {self.turn_limit} 回合", "system")
+        self.log_message(None, f"战场环境：{env.label} {env.clock}｜{env.describe_effects()}", "system")
 
     # -- 基础查询 ---------------------------------------------------------
     @property
@@ -158,10 +164,19 @@ class GameState:
             self.gps[side] = self._compute_gps(side)
 
     def _compute_gps(self, side: Side) -> float:
+        """卫星导航完好度：受导航频段干扰与反卫星作战影响。
+
+        导航干扰是区域性压制：只要敌方的导航干扰机开机，
+        我方的卫星导航信号在该战区即被压制——因此这里按阵营整体计损，
+        而不是按距离衰减（北斗信号被压制时不会只影响一部分区域）。
+        """
         loss = 0.0
         for u in self.enemies_of(side):
-            if u.template.jam_strength > 0 and u.jam_on:
-                loss += u.template.jam_strength * 0.28
+            if u.template.jam_strength <= 0 or not u.jam_on:
+                continue
+            if "nav" not in u.template.jam_bands:
+                continue
+            loss += u.template.jam_strength * 0.28
         # 天基导航资产损失：仅靠惯导时精度显著下降
         if not self.has_satellite(side):
             loss += 0.30
@@ -301,10 +316,21 @@ class GameState:
             return
         unit.jam_on = not unit.jam_on
         self.refresh_detection()
+        bands = "、".join(f"{b}频段" for b in unit.template.jam_bands) or "全频段"
         self.log_message(unit.side, f"{unit.name} 电子干扰{'启动' if unit.jam_on else '停止'}"
-                         f"（半径 {unit.template.jam_radius:.0f} 格，强度 {unit.template.jam_strength * 100:.0f}%）", "ew")
+                         f"（{bands}｜半径 {unit.template.jam_radius:.0f} 格，"
+                         f"强度 {unit.template.jam_strength * 100:.0f}%）", "ew")
         if unit.jam_on:
             self.add_fx("ping", (unit.x, unit.y), None, ttl=1.0, color=(200, 150, 255))
+
+    def toggle_datalink(self, unit: Unit) -> bool:
+        """开关数据链：通信受扰时主动断链，牺牲协同换抗干扰。"""
+        if not unit.template.datalink:
+            return False
+        unit.datalink_on = not unit.datalink_on
+        state_txt = "接通" if unit.datalink_on else "切断"
+        self.log_message(unit.side, f"{unit.name} 数据链{state_txt}", "ew")
+        return True
 
     # -- 交战 -------------------------------------------------------------
     def best_weapon_vs(self, attacker: Unit, target: Unit) -> tuple[Weapon | None, rules.ShotProfile | None]:
@@ -504,16 +530,18 @@ class GameState:
                                      "combat")
 
         killed = target.destroyed
+        prep_note = f"（{prof.notes[0]}）" if prof.notes else ""
         if killed:
             self.casualties[target.side] += 1
             self.add_fx("explosion", (target.x, target.y), None, ttl=1.6, color=(255, 90, 60))
             self.log_message(attacker.side,
                              f"{attacker.name} 以 {weapon.name} 击毁 {target.name}"
-                             f"（{hits} 发命中 / 伤害 {total_damage:.0f}）", "combat")
+                             f"（{hits} 发命中 / 伤害 {total_damage:.0f}）{prep_note}", "combat")
         else:
             self.log_message(attacker.side,
                              f"{attacker.name} → {target.name}｜{weapon.name} 命中 {hits} 发，"
-                             f"伤害 {total_damage:.0f}（剩余 {target.hp:.0f}/{target.template.hp:.0f}）", "combat")
+                             f"伤害 {total_damage:.0f}（剩余 {target.hp:.0f}/{target.template.hp:.0f}）"
+                             f"{prep_note}", "combat")
 
         if killed:
             self._check_elimination()
@@ -599,6 +627,14 @@ class GameState:
             for u in self.units:
                 if u.alive and (u.x, u.y) == pos:
                     u.revealed_until = self.turn_count + 1
+            # 补给枢纽失能 → 相关部队的补给线立即中断
+            if tile.facility in rules.SUPPLY_PROFILE:
+                self._recompute_supply()
+                cut = [u.name for u in self.units_of(tile.owner)
+                       if u.alive and u.uid not in self.supply_links]
+                if cut:
+                    self.log_message(tile.owner,
+                                     f"{name} 失能——补给线中断：{'、'.join(cut[:4])}", "ew")
         self.refresh_detection()
         return FireResult(True, "打击完成", hits=hits, damage=total)
 
@@ -655,6 +691,236 @@ class GameState:
         self.refresh_detection()
         return True
 
+    # -- 指挥体系 ---------------------------------------------------------
+    ORDER_TURNS = 2               # 指令有效回合数
+    ORDER_LABELS = {
+        "focus_fire": "集中火力",
+        "priority": "优先目标",
+        "hold": "固守",
+        "assault": "强攻",
+    }
+    PRIORITY_CLASSES = {
+        "sam": ("sam", "aaa"),      # 防空系统
+        "radar": ("radar",),        # 雷达
+        "hq": ("hq",),              # 指挥所
+        "air": ("fighter", "bomber", "aew", "uav", "tanker"),   # 空中平台
+    }
+
+    def _echelon_rank(self, u: Unit) -> int:
+        """单位层级序：连 0 / 营 1 / 旅 2。"""
+        return {"platoon": 0, "company": 1, "brigade": 2}.get(u.template.echelon, 0)
+
+    def subordinates_of(self, commander: Unit) -> list[Unit]:
+        """指挥者的直属下级：层级更低且在指挥半径内。"""
+        if not commander.alive or commander.template.command_radius <= 0:
+            return []
+        cr = commander.template.command_radius
+        rank = self._echelon_rank(commander)
+        out = []
+        for u in self.units_of(commander.side):
+            if u is commander or u.is_decoy or not u.alive:
+                continue
+            if self._echelon_rank(u) >= rank:
+                continue
+            if rules.dist((commander.x, commander.y), (u.x, u.y)) > cr:
+                continue
+            out.append(u)
+        return out
+
+    def can_issue_order(self, commander: Unit, kind: str,
+                        target: Unit | None = None) -> tuple[bool, str]:
+        """检查能否下达某指令。"""
+        if not commander.alive:
+            return False, "指挥单位已不存在"
+        if commander.template.command_radius <= 0:
+            return False, f"{commander.name} 不具备指挥能力"
+        subs = self.subordinates_of(commander)
+        if not subs:
+            return False, f"{commander.name} 指挥半径内没有下级单位"
+        if kind == "focus_fire" or kind == "assault":
+            if target is None:
+                return False, "需要指定目标"
+            if target.side is commander.side:
+                return False, "不能向己方单位下达该指令"
+            d = rules.dist((commander.x, commander.y), (target.x, target.y))
+            if d > commander.template.command_range + rules.RANGE_TOLERANCE:
+                return False, (f"目标超出火力协调半径"
+                               f"（{d:.1f} > {commander.template.command_range:.0f} 格）")
+        if kind == "priority" and not target:
+            return False, "需要指定优先目标类别"
+        return True, ""
+
+    def issue_order(self, commander: Unit, kind: str, target: Unit | None = None,
+                    priority_class: str = "", pos: tuple[int, int] | None = None) -> tuple[bool, str]:
+        """下达指令给指挥半径内的全部下级单位。"""
+        ok, reason = self.can_issue_order(commander, kind, target)
+        if not ok:
+            return False, reason
+        subs = self.subordinates_of(commander)
+        n = 0
+        for sub in subs:
+            sub.order = Order(
+                kind=kind,
+                issuer_uid=commander.uid,
+                target_uid=target.uid if target is not None else 0,
+                priority_class=priority_class,
+                turns_left=self.ORDER_TURNS,
+                x=pos[0] if pos else (target.x if target else commander.x),
+                y=pos[1] if pos else (target.y if target else commander.y),
+            )
+            n += 1
+        label = self.ORDER_LABELS.get(kind, kind)
+        extra = ""
+        if kind in ("focus_fire", "assault") and target is not None:
+            extra = f" → {target.name}"
+        elif kind == "priority":
+            extra = f"（{priority_class}）"
+        self.log_message(commander.side,
+                         f"{commander.name} 下达「{label}」指令{extra}，"
+                         f"{n} 个下级单位受领", "info")
+        return True, f"已下达「{label}」，{n} 个单位受领"
+
+    def clear_orders(self, side: Side) -> None:
+        """清除某方全部指令（指挥者阵亡或指令到期时）。"""
+        for u in self.units_of(side):
+            u.order = None
+
+    def _tick_orders(self) -> None:
+        """指令计时与失效；指挥者阵亡则其指令一并撤销。"""
+        for u in self.units:
+            if u.order is None:
+                continue
+            issuer = self.unit_by_uid(u.order.issuer_uid)
+            if issuer is None or not issuer.alive:
+                u.order = None
+                continue
+            u.order.turns_left -= 1
+            if u.order.turns_left <= 0:
+                u.order = None
+
+    # -- 火力准备 ---------------------------------------------------------
+    # 预先射击：登记射界需要的情报等级与代价
+    FIRE_PREPARE_MP = 1.5         # 登记射界消耗的机动点
+    FIRE_PREPARE_TURNS = 2        # 射界有效期（回合）
+    FIRE_PREPARE_RADIUS = 1.5     # 射界覆盖半径（格）
+    FIRE_PREPARE_PK_BONUS = 1.45  # 准备完成后的命中倍率
+    FIRE_PREPARE_DMG_BONUS = 1.30 # 准备完成后的毁伤倍率
+
+    def register_fire_mission(self, unit: Unit, pos: tuple[int, int]) -> tuple[bool, str]:
+        """登记射界：炮兵预先侦察并标定目标区域。
+
+        要求：
+        * 单位具备间瞄火力（火炮 / 火箭炮）；
+        * 有足够机动点；
+        * 目标格在射程内；
+        * 对该区域**有情报**——没有情报就登记射界是盲打，违背预先射击的意义。
+        """
+        if not unit.alive or unit.is_decoy:
+            return False, "单位不可用"
+        if not unit.can_prepare_fire:
+            return False, f"{unit.name} 不具备间瞄火力，无法预先射击"
+        if unit.mp < self.FIRE_PREPARE_MP:
+            return False, f"机动点不足（{unit.mp:.1f} < {self.FIRE_PREPARE_MP}）"
+        if unit.fire_mission is not None and unit.fire_mission.active:
+            return False, f"{unit.name} 已有在效射界（{unit.fire_mission.x},{unit.fire_mission.y}）"
+
+        # 选一款射程内的间瞄武器
+        cands = [w for w in unit.usable_weapons()
+                 if w.is_indirect
+                 and rules.dist((unit.x, unit.y), pos) <= w.range_max + rules.RANGE_TOLERANCE
+                 and rules.dist((unit.x, unit.y), pos) >= w.range_min]
+        if not cands:
+            return False, "该位置不在任何间瞄武器的射程内"
+
+        # 情报要求：至少「接触」——完全未知的目标无法标定射界
+        intel = self._intel_at(unit.side, pos)
+        if intel is Detection.NONE:
+            return False, "该区域无任何情报，无法标定射界"
+
+        unit.mp = max(0.0, unit.mp - self.FIRE_PREPARE_MP)
+        unit.moved = True
+        unit.fire_mission = FireMission(
+            x=pos[0], y=pos[1],
+            turns_left=self.FIRE_PREPARE_TURNS,
+            prepared=False,
+            total=self.FIRE_PREPARE_TURNS,
+            intel_level=intel.value,
+        )
+        self.log_message(unit.side,
+                         f"{unit.name} 登记射界 ({pos[0]},{pos[1]})"
+                         f"（情报 {intel.label}，需 {self.FIRE_PREPARE_TURNS} 回合完成准备）", "move")
+        self.add_fx("ping", pos, None, ttl=1.0, color=(255, 210, 130), text="射界")
+        return True, "射界已登记"
+
+    def _intel_at(self, side: Side, pos: tuple[int, int]) -> Detection:
+        """某格的情报等级：取该格上敌对单位中最高的已知等级。"""
+        best = Detection.NONE
+        for u in self.units_at(*pos):
+            if u.side is side or u.is_decoy:
+                continue
+            lvl = self.known_level(side, u)
+            if lvl.level > best.level:
+                best = lvl
+        return best
+
+    def fire_mission_bonus(self, unit: Unit, target: Unit) -> tuple[float, float, str]:
+        """计算火力准备带来的加成：(命中倍率, 毁伤倍率, 说明)。"""
+        fm = unit.fire_mission
+        if fm is None or not fm.ready:
+            return 1.0, 1.0, ""
+        d = rules.dist((fm.x, fm.y), (target.x, target.y))
+        if d > self.FIRE_PREPARE_RADIUS + rules.RANGE_TOLERANCE:
+            return 1.0, 1.0, ""
+        return (self.FIRE_PREPARE_PK_BONUS, self.FIRE_PREPARE_DMG_BONUS,
+                f"射界命中（{fm.x},{fm.y}）")
+
+    def _resupply_by_line(self, u: Unit) -> None:
+        """通过补给线补充弹药与维修（地面/水面部队）。
+
+        补给源被打瘫、承载力耗尽或距离过远时，补给线中断，
+        单位既不能补充弹药也不能修复战损——这正是「深入敌后」的真实代价。
+        """
+        src = rules.supply_source_for(self, u)
+        if src is None:
+            # 记录一次断粮，供日志与 UI 提示（避免每回合刷屏）
+            if getattr(u, "_supply_cut_logged", 0) != self.turn_count:
+                u._supply_cut_logged = self.turn_count
+                has_ammo = any(u.ammo.get(w.id, 0) > 0 for w in u.template.weapons)
+                if has_ammo:
+                    self.log_message(u.side,
+                                     f"{u.name} 补给线中断——弹药无法补充", "ew")
+            return
+        rate = 2 if u.domain in (Domain.SEA, Domain.SUB) else 1
+        for w in u.template.weapons:
+            cur = u.ammo.get(w.id, 0)
+            if cur < w.ammo:
+                u.ammo[w.id] = min(w.ammo, cur + rate)
+        if u.hp < u.template.hp:
+            heal = u.template.hp * 0.07
+            u.hp = min(u.template.hp, u.hp + heal)
+
+    def _tick_fire_missions(self) -> None:
+        """回合推进：准备进度 +1，射界到期失效。"""
+        for u in self.units:
+            if not u.alive or u.fire_mission is None:
+                continue
+            fm = u.fire_mission
+            if not fm.active:
+                u.fire_mission = None
+                continue
+            fm.turns_left -= 1
+            if fm.turns_left <= 0:
+                self.log_message(u.side, f"{u.name} 的射界 ({fm.x},{fm.y}) 失效", "move")
+                u.fire_mission = None
+                continue
+            if not fm.prepared:
+                fm.prepared = True
+                self.log_message(u.side,
+                                 f"{u.name} 完成射界准备（{fm.x},{fm.y}）——"
+                                 f"对该区域射击命中与毁伤显著提高", "move")
+                self.add_fx("ping", (fm.x, fm.y), None, ttl=1.0,
+                            color=(255, 220, 150), text="准备完成")
+
     # -- 回合推进 ---------------------------------------------------------
     def end_player_turn(self) -> None:
         if self.phase != "player" or self.over:
@@ -695,12 +961,26 @@ class GameState:
                 elif w.kind.value in ("sam", "aam"):
                     u.ammo[w.id] = min(w.ammo, cur + self.SAM_RELOAD)
 
+    def _recompute_supply(self) -> None:
+        """重算双方的补给线分配。"""
+        self.supply_links = {}
+        for side in (Side.BLUE, Side.RED):
+            for uid, src in rules.assign_supply(self, side).items():
+                self.supply_links[uid] = src
+
     def _tick_logistics(self) -> None:
         """回合推进时的油料、弹药与维修结算。
 
         航空兵必须返回母基地（机场/航母）才能加油挂弹，否则会因燃油耗尽坠毁；
         地面部队在后勤枢纽补充弹药并修复战损；舰艇在港口补充。
+
+        v1.2 起，弹药补充与维修不再要求单位**站在**枢纽上，而是通过
+        **补给线**：枢纽有覆盖半径与承载力，部队在半径内即可获得补给，
+        但承载力满时得不到——深入敌后或枢纽被打瘫的部队会断粮。
         """
+        # 先重算补给线分配
+        self._recompute_supply()
+
         for u in self.units:
             if not u.alive or u.is_decoy:
                 continue
@@ -733,6 +1013,9 @@ class GameState:
                     self.add_fx("explosion", (u.x, u.y), None, ttl=1.0, color=(255, 120, 60))
                     self.log_message(u.side, f"{u.name} 燃油耗尽坠毁", "combat")
                     self._check_elimination()
+            else:
+                # 地面/水面部队：通过补给线补充（不必站在枢纽上）
+                self._resupply_by_line(u)
 
         # 设施抢修：无敌情时由工兵逐步恢复
         for t in self.map.iter_tiles():
@@ -945,6 +1228,8 @@ class GameState:
         self._tick_entrench()
         self._tick_fortifications()
         self._tick_decoys()
+        self._tick_fire_missions()
+        self._tick_orders()
         self.turn_count += 1
         for u in self.units:
             if u.alive:
@@ -959,6 +1244,8 @@ class GameState:
         self._tick_satellites()
 
         self.gps = {s: self._compute_gps(s) for s in (Side.BLUE, Side.RED)}
+
+        self._announce_environment()
 
         # 目标点计分
         for t in self.objective_tiles:
@@ -977,6 +1264,24 @@ class GameState:
         if self._check_end():
             return
         self.log_message(None, f"—— 第 {self.turn_count} 回合 · 蓝方行动 ——", "system")
+
+    def _announce_environment(self) -> None:
+        """播报战场环境变化（时段或天候改变时）。"""
+        env = environment_for(self)
+        prev = getattr(self, "_last_env", None)
+        if prev is not None and prev.time_of_day is env.time_of_day \
+                and prev.weather is env.weather:
+            return
+        self._last_env = env
+        desc = env.describe_effects()
+        if prev is None:
+            return
+        if prev.weather is not env.weather:
+            self.log_message(None,
+                             f"天候转为{env.weather.label}｜{desc}", "detect")
+        else:
+            self.log_message(None,
+                             f"进入{env.time_of_day.label}（{env.clock}）｜{desc}", "detect")
 
     def _check_elimination(self) -> None:
         for side in (Side.BLUE, Side.RED):
@@ -1069,6 +1374,17 @@ class GameState:
             done = self.deploy_decoy(unit, act.tile, getattr(act, "decoy_kind", "") or "radar")
         elif act.kind == "fortify":
             done = self.build_fort(unit)
+        elif act.kind == "prepare_fire" and act.tile is not None:
+            ok, msg = self.register_fire_mission(unit, act.tile)
+            done = ok
+            if not ok:
+                self.log_message(unit.side, f"{unit.name} 未能登记射界：{msg}", "info")
+        elif act.kind == "command":
+            target = self.unit_by_uid(act.target_uid) if act.target_uid else None
+            ok, msg = self.issue_order(unit, "focus_fire", target=target)
+            done = ok
+            if not ok:
+                self.log_message(unit.side, f"{unit.name} 未能下达指令：{msg}", "info")
         elif act.kind == "smoke" and act.tile is not None and act.weapon_id:
             weapon = unit.weapon_by_id(act.weapon_id)
             if weapon:

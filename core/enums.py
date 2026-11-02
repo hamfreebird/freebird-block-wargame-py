@@ -285,6 +285,81 @@ class Facility(StrEnum):
         }[self.value]
 
 
+# --------------------------------------------------------------------------- #
+# 战场环境（v1.2）
+# --------------------------------------------------------------------------- #
+class TimeOfDay(StrEnum):
+    """时段。昼/夜改变光学与红外的相对优势。"""
+
+    DAWN = "dawn"      # 拂晓
+    DAY = "day"        # 白天
+    DUSK = "dusk"      # 黄昏
+    NIGHT = "night"    # 夜间
+
+    @property
+    def label(self) -> str:
+        return {"dawn": "拂晓", "day": "白天", "dusk": "黄昏", "night": "夜间"}[self.value]
+
+
+class Weather(StrEnum):
+    """天候。削弱雷达与光电侦察；不改变红外。"""
+
+    CLEAR = "clear"
+    RAIN = "rain"
+    FOG = "fog"
+    SNOW = "snow"
+
+    @property
+    def label(self) -> str:
+        return {"clear": "晴", "rain": "雨", "fog": "雾", "snow": "雪"}[self.value]
+
+
+class JamBand(StrEnum):
+    """电子干扰频段。分频段生效后，干扰不再是单一乘数。"""
+
+    RADAR = "radar"      # 雷达探测频段
+    COMM = "comm"        # 通信/数据链频段
+    NAV = "nav"          # 卫星导航频段
+
+    @property
+    def label(self) -> str:
+        return {"radar": "雷达", "comm": "通信", "nav": "导航"}[self.value]
+
+
+class Echelon(StrEnum):
+    """部队层级。连级无指挥权，营级可协调，旅级可跨单位下达指令。"""
+
+    PLATOON = "platoon"   # 连
+    COMPANY = "company"   # 营
+    BRIGADE = "brigade"   # 旅
+
+    @property
+    def label(self) -> str:
+        return {"platoon": "连级", "company": "营级", "brigade": "旅级"}[self.value]
+
+    @property
+    def rank(self) -> int:
+        return {"platoon": 0, "company": 1, "brigade": 2}[self.value]
+
+
+class OrderKind(StrEnum):
+    """指挥指令类型。"""
+
+    FOCUS_FIRE = "focus_fire"        # 集中火力：指定目标，全 subordinate 优先打它
+    PRIORITY_TARGET = "priority"     # 优先目标：优先打击某类目标（如防空阵地）
+    HOLD = "hold"                    # 固守：不得脱离指挥所控制区
+    ASSAULT = "assault"              # 强攻：集中力量冲击指定方向
+
+    @property
+    def label(self) -> str:
+        return {
+            "focus_fire": "集中火力",
+            "priority": "优先目标",
+            "hold": "固守",
+            "assault": "强攻",
+        }[self.value]
+
+
 class ObjectiveKind(StrEnum):
     CAPTURE = "capture"     # 占领指定格
     HOLD = "hold"           # 守住指定格
@@ -296,4 +371,5 @@ __all__ = [
     "StrEnum", "Side", "Domain", "Altitude", "Terrain", "TERRAIN_CHARS",
     "Detection", "WeaponKind", "Guidance", "SensorKind", "UnitClass",
     "Facility", "ObjectiveKind",
+    "TimeOfDay", "Weather", "JamBand", "Echelon", "OrderKind",
 ]

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Iterable
 
 from .enums import Detection, Domain, Facility, SensorKind, Side, Terrain, UnitClass, WeaponKind
 from .model import Tile, Unit, Weapon
+from .env import environment_for
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import GameState
@@ -143,14 +144,27 @@ def has_los(state: "GameState", a: tuple[int, int], b: tuple[int, int],
 # --------------------------------------------------------------------------- #
 # 电子战
 # --------------------------------------------------------------------------- #
-def jam_strength_at(state: "GameState", pos: tuple[int, int], victim_side) -> float:
-    """返回某位置上、针对 victim_side 的电子干扰强度（0..1）。"""
+def jam_strength_at(state: "GameState", pos: tuple[int, int], victim_side,
+                    band: str = "radar") -> float:
+    """返回某位置上、针对 victim_side 的指定频段干扰强度（0..1）。
+
+    频段化之后，电子干扰不再是「一刀切」的单一乘数：
+
+    * `radar` 频段 —— 压制雷达探测与雷达/半主动制导弹药；
+    * `comm` 频段 —— 切断数据链与协同交战（信火一体失效）；
+    * `nav` 频段 —— 压制卫星导航，使精确制导弹药退化到惯导精度。
+
+    干扰机只能干扰它**实际具备**的频段，因此针对性关闭某类装备
+    （关雷达 / 断数据链 / 转惯导）才是有效的反制。
+    """
     total = 0.0
     for u in state.units:
         if not u.alive or u.side is victim_side:
             continue
         tpl = u.template
         if tpl.jam_strength <= 0 or not u.jam_on:
+            continue
+        if band not in tpl.jam_bands:
             continue
         r = tpl.jam_radius
         if r <= 0:
@@ -159,7 +173,9 @@ def jam_strength_at(state: "GameState", pos: tuple[int, int], victim_side) -> fl
         if d > r:
             continue
         falloff = 1.0 - (d / r) ** 2 * 0.55   # 边缘衰减
-        total += tpl.jam_strength * falloff
+        # 不同频段的干扰效能不同：默认同权重，可由数据文件单独指定
+        weight = tpl.jam_band_weights.get(band, 1.0)
+        total += tpl.jam_strength * falloff * weight
     return min(0.85, total)
 
 
@@ -235,9 +251,14 @@ def sensor_effective_range(state: "GameState", observer: Unit, target: Unit,
     if observer.suppressed > 0 and kind is SensorKind.RADAR:
         r *= 0.5
 
-    # 4) 电子干扰（仅影响主动/电磁类传感器）
+    # 4) 电子干扰（仅影响主动/电磁类传感器，按频段分别结算）
     if kind in (SensorKind.RADAR, SensorKind.ESM):
-        r *= 1.0 - jam_strength_at(state, (observer.x, observer.y), observer.side) * 0.85
+        r *= 1.0 - jam_strength_at(state, (observer.x, observer.y), observer.side,
+                                   "radar") * 0.85
+
+    # 4.5) 战场环境：时段与天候改变光电/红外/雷达的探测效能
+    env = environment_for(state)
+    r *= env.factor(kind)
 
     # 5) 通视
     los = has_los(
@@ -387,6 +408,18 @@ class ShotProfile:
     interceptors: list[str] = field(default_factory=list)
     cue_source: str = ""
     cue_penalty: float = 1.0
+    notes: list[str] = field(default_factory=list)
+
+
+def _fire_mission_bonus(state: "GameState", attacker: Unit, target: Unit) -> tuple[float, float, str]:
+    """火力准备加成：(命中倍率, 毁伤倍率, 说明)。
+
+    优先调用引擎上的方法（引擎持有准备状态），以免 rules 反向依赖 engine。
+    """
+    fn = getattr(state, "fire_mission_bonus", None)
+    if fn is None:
+        return 1.0, 1.0, ""
+    return fn(attacker, target)
 
 
 def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapon,
@@ -435,8 +468,18 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
 
     # 信火一体：目标由友邻/预警平台提供跟踪诸元，本平台自身并未锁定
     if not own_track(state, attacker, target):
-        if attacker.template.datalink:
-            p.cue_source = "己方传感器网（协同交战）"
+        if attacker.template.datalink and attacker.datalink_on:
+            # 通信频段被压制 → 数据链中断，协同交战退化为陈旧诸元
+            comm_jam = jam_strength_at(state, (attacker.x, attacker.y), attacker.side, "comm")
+            if comm_jam > 0.15:
+                p.cue_source = f"己方传感器网（通信受扰 {comm_jam * 100:.0f}%）"
+                p.cue_penalty = max(0.45, 1.0 - comm_jam * 0.65)
+            else:
+                p.cue_source = "己方传感器网（协同交战）"
+        elif attacker.template.datalink:
+            # 主动切断数据链：牺牲协同能力换取抗干扰
+            p.cue_source = "数据链已切断（抗干扰）"
+            p.cue_penalty = 0.78
         else:
             p.cue_source = "友邻目标指示（无数据链）"
             p.cue_penalty = 0.78
@@ -499,6 +542,12 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
     if p.cue_penalty < 1.0:
         f["外部引导"] = p.cue_penalty
 
+    # 火力准备：射界内的间瞄射击获得显著加成
+    prep_pk, prep_dmg, prep_note = _fire_mission_bonus(state, attacker, target)
+    if prep_pk != 1.0:
+        f["火力准备"] = prep_pk
+        p.notes.append(prep_note)
+
     pk = weapon.pk
     for v in f.values():
         pk *= v
@@ -517,6 +566,9 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
         fort = tgt_tile.fort_cover_for(target.side) if tgt_tile else 0.0
         mitigation = 1.0 - min(0.90, target.template.armor * 0.85 + cover + ent + fort)
         dmg = weapon.damage * mitigation
+        # 火力准备：射界内预先标定的射击毁伤更高
+        if prep_dmg != 1.0:
+            dmg *= prep_dmg
         # 兵种相克：面杀伤对步兵有效，直瞄火力对散兵效果差
         if target.template.is_infantry:
             if weapon.kind in (WeaponKind.ARTILLERY, WeaponKind.MLRS, WeaponKind.BOMB):
@@ -535,58 +587,6 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
     else:
         p.intercept_pk, p.interceptors = interception_estimate(state, attacker, target, weapon)
     return p
-
-
-def _intercept_layers(state: "GameState", pos: tuple[int, int], side: Side,
-                      weapon: Weapon, self_unit: Unit | None = None):
-    """列出所有可能的拦截层次。
-
-    返回 [(单位, 单层拦截概率, 标签)]，按「区域防空 → 近防炮」顺序排列。
-    区域防空用单位自身的拦截通道；近防炮（CIWS）按武器单独成层，
-    射程短、对高速目标效率骤降，是最后一道硬杀伤。
-    """
-    layers: list[tuple[Unit, float, str]] = []
-    for d in state.units:
-        if not d.alive or d.side is not side:
-            continue
-        # -- 区域防空层：受火控通道数与实弹库存双重约束 --
-        if d.is_decoy:
-            continue
-        sam = sam_for_intercept(d, pos)
-        rng = sam.range_max if sam else 0.0
-        if (d.template.interceptors > 0 and d.template.intercept_pk > 0 and sam is not None
-                and d.intercepts_used < d.template.interceptors
-                and dist((d.x, d.y), pos) <= rng + RANGE_TOLERANCE):
-            jam = jam_strength_at(state, (d.x, d.y), d.side)
-            pk = d.template.intercept_pk * (1.0 - weapon.evasion)
-            pk *= (1.0 - jam * 0.6) * (1.0 - weapon.stealth * 0.7)
-            if sam.kind is WeaponKind.AAM:
-                pk *= 0.85      # 空空弹点防御：火控与射界都更有限
-            if weapon.ballistic:
-                pk *= 0.30      # 弹道弹突防能力强，区域防空只有很小的拦截窗口
-            if weapon.strategic:
-                continue        # 洲际弹道：战术防空网无能为力，只能中段反导
-            own = self_unit is not None and d is self_unit
-            if own:
-                pk *= 0.6      # 被攻击单位自卫时火控被占用
-            if pk > 0.01:
-                layers.append((d, min(0.95, pk), "区域防空" + ("(自卫)" if own else "")))
-        # -- 近防炮层 --
-        for w in d.template.weapons:
-            if not w.ciws or d.ammo.get(w.id, 0) <= 0:
-                continue
-            if dist((d.x, d.y), pos) > w.range_max + RANGE_TOLERANCE:
-                continue
-            pk = w.pk * (1.0 - weapon.evasion * 0.55) * (1.0 - weapon.stealth * 0.6)
-            if weapon.ballistic:
-                pk *= 0.05      # 末段灌顶，近防炮基本无法拦截
-            if weapon.hypersonic:
-                pk *= 0.10     # 高超音速目标超出近防炮跟踪能力
-            elif weapon.speed >= 9.0:
-                pk *= 0.55     # 超音速反舰弹窗口很短
-            if pk > 0.01:
-                layers.append((d, min(0.95, pk), f"近防 {w.name[:8]}"))
-    return layers
 
 
 def sam_for_intercept(d: Unit, pos: tuple[int, int]) -> Weapon | None:
@@ -608,37 +608,191 @@ def sam_for_intercept(d: Unit, pos: tuple[int, int]) -> Weapon | None:
     return best
 
 
+# --------------------------------------------------------------------------- #
+# 多点防空协同（IADS）
+# --------------------------------------------------------------------------- #
+@dataclass
+class ADNNode:
+    """防空网中的一个节点——通常是一套防空系统。
+
+    节点记录自己���分工、可用火控通道与剩余拦截弹，网据此统一分配任务。
+    """
+
+    unit: Unit
+    weapon: Weapon | None
+    pk: float                  # 对该目标的单发拦截概率
+    channels: int              # 剩余火控通道
+    ammo: int                  # 剩余拦截弹
+    role: str                  # 分工：区域防空 / 要地防空 / 点防御 / 末段硬杀伤
+    ciws: bool = False
+
+    @property
+    def name(self) -> str:
+        return self.unit.name
+
+
+@dataclass
+class AirDefenseNetwork:
+    """一体化防空网：跨单位统一分配火控通道。
+
+    与「各打各的」的关键区别：
+    * 火控通道由**网**统一记账与分配，而不是每个单位各自为战；
+    * 网会按单发拦截概率**择优派工**——多发弹药同时来袭时，
+      不会让每个单位都对着第一发猛打，而是分给最合适的节点；
+    * 每个节点有明确**分工**（区域 / 要地 / 点防御 / 末段），
+      交战面板会把分工显示给玩家。
+    """
+
+    side: Side
+    nodes: list[ADNNode] = field(default_factory=list)
+
+    # -- 构建 -------------------------------------------------------------
+    @classmethod
+    def build(cls, state: "GameState", side: Side, pos: tuple[int, int],
+              weapon: Weapon, self_unit: Unit | None = None) -> "AirDefenseNetwork":
+        """针对来袭弹药构建防空网。"""
+        net = cls(side=side)
+        for d in state.units:
+            if not d.alive or d.side is not side or d.is_decoy:
+                continue
+            # -- 区域防空：SAM / AAM --
+            if d.template.interceptors > 0 and d.template.intercept_pk > 0:
+                sam = sam_for_intercept(d, pos)
+                if sam is not None and d.intercepts_used < d.template.interceptors:
+                    rng = sam.range_max
+                    if dist((d.x, d.y), pos) <= rng + RANGE_TOLERANCE:
+                        jam = jam_strength_at(state, (d.x, d.y), d.side, "radar")
+                        pk = d.template.intercept_pk * (1.0 - weapon.evasion)
+                        pk *= (1.0 - jam * 0.6) * (1.0 - weapon.stealth * 0.7)
+                        if sam.kind is WeaponKind.AAM:
+                            pk *= 0.85
+                        if weapon.ballistic:
+                            pk *= 0.30
+                        if weapon.strategic:
+                            continue
+                        own = self_unit is not None and d is self_unit
+                        if own:
+                            pk *= 0.6
+                        if pk > 0.01:
+                            net.nodes.append(ADNNode(
+                                unit=d, weapon=sam, pk=min(0.95, pk),
+                                channels=d.template.interceptors - d.intercepts_used,
+                                ammo=d.ammo.get(sam.id, 0),
+                                role=_adn_role(sam, own),
+                            ))
+            # -- 近防炮：末段硬杀伤 --
+            for w in d.template.weapons:
+                if not w.ciws or d.ammo.get(w.id, 0) <= 0:
+                    continue
+                if dist((d.x, d.y), pos) > w.range_max + RANGE_TOLERANCE:
+                    continue
+                pk = w.pk * (1.0 - weapon.evasion * 0.55) * (1.0 - weapon.stealth * 0.6)
+                if weapon.ballistic:
+                    pk *= 0.05
+                if weapon.hypersonic:
+                    pk *= 0.10
+                elif weapon.speed >= 9.0:
+                    pk *= 0.55
+                if pk > 0.01:
+                    net.nodes.append(ADNNode(
+                        unit=d, weapon=w, pk=min(0.95, pk),
+                        channels=99, ammo=d.ammo.get(w.id, 0),
+                        role="末段硬杀伤", ciws=True,
+                    ))
+        # 择优派工：拦截概率高的节点优先
+        net.nodes.sort(key=lambda n: (-n.pk, n.channels))
+        return net
+
+    # -- 分配 -------------------------------------------------------------
+    def assign(self, state: "GameState") -> tuple[ADNNode | None, float]:
+        """为来袭弹药分配最合适的节点。
+
+        返回 (节点, 调整后的拦截概率)。没有可用节点时返回 (None, 0)。
+        """
+        for n in self.nodes:
+            if n.ciws:
+                if n.ammo > 0:
+                    return n, n.pk
+                continue
+            if n.channels > 0 and n.ammo > 0:
+                return n, n.pk
+        return None, 0.0
+
+    @property
+    def total_channels(self) -> int:
+        return sum(n.channels for n in self.nodes if not n.ciws)
+
+    def summary(self) -> list[tuple[str, str, int]]:
+        """网内分工摘要：(节点名, 分工, 剩余通道)。"""
+        out: list[tuple[str, str, int]] = []
+        for n in self.nodes:
+            ch = "—" if n.ciws else str(n.channels)
+            out.append((n.name, n.role, n.channels))
+            _ = ch
+        return out
+
+    def role_counts(self) -> dict[str, int]:
+        """各分工的节点数量。"""
+        out: dict[str, int] = {}
+        for n in self.nodes:
+            out[n.role] = out.get(n.role, 0) + 1
+        return out
+
+
+def _adn_role(sam: Weapon, own: bool) -> str:
+    """按拦截弹与射程判定节点分工。"""
+    if own:
+        return "自卫拦截"
+    if sam.range_max >= 7.0:
+        return "区域防空"
+    if sam.range_max >= 3.0:
+        return "要地防空"
+    return "点防御"
+
+
+def adn_summary_for(state: "GameState", side: Side, pos: tuple[int, int],
+                     weapon: Weapon, self_unit: Unit | None = None) -> AirDefenseNetwork:
+    """对外接口：构建指定位置处的防空网。"""
+    return AirDefenseNetwork.build(state, side, pos, weapon, self_unit)
+
+
 def resolve_salvo_interception(state: "GameState", pos: tuple[int, int], side: Side,
                                weapon: Weapon, count: int,
                                self_unit: Unit | None = None) -> tuple[int, list[str]]:
-    """逐发拦截结算。
+    """逐发拦截结算（由防空网统一派工）。
 
-    每发来袭弹药依次经过各拦截层；每次拦截尝试都会消耗防守方的
-    火控通道（区域防空）或近防炮备弹。返回 (突防成功的弹数, 拦截记录)。
+    每发来袭弹药交由防空网分配给**最合适的节点**；节点消耗一条火控通道
+    与一枚拦截弹。同一节点在通道耗尽或弹尽后退出网，
+    下一发弹药改派其他节点——这就是「跨单位分配」而非「各打各的」。
     """
     if not weapon.interceptable or weapon.strategic:
         return count, []
+    net = AirDefenseNetwork.build(state, side, pos, weapon, self_unit=self_unit)
+    if not net.nodes:
+        return count, []
+
     leakers = 0
     events: list[str] = []
     for _ in range(max(1, count)):
         killed = False
-        for d, pk, tag in _intercept_layers(state, pos, side, weapon, self_unit=self_unit)[:5]:
-            # 区域防空：占用一条火控通道并消耗一枚拦截弹
-            sam = sam_for_intercept(d, pos)
-            if tag.startswith("区域防空"):
-                if sam is None or d.intercepts_used >= d.template.interceptors:
+        # 网内择优派工：可能有多层拦截机会（远层失败后交给近层）
+        for node in list(net.nodes):
+            if node.ciws:
+                if node.ammo <= 0:
                     continue
-                d.intercepts_used += 1
-                d.ammo[sam.id] = max(0, d.ammo.get(sam.id, 0) - 1)
+                node.ammo -= 1
+                node.unit.ammo[node.weapon.id] = max(
+                    0, node.unit.ammo.get(node.weapon.id, 0) - 1)
             else:
-                # 近防炮：每个拦截窗口消耗 1 组备弹
-                cw = next((w for w in d.template.weapons if w.ciws and d.ammo.get(w.id, 0) > 0
-                           and dist((d.x, d.y), pos) <= w.range_max + RANGE_TOLERANCE), None)
-                if cw is None:
+                if node.channels <= 0 or node.ammo <= 0:
                     continue
-                d.ammo[cw.id] = max(0, d.ammo.get(cw.id, 0) - 1)
-            if roll(pk):
-                events.append(f"{d.name}·{tag} 拦截 1 发（Pk {pk * 100:.0f}%）")
+                node.channels -= 1
+                node.ammo -= 1
+                node.unit.intercepts_used += 1
+                node.unit.ammo[node.weapon.id] = max(
+                    0, node.unit.ammo.get(node.weapon.id, 0) - 1)
+            if roll(node.pk):
+                events.append(f"{node.name}·{node.role} 拦截 1 发（Pk {node.pk * 100:.0f}%）")
                 killed = True
                 break
         if not killed:
@@ -668,7 +822,7 @@ def midcourse_interceptors(state: "GameState", pos: tuple[int, int], side: Side)
 
 def interception_estimate(state: "GameState", attacker: Unit, target: Unit,
                           weapon: Weapon) -> tuple[float, list[str]]:
-    """评估防守方对来袭弹药的拦截概率（多层独立拦截取并集）。"""
+    """评估防守方对来袭弹药的拦截概率（由防空网统一派工）。"""
     if weapon.strategic:
         # 洲际弹道导弹：只能在飞行中段被专用反导系统拦截（预览按弹道中点估算）
         mid = ((attacker.x + target.x) // 2, (attacker.y + target.y) // 2)
@@ -681,12 +835,14 @@ def interception_estimate(state: "GameState", attacker: Unit, target: Unit,
     if not weapon.interceptable:
         return 0.0, []
 
+    net = AirDefenseNetwork.build(state, target.side, (target.x, target.y), weapon,
+                                  self_unit=target)
     survive = 1.0
     names: list[str] = []
-    for d, pk, tag in _intercept_layers(state, (target.x, target.y), target.side,
-                                        weapon, self_unit=target)[:5]:
-        survive *= (1.0 - pk)
-        names.append(f"{d.name}·{tag} ({pk * 100:.0f}%)")
+    for n in net.nodes[:5]:
+        survive *= (1.0 - n.pk)
+        ch = "·" + str(n.channels) if not n.ciws else ""
+        names.append(f"{n.name}·{n.role} ({n.pk * 100:.0f}%){ch}")
     return 1.0 - survive, names
 
 
@@ -712,6 +868,8 @@ class CounterThreat:
     enemy_detected_level: Detection = Detection.NONE
     blockers: list[str] = field(default_factory=list)      # 阻止命中的具体条件
     notes: list[str] = field(default_factory=list)         # 补充提示
+    adn_roles: list[tuple[str, str, int]] = field(default_factory=list)  # 防空网分工
+    adn_channels: int = 0                                   # 网内剩余火控通道总数
 
     @property
     def blocked(self) -> bool:
@@ -735,6 +893,11 @@ def counter_threat_profile(state: "GameState", attacker: Unit, target: Unit,
         pk, names = interception_estimate(state, attacker, target, weapon)
         out.intercept_pk = pk
         out.interceptors = names
+        # 防空网分工：让玩家看清对方防区如何组合
+        net = AirDefenseNetwork.build(state, target.side, (target.x, target.y), weapon,
+                                      self_unit=target)
+        out.adn_roles = [(n.name, n.role, n.channels) for n in net.nodes[:5]]
+        out.adn_channels = net.total_channels
     elif weapon.strategic:
         out.notes.append("洲际弹道：战术防空网无能为力，仅中段反导可拦")
 
@@ -879,9 +1042,10 @@ def facility_strike_profile(state: "GameState", attacker: Unit, tile: Tile,
     survive = 1.0
     names: list[str] = []
     if tile.owner in (Side.BLUE, Side.RED):
-        for d, ipk, tag in _intercept_layers(state, (tile.x, tile.y), tile.owner, weapon)[:5]:
-            survive *= (1 - ipk)
-            names.append(f"{d.name}·{tag} ({ipk * 100:.0f}%)")
+        net = AirDefenseNetwork.build(state, tile.owner, (tile.x, tile.y), weapon)
+        for n in net.nodes[:5]:
+            survive *= (1 - n.pk)
+            names.append(f"{n.name}·{n.role} ({n.pk * 100:.0f}%)")
     p.intercept_pk = 1 - survive
     p.interceptors = names
     return p
@@ -916,6 +1080,125 @@ def service_tile(state: "GameState", unit: Unit) -> Tile | None:
                 and t.owner is unit.side and t.operational:
             return t
     return None
+
+
+# --------------------------------------------------------------------------- #
+# 补给线与纵深
+# --------------------------------------------------------------------------- #
+# 各类补给设施的覆盖半径与承载力（同时能补给多少个单位）。
+# 承载力设计原则：一支合成团的常规兵力（约 12–16 个单位）应当能被
+# 1~2 个枢纽覆盖，这样「补给线被打断」是**战术事件**（枢纽被打击、
+# 部队深入敌后超出半径），而不是开局就必然发生的常态。
+SUPPLY_PROFILE: dict[Facility, tuple[float, int]] = {
+    Facility.DEPOT: (10.0, 12),     # 后勤枢纽：覆盖最广、承载最强
+    Facility.HQ: (6.0, 6),          # 指挥部：就近补给
+    Facility.AIRBASE: (6.0, 8),     # 机场：主要保障航空兵
+    Facility.PORT: (7.0, 8),        # 港口：保障舰艇
+    Facility.RADAR_SITE: (3.0, 2),
+    Facility.SAM_SITE: (3.0, 2),
+}
+
+
+@dataclass
+class SupplySource:
+    """一个补给源：后勤设施及其覆盖能力。"""
+
+    tile: Tile
+    radius: float
+    capacity: int
+    side: Side
+
+    @property
+    def x(self) -> int:
+        return self.tile.x
+
+    @property
+    def y(self) -> int:
+        return self.tile.y
+
+    @property
+    def name(self) -> str:
+        return f"{self.tile.facility.label}({self.x},{self.y})"
+
+    @property
+    def operational(self) -> bool:
+        return self.tile.operational and self.tile.owner is self.side
+
+    def covers(self, unit: Unit) -> bool:
+        return dist((self.x, self.y), (unit.x, unit.y)) <= self.radius
+
+
+def supply_sources(state: "GameState", side: Side) -> list[SupplySource]:
+    """列出该阵营所有可用作补给源的地块（按覆盖半径降序）。"""
+    out: list[SupplySource] = []
+    for t in state.map.iter_tiles():
+        if t.facility not in SUPPLY_PROFILE:
+            continue
+        if t.owner is not side:
+            continue
+        radius, cap = SUPPLY_PROFILE[t.facility]
+        out.append(SupplySource(tile=t, radius=radius, capacity=cap, side=side))
+    out.sort(key=lambda s: (-s.radius, s.x, s.y))
+    return out
+
+
+def assign_supply(state: "GameState", side: Side) -> dict[int, SupplySource]:
+    """为该阵营所有单位分配补给源。
+
+    分配规则（贪心，按距离由近及远）：
+    * 单位必须在补给源的覆盖半径内；
+    * 每个补给源有承载力上限，超出的单位得不到补给——这就是「纵深」：
+      深入敌后的部队往往因为补给源被打瘫或承载力耗尽而断粮；
+    * 分配结果稳定：同一态势下每次结算得到相同结果。
+
+    卫星（天基）不需要补给，不参与分配。
+    """
+    sources = [s for s in supply_sources(state, side) if s.operational]
+    # 用坐标作占用计数键：id() 在对象被回收后可能被复用，导致计数串台
+    used: dict[tuple[int, int], int] = {}
+    out: dict[int, SupplySource] = {}
+    units = [u for u in state.units_of(side)
+             if not u.is_decoy and u.domain is not Domain.SPACE]
+    # 按「离最近补给源的距离」排序：孤立单位先占位，避免被近处单位挤掉
+    def nearest_dist(u: Unit) -> float:
+        ds = [dist((s.x, s.y), (u.x, u.y)) for s in sources]
+        return min(ds) if ds else 1e9
+
+    units.sort(key=lambda u: (nearest_dist(u), u.uid))
+    for u in units:
+        best = None
+        best_d = 1e9
+        for s in sources:
+            key = (s.x, s.y)
+            if used.get(key, 0) >= s.capacity:
+                continue
+            d = dist((s.x, s.y), (u.x, u.y))
+            if d > s.radius:
+                continue
+            if d < best_d:
+                best, best_d = s, d
+        if best is not None:
+            out[u.uid] = best
+            key = (best.x, best.y)
+            used[key] = used.get(key, 0) + 1
+    return out
+
+
+def supply_source_for(state: "GameState", unit: Unit) -> SupplySource | None:
+    """查询单个单位当前挂接的补给源。"""
+    links = getattr(state, "supply_links", None)
+    if not links:
+        return None
+    src = links.get(unit.uid)
+    return src if src is not None else None
+
+
+def supply_status(state: "GameState", unit: Unit) -> tuple[bool, str]:
+    """单位补给状态：(是否有补给, 说明)。"""
+    src = supply_source_for(state, unit)
+    if src is None:
+        return False, "补给中断"
+    return True, f"补给线：{src.name}"
 
 
 def facility_service_ok(tile: Tile | None) -> bool:
@@ -1132,9 +1415,12 @@ def jitter(amount: float, spread: float = 0.15) -> float:
 __all__ = [
     "dist", "dist_units", "RANGE_TOLERANCE", "CLOSE_TRACK_RANGE", "has_los",
     "DECOY_SIGNATURE", "DECOY_LABELS", "decoy_signature",
-    "sam_for_intercept", "resolve_salvo_interception", "midcourse_interceptors", "jam_strength_at", "gps_integrity",
+    "sam_for_intercept", "resolve_salvo_interception", "midcourse_interceptors",
+    "jam_strength_at", "gps_integrity",
+    "ADNNode", "AirDefenseNetwork", "adn_summary_for",
     "DetectionResult", "evaluate_detection", "detection_level", "build_detection_map",
     "ShotProfile", "shot_profile", "interception_estimate",
+    "CounterThreat", "counter_threat_profile",
     "FacilityStrike", "facility_strike_profile", "service_tile", "facility_service_ok",
     "FACILITY_SIZE", "ORBITAL_ENGAGEMENT_DISTANCE", "AIRBASE_CAPACITY",
     "tile_move_cost", "find_path", "reachable_tiles", "flood_reachable", "path_cost",

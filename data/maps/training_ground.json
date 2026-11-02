@@ -109,6 +109,11 @@
     "template": "inf_light",
     "x": 1,
     "y": 11
+   },
+   {
+    "template": "hq_battalion",
+    "x": 2,
+    "y": 5
    }
   ],
   "RED": [
@@ -190,5 +195,6 @@
     "focus": "topbar"
    }
   ]
- }
+ },
+ "weather": "clear"
 }

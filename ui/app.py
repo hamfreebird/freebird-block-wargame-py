@@ -27,6 +27,7 @@ from core import rules
 from core.config import ConfigError, UserConfig
 from core.enums import Detection, Domain, Facility, Side
 from core.engine import GameState
+from core.env import environment_for
 from core.loader import LoadError, list_maps, load_scenario
 from core.model import Unit
 from core.save import SaveError, list_slots, load_game, save_game, slot_path
@@ -87,6 +88,9 @@ class App:
         self.decoy_kind: str = "radar"
         self.smoke_mode: bool = False
         self.smoke_weapon = None
+        self.prepare_mode: bool = False       # 火力准备：登记射界模式
+        self.command_mode: bool = False       # 指挥模式：选择指令目标
+        self.command_issuer: Unit | None = None
         self.hover_unit: Unit | None = None
         self.hover_tile: tuple[int, int] | None = None
         self.path_preview: list | None = None
@@ -774,6 +778,13 @@ class App:
                 self.pending_target = None
             elif self.pending_facility:
                 self.pending_facility = None
+            elif self.decoy_mode or self.smoke_mode or self.prepare_mode or self.command_mode:
+                self.decoy_mode = False
+                self.smoke_mode = False
+                self.prepare_mode = False
+                self.command_mode = False
+                self.command_issuer = None
+                self.set_status("已取消当前操作")
             else:
                 self.select_unit(None)
         elif action == "next_unit":
@@ -884,6 +895,12 @@ class App:
             return
         if self.smoke_mode and e.button == 1:
             self._place_smoke(grid)
+            return
+        if self.prepare_mode and e.button == 1:
+            self._place_prepare_fire(grid)
+            return
+        if self.command_mode and e.button == 1:
+            self._place_command(grid)
             return
 
         if e.button != 1:
@@ -1272,8 +1289,22 @@ class App:
             T.draw_text(s, f"{v * 100:.0f}%", (x + 70, yy - 4), 9, T.TEXT_DIM, mono=True)
         T.vline(s, 742, 10, TOP_H - 10, T.BORDER)
 
-        # 在飞弹药
+        # 战场环境（时段 · 天候）
         x = 758
+        env = environment_for(st)
+        env_col = {"拂晓": T.AMBER, "白天": T.WHITE, "黄昏": T.AMBER,
+                   "夜间": (120, 150, 210)}.get(env.time_of_day.label, T.TEXT)
+        wcol = {"晴": T.TEXT_DIM, "雨": (120, 180, 240), "雾": (170, 180, 190),
+                "雪": (200, 220, 240)}.get(env.weather.label, T.TEXT_DIM)
+        T.draw_text(s, "战场环境", (x, 7), 10, T.TEXT_FAINT)
+        T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
+        T.draw_text(s, env.clock, (x + 34, 22), 10, T.TEXT_DIM, mono=True)
+        T.draw_text(s, env.weather.label, (x + 68, 22), 11, wcol)
+        T.draw_text(s, env.describe_effects()[:26], (x, 36), 8, T.TEXT_FAINT)
+        T.vline(s, 886, 10, TOP_H - 10, T.BORDER)
+
+        # 在飞弹药
+        x = 900
         T.draw_text(s, "在飞弹药", (x, 7), 10, T.TEXT_FAINT)
         nmiss = str(len(st.missiles))
         T.draw_text(s, nmiss, (x, 21), 14,
@@ -1387,7 +1418,8 @@ class App:
             self._draw_unit_notes(s, body, u, rest_y)
 
     def _draw_unit_card(self, s, body, u: Unit, y: int) -> int:
-        h = 100
+        has_ew = bool(u.template.jam_bands or u.template.datalink)
+        h = 104 if has_ew else 100
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.PANEL_HI, T.side_color(u.side, "edge"), radius=4)
         # 图标块
@@ -1431,12 +1463,45 @@ class App:
             state_bits.append("被压制")
         if u.domain is Domain.AIR:
             state_bits.append(f"燃油{u.fuel * 100:.0f}%")
+        if u.template.datalink:
+            state_bits.append("数据链通" if u.datalink_on else "数据链断")
+        if u.template.command_radius > 0 and u.side is self.side:
+            subs = self.state.subordinates_of(u)
+            state_bits.append(f"指挥{len(subs)}")
+        # 补给状态：有补给线 / 断粮
+        if u.side is self.side and u.domain is not Domain.AIR:
+            src = rules.supply_source_for(self.state, u)
+            state_bits.append("补给通" if src is not None else "断粮")
         col = T.AMBER if u.fired else T.GREEN
         if u.domain is Domain.AIR and u.fuel < 0.35:
             col = T.RED
         T.draw_text(s, " · ".join(state_bits), (r.right - 10, r.y + 76), 10,
                     col, anchor="topright")
+        # 电子战频段与受扰提示
+        if u.template.jam_bands or u.template.datalink:
+            self._draw_ew_status(s, r, u)
         return y + h + 8
+
+    def _draw_ew_status(self, s, r: pygame.Rect, u: Unit) -> None:
+        """显示本单位的电子战频段能力与当前受扰情况。"""
+        st = self.state
+        y = r.y + 90
+        bits: list[str] = []
+        if u.template.jam_bands:
+            labels = {"radar": "雷达", "comm": "通信", "nav": "导航"}
+            bands = "、".join(labels.get(b, b) for b in u.template.jam_bands)
+            bits.append(f"可干扰：{bands}（半径 {u.template.jam_radius:.0f} 格）")
+        # 敌方干扰对本单位的影响
+        radar_jam = rules.jam_strength_at(st, (u.x, u.y), u.side, "radar")
+        comm_jam = rules.jam_strength_at(st, (u.x, u.y), u.side, "comm")
+        if radar_jam > 0.05:
+            bits.append(f"雷达受扰 {radar_jam * 100:.0f}%")
+        if comm_jam > 0.05:
+            bits.append(f"通信受扰 {comm_jam * 100:.0f}%")
+        if not bits:
+            return
+        col = T.RED if any("受扰" in b for b in bits) else T.PURPLE
+        T.draw_text(s, " · ".join(bits), (r.x + 64, y), 9, col)
 
     def _draw_weapons(self, s, body, u: Unit, y: int) -> int:
         st = self.state
@@ -1474,6 +1539,9 @@ class App:
         if u.template.jam_strength > 0:
             acts.append(("干扰 开" if u.jam_on else "干扰 关",
                          lambda: st.toggle_jam(u), u.jam_on))
+        if u.template.datalink and not u.is_decoy:
+            acts.append(("链 通" if u.datalink_on else "链 断",
+                         lambda: st.toggle_datalink(u), u.datalink_on))
         if u.template.can_fortify and not u.is_decoy:
             tile = st.map.at(u.x, u.y)
             lvl = tile.fort if tile and tile.fort_owner is u.side else 0
@@ -1486,6 +1554,18 @@ class App:
             acts.append((label, lambda: self.cycle_mission(u), u.mission == "cap"))
         if any(w.kind.value in ("artillery", "mlrs") for w in u.usable_weapons()):
             acts.append(("烟幕", lambda: self.begin_smoke(u), False))
+        if u.can_prepare_fire and not u.is_decoy:
+            fm = u.fire_mission
+            if fm is not None and fm.active:
+                acts.append((f"射界 {fm.x},{fm.y}", lambda: self.set_status(
+                    f"射界 ({fm.x},{fm.y})｜"
+                    + ("已准备，射击命中与毁伤显著提高" if fm.prepared
+                       else f"准备中（剩余 {fm.turns_left} 回合）")), True))
+            else:
+                acts.append(("预先射击", lambda: self.begin_prepare_fire(u), False))
+        if u.template.command_radius > 0 and not u.is_decoy and u.side is self.side:
+            subs = st.subordinates_of(u)
+            acts.append((f"指挥 {len(subs)}", lambda: self.begin_command(u), False))
         acts.append(("待机", lambda: self._standby(u), False))
 
         bw = (body.width - 12) // 3
@@ -1540,6 +1620,72 @@ class App:
         self.smoke_weapon = next((w for w in u2.usable_weapons()
                                   if w.kind.value in ("artillery", "mlrs")), None)
         self.set_status("烟幕：点击射程内目标格（Esc 取消）", 8)
+
+    def begin_prepare_fire(self, u: Unit) -> None:
+        """进入火力准备模式：点击射程内且有情报的格子登记射界。"""
+        u2 = self.state.selected_unit()
+        if u2 is None:
+            return
+        self.prepare_mode = True
+        self.set_status("预先射击：点击射程内有情报的格登记射界（Esc 取消）", 8)
+
+    # -- 指挥指令 ---------------------------------------------------------
+    def begin_command(self, u: Unit) -> None:
+        """进入指挥模式：选择指令类型后再选目标。"""
+        subs = self.state.subordinates_of(u)
+        if not subs:
+            self.set_status(f"{u.name} 指挥半径内没有下级单位", 3)
+            return
+        self.command_mode = True
+        self.command_issuer = u
+        self.set_status("指挥：点击敌方目标下达「集中火力」，"
+                        "或按 Esc 取消（更多指令见下方说明）", 8)
+
+    def _place_command(self, pos: tuple[int, int]) -> None:
+        """在指定位置下达集中火力指令。"""
+        u = self.command_issuer
+        self.command_mode = False
+        self.command_issuer = None
+        if u is None:
+            return
+        st = self.state
+        tgt = st.unit_at(*pos)
+        if tgt is None:
+            self.set_status("该格没有单位，无法下达集中火力指令", 3)
+            return
+        ok, msg = st.issue_order(u, "focus_fire", target=tgt)
+        if ok:
+            self.set_status(msg, 4)
+        else:
+            self.set_status(f"无法下达指令：{msg}", 4)
+
+    def issue_hold_order(self) -> None:
+        """下达固守指令：下级单位不再前出。"""
+        u = self.state.selected_unit()
+        if u is None:
+            return
+        ok, msg = self.state.issue_order(u, "hold")
+        self.set_status(msg if ok else f"无法下达指令：{msg}", 4)
+
+    def issue_priority_order(self, cls: str) -> None:
+        """下达优先目标指令：下级优先打击某类目标。"""
+        u = self.state.selected_unit()
+        if u is None:
+            return
+        ok, msg = self.state.issue_order(u, "priority", priority_class=cls)
+        self.set_status(msg if ok else f"无法下达指令：{msg}", 4)
+
+    def _place_prepare_fire(self, pos: tuple[int, int]) -> None:
+        u = self.state.selected_unit()
+        self.prepare_mode = False
+        if not u:
+            return
+        ok, msg = self.state.register_fire_mission(u, pos)
+        if ok:
+            self.set_status(f"射界已登记（{pos[0]},{pos[1]}）——"
+                            f"准备完成后对该区域射击命中与毁伤显著提高", 5)
+        else:
+            self.set_status(f"无法登记射界：{msg}", 4)
 
     def _place_smoke(self, pos: tuple[int, int]) -> None:
         u = self.state.selected_unit()
@@ -1693,6 +1839,11 @@ class App:
                 out.append(("　└", name[:30], T.TEXT_FAINT))
         else:
             out.append(("拦截", "无敌方防空覆盖", T.GREEN))
+
+        # 防空网分工：谁负责哪一段防区
+        if threat.adn_roles:
+            roles = "、".join(sorted({r for _, r, _ in threat.adn_roles}))
+            out.append(("防空网", f"{roles}｜余 {threat.adn_channels} 通道", (150, 190, 235)))
 
         if threat.reply_units:
             col = T.RED if threat.enemy_fire_control else T.AMBER
