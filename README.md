@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.1.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v2.1.2-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -105,6 +105,8 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v1.5** | 大型战役 | **同格共存机制**、**128×128 大型想定**、美方兵种扩充、性能优化 |
 | **v2.0** | 复现与扩展 | **对局回放**、**可复现随机流**、**模组接口**、**12 步空海天协同教学** |
 | **v2.1** | 内容与性能 | **可视化战役编辑器**、**可替换单位图标包**、**分块渲染 + 增量探测**（渲染提速 4.3 倍） |
+| **v2.1.1** | 缺陷修复 | 修复战役编辑器文字锚点崩溃（pygame 只认 9 种锚点） |
+| **v2.1.2** | 交互修复 | 主菜单**点击才选中**（不再悬停即切换）、修复「导入回放」浮层不显示 |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 

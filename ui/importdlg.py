@@ -105,6 +105,9 @@ class ImportDialog:
         self._btn_import = pygame.Rect(0, 0, 0, 0)
         self._btn_close = pygame.Rect(0, 0, 0, 0)
         self.on_import = on_import
+        # 必须初始化：外部用 getattr(..., "close_requested", False) 判断是否关闭，
+        # 但浮层复用时若不复位，关闭标志会一直挂着。
+        self.close_requested = False
         self._refresh()
 
     def _refresh(self) -> None:

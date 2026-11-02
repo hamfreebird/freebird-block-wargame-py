@@ -310,6 +310,49 @@ class App:
         card_h = 148
         return cols, card_w, card_h, card_h + 10
 
+    def _menu_card_rect(self, index: int) -> pygame.Rect | None:
+        """第 index 张想定卡片的屏幕矩形；不在可视行内则返回 None。
+
+        绘制与点击**共用**这套几何计算——否则两处一旦不同步，
+        就会出现「点得到却选不中」或「悬停高亮错位」。
+        """
+        cols, card_w, card_h, row_h = self._menu_grid()
+        area = self._menu_cards_area()
+        row, col = divmod(index, cols)
+        vis_rows = max(1, area.height // row_h)
+        if row < self.menu_scroll or row >= self.menu_scroll + vis_rows:
+            return None
+        return pygame.Rect(area.x + col * (card_w + 16),
+                           area.y + (row - self.menu_scroll) * row_h, card_w, card_h)
+
+    def _menu_card_at(self, pos: tuple[int, int]) -> int:
+        """鼠标位置落在哪张想定卡片上；没有则返回 -1。"""
+        area = self._menu_cards_area()
+        if not area.collidepoint(pos):
+            return -1
+        for i in range(len(self.scenarios)):
+            r = self._menu_card_rect(i)
+            if r is not None and r.collidepoint(pos):
+                return i
+        return -1
+
+    def _menu_side_at(self, pos: tuple[int, int]) -> Side | None:
+        """鼠标位置落在哪个阵营卡片上；没有则返回 None。
+
+        与绘制共用几何——阵营卡片的位置依赖右侧面板宽度，
+        这里复用同一套计算，避免「点得到却选不中」。
+        """
+        area = self._menu_cards_area()
+        px = area.right + 18
+        pw = self.w - px - 48
+        side_x = px
+        side_w = pw if pw >= 220 else 280
+        for j, side in enumerate((Side.BLUE, Side.RED)):
+            r = pygame.Rect(side_x, 446 + j * 46, min(side_w, 320), 42)
+            if r.collidepoint(pos):
+                return side
+        return None
+
     def _menu_max_scroll(self, cols: int, card_h: int, row_h: int) -> int:
         """最大滚动行数——超出可视行的部分才需要滚动。"""
         area = self._menu_cards_area()
@@ -919,18 +962,21 @@ class App:
         vis_rows = max(1, area.height // row_h)
 
         for i, sc in enumerate(self.scenarios):
-            row, col = divmod(i, cols)
-            # 只绘制可视行内的卡片（scroll 是首个可见行号）
-            if row < self.menu_scroll or row >= self.menu_scroll + vis_rows:
+            r = self._menu_card_rect(i)
+            if r is None:
                 continue
-            r = pygame.Rect(area.x + col * (card_w + 16),
-                            area.y + (row - self.menu_scroll) * row_h, card_w, card_h)
             active = i == self.menu_index
+            hovered = r.collidepoint(self.mouse)
             is_tut = bool(sc.get("tutorial"))
-            T.panel(s, r, T.PANEL_HI if active else T.PANEL,
-                    T.CYAN if active else T.BORDER, radius=5)
+            # 悬停与选中是**两件事**：悬停只做视觉提示（边框更亮），
+            # 真正的选中必须点击——否则鼠标滑过就换想定，手感极差。
             if active:
+                T.panel(s, r, T.PANEL_HI, T.CYAN, radius=5)
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x, r.y, r.w, 2))
+            elif hovered:
+                T.panel(s, r, T.PANEL_HI, T.BORDER_HI, radius=5)
+            else:
+                T.panel(s, r, T.PANEL, T.BORDER, radius=5)
             # 卡片内元素按固定行序排布，避免互相重叠：
             #   标题行 → 规格行 → 元数据行 → 描述（最多 2 行）
             head_y = r.y + 12
@@ -975,10 +1021,14 @@ class App:
             yy = meta_y + 36
             for line in T.wrap_text(sc["desc"], 11, r.width - 32)[:1]:
                 T.draw_text(s, line, (r.x + 16, yy), 11, T.TEXT_DIM)
-            T.draw_text(s, "点击选择", (r.x + 16, r.bottom - 20), 11,
-                        T.CYAN if active else T.TEXT_FAINT)
-            if r.collidepoint(self.mouse):
-                self.menu_index = i
+            # 底部提示：选中态显示「已选中」，悬停但未选中显示「点击选择」
+            if active:
+                hint, hint_col = "已选中", T.CYAN
+            elif hovered:
+                hint, hint_col = "点击选择", T.mix(T.CYAN, T.TEXT_DIM, 0.4)
+            else:
+                hint, hint_col = "点击选择", T.TEXT_FAINT
+            T.draw_text(s, hint, (r.x + 16, r.bottom - 20), 11, hint_col)
 
         # 滚动条：想定多于可视行数时才出现
         if max_scroll > 0:
@@ -1009,15 +1059,25 @@ class App:
         ]):
             r = pygame.Rect(side_x, 446 + j * 46, min(side_w, 320), 42)
             active = self.menu_side is side
-            T.panel(s, r, T.PANEL_HI if active else T.PANEL,
-                    T.side_color(side) if active else T.BORDER, radius=4)
+            hovered = r.collidepoint(self.mouse)
+            # 与想定卡片一致：悬停只做视觉提示，选中必须点击
+            if active:
+                T.panel(s, r, T.PANEL_HI, T.side_color(side), radius=4)
+            elif hovered:
+                T.panel(s, r, T.PANEL_HI, T.BORDER_HI, radius=4)
+            else:
+                T.panel(s, r, T.PANEL, T.BORDER, radius=4)
             pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + 10, r.y + 9, 4, 24))
             T.draw_text(s, label, (r.x + 22, r.y + 7), 15, T.TEXT, bold=True)
             # 描述自动换行——右栏可能只有 240px 宽，硬截断会把末字切掉
             for k, line in enumerate(T.wrap_text(desc, T.FS_SMALL, r.width - 32)[:2]):
                 T.draw_text(s, line, (r.x + 22, r.y + 24 + k * 15), T.FS_SMALL, T.TEXT_DIM)
-            if r.collidepoint(self.mouse):
-                self.menu_side = side
+            # 提示：已选 / 可点击
+            tip = "已选中" if active else ("点击选择" if hovered else "")
+            if tip:
+                T.draw_text(s, tip, (r.right - 12, r.y + 6), 10,
+                            T.CYAN if active else T.mix(T.CYAN, T.TEXT_DIM, 0.4),
+                            anchor="topright")
 
         # 开始按钮
         start = self._menu_start_rect()
@@ -1078,9 +1138,12 @@ class App:
         if self.error:
             T.draw_text(s, self.error, (60, self.h - 44), 12, T.RED)
 
-        # 导入浮层（模态，画在最上层）
+        # 导入 / 回放浮层（模态，画在最上层）
+        # 两个浮层都要画——漏掉任何一个都会让对应按钮「点了没反应」。
         if self._import_dialog is not None:
             self._import_dialog.draw(s)
+        if self._replay_dialog is not None:
+            self._replay_dialog.draw(s)
 
     # ================================================================== #
     # 开局
@@ -1614,6 +1677,16 @@ class App:
                         self._replays_dir(), on_play=self._play_replay)
                     self._sfx("click")
                     return
+                # 想定卡片：点击才改变选中（悬停只做视觉提示）
+                idx = self._menu_card_at(pos)
+                if idx >= 0 and idx != self.menu_index:
+                    self.menu_index = idx
+                    self._sfx("click")
+                # 阵营卡片：同上
+                side = self._menu_side_at(pos)
+                if side is not None and side is not self.menu_side:
+                    self.menu_side = side
+                    self._sfx("click")
                 if self._menu_start_rect().collidepoint(pos):
                     self.start_game()
                 elif self._menu_edit_rect().collidepoint(pos):

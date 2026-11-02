@@ -192,12 +192,16 @@ def main() -> int:
     app._scan_scenarios()
     check(app._tutorial_index() >= 0, "教学想定可被定位")
 
-    # --- 主菜单：悬停选中不得错位（曾因内层循环覆盖外层索引而错位）---
+    # --- 主菜单：悬停**不得**改变选中，点击才生效 ---
+    # v2.1 之前，卡片是在绘制时按悬停位置改 menu_index 的——
+    # 于是鼠标滑过就换想定，手感极差；而卡片上却写着「点击选择」。
+    # 现在悬停只做视觉提示，选中必须点击。
     _n_scn = len(app.scenarios)
-    _ok_hover = True
     _cols, _cw, _ch, _rh = app._menu_grid()
     _area = app._menu_cards_area()
     _vis = max(1, _area.height // _rh)
+    _ok_click = True
+    _ok_noho = True
     for _i in range(_n_scn):
         app.menu_index = -1
         _row, _col = divmod(_i, _cols)
@@ -208,12 +212,71 @@ def main() -> int:
         _rect = pygame.Rect(_area.x + _col * (_cw + 16),
                             _area.y + (_row - app.menu_scroll) * _rh, _cw, _ch)
         app.mouse = _rect.center
-        app.draw()                      # 绘制时会按悬停位置更新 menu_index
-        if app.menu_index != _i:
-            _ok_hover = False
+        app.draw()                      # 悬停：不得改变选中
+        if app.menu_index != -1:
+            _ok_noho = False
             break
-    check(_ok_hover, "主菜单：悬停选中与卡片一一对应（无错位）")
+        # 点击：应选中该卡片
+        _ev = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": _rect.center})
+        app._on_mouse_down(_ev)
+        if app.menu_index != _i:
+            _ok_click = False
+            break
+    check(_ok_noho, "主菜单：悬停想定卡片不会改变选中（需点击）")
+    check(_ok_click, "主菜单：点击想定卡片可正确选中（无错位）")
     app.menu_scroll = 0
+    app.menu_index = 0
+
+    # --- 主菜单：阵营同样是点击才切换 ---
+    _side0 = app.menu_side
+    # 直接构造红方卡片的位置（与绘制共用几何）
+    _px = _area.right + 18
+    _pw = app.w - _px - 48
+    _sw = _pw if _pw >= 220 else 280
+    _red_rect = pygame.Rect(_px, 446 + 46, min(_sw, 320), 42)
+    app.mouse = _red_rect.center
+    app.draw()                          # 悬停红方：不得改变阵营
+    _side_after_hover = app.menu_side
+    _ev = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": _red_rect.center})
+    app._on_mouse_down(_ev)
+    _side_after_click = app.menu_side
+    check(_side_after_hover == _side0, "主菜单：悬停阵营卡片不会改变阵营（需点击）")
+    check(_side_after_click is Side.RED, "主菜单：点击阵营卡片可正确切换")
+    app.menu_side = _side0
+
+    # --- 主菜单：导入 / 回放按钮都能弹出浮层，且浮层真的被绘制 ---
+    def _click(pos):
+        app._on_mouse_down(pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": pos}))
+
+    # 像素级验证：浮层真的画到了屏幕上（只查对象存在会漏掉「忘了调用 draw」）
+    # 取屏幕**最右上角**作为采样点——主菜单那里只有背景网格，
+    # 浮层的模态遮罩会把它压暗，关闭后应恢复原样。
+    _sw, _sh = app.screen.get_size()
+    _probe = (_sw - 3, 3)
+    _bg = app.screen.get_at(_probe)
+    _click(app._menu_replay_btn.center)
+    check(app._replay_dialog is not None, "主菜单：点击「导入回放」弹出回放浮层")
+    app.draw()                          # 浮层必须被绘制出来
+    check(app._replay_dialog is not None, "主菜单：回放浮层绘制后仍在")
+    _dimmed = app.screen.get_at(_probe)
+    check(_dimmed != _bg, "主菜单：回放浮层确实绘制在屏幕上（模态遮罩压暗背景）")
+    _ev = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_ESCAPE, "mod": 0,
+                                              "unicode": "\x1b"})
+    app._on_key(_ev)
+    check(app._replay_dialog is None, "主菜单：ESC 可关闭回放浮层")
+    app.draw()
+    check(app.screen.get_at(_probe) == _bg, "主菜单：关闭浮层后恢复主菜单背景")
+
+    _click(app._menu_import_btn.center)
+    check(app._import_dialog is not None, "主菜单：点击「导入想定」弹出导入浮层")
+    app.draw()
+    check(app._import_dialog is not None, "主菜单：导入浮层绘制后仍在")
+    check(app.screen.get_at(_probe) != _bg, "主菜单：导入浮层确实绘制在屏幕上")
+    _ev = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_ESCAPE, "mod": 0,
+                                              "unicode": "\x1b"})
+    app._on_key(_ev)
+    check(app._import_dialog is None, "主菜单：ESC 可关闭导入浮层")
 
     # --- 主菜单：想定网格与滚动 ---
     _cols, _cw, _ch, _rh = app._menu_grid()
