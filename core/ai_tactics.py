@@ -85,21 +85,41 @@ class ObjectivePlan:
 
 
 def objective_value(state: "GameState", side: Side, tile: Tile) -> float:
-    """目标点的**战术价值**。
+    """目标点的**价值**——只与胜利点有关，不看归属。
 
-    不只是胜利点数——还要看「值不值得为它跑一趟」：
-    敌方控制的高价值点回报更高（打下来收益大），
-    但也更要考虑自己拿不拿得动。
+    归属的影响放在别处（见 evaluate_objectives）：己方点要打折，
+    但**中立点与敌方点一视同仁**——AI 必须敢于攻打敌方控制的目标点，
+    那才是胜负点的主要来源。实测把敌方点单独降权会让 AI 畏首畏尾
+    （平衡从 4:5 掉到 1:9），因为它转而只敢守家。
     """
-    vp = tile.victory_points
-    base = 1.0 + vp * 0.25
-    if tile.owner is side:
-        base *= 0.55           # 己方已有：守的价值低于争夺
-    elif tile.owner is Side.NEUTRAL:
-        base *= 1.25           # 中立点：争夺收益最高，且不与敌方直接冲突
-    else:
-        base *= 1.10           # 敌方控制：打下来收益大，但要付代价
-    return base
+    return 1.0 + tile.victory_points * 0.25
+
+
+
+def defense_quota(tile: Tile, threat: bool = False) -> int:
+    """一个目标点该留几个守军。
+
+    普通点 1 个；受威胁的点 2 个（挡住进攻需要冗余）。
+    """
+    return 2 if threat else 1
+
+
+def suited_to_defend(unit: Unit) -> bool:
+    """该单位是否**适合守土**。
+
+    守土要的是稳定与火力覆盖，机动性反而没用；反过来，机动性强的
+    单位（如两栖战车）留在家里是浪费——它去争点更划算。
+
+    这是真实的战术分工，也是让 AI 同时「守得住」与「攻得下」的关键。
+    """
+    if unit.domain is Domain.AIR:
+        return False
+    # 防空单位天然适合守土
+    if unit.template.interceptors > 0:
+        return True
+    # 低机动力的单位（固定阵地型）适合守
+    return unit.mp <= 2.4
+
 
 
 def evaluate_objectives(state: "GameState", side: Side, unit: Unit,
@@ -123,7 +143,12 @@ def evaluate_objectives(state: "GameState", side: Side, unit: Unit,
         if not unit.template.can_capture and t.owner is not side:
             continue        # 无占领能力的单位不必去争点
         d = rules.dist((unit.x, unit.y), (t.x, t.y))
-        rough = objective_value(state, side, t) / (1.0 + d / 14.0)
+        # 粗筛用**与最终打分一致的公式**（只差可达性）。
+        # 若粗筛用另一套排序，会把最终最优解提前淘汰——
+        # 实测平衡因此从 3:7 掉到 2:8。
+        n_def = defenders.get((t.x, t.y), 0)
+        w = (0.35 if n_def < 2 else 0.12) if t.owner is side else 1.0
+        rough = w * (1.0 + t.victory_points * 0.2) / (1.0 + d / 8.0)
         cands.append((rough, t))
     cands.sort(key=lambda c: -c[0])
     cands = cands[:MAX_REACH_CANDIDATES]
@@ -133,14 +158,23 @@ def evaluate_objectives(state: "GameState", side: Side, unit: Unit,
         reach = evaluate_reach(state, unit, (t.x, t.y))
         if not reach.reachable:
             continue
-        val = objective_value(state, side, t)
-        # 路径成本折损：越远越不划算（距离越远，折扣越重）
-        val /= (1.0 + reach.cost / 12.0)
-        # 已有很多人守的点不必再派人
+        # 其余一律 1.0；分母用**直线距离** / 8。
+        # v2.2 只加「可达性过滤」，不动排序——可达性才是真正的病根，
+        # 换掉权重或分母会让 AI 的取舍整体偏移，实测平衡从 4:5 掉到 1:9。
+        # 权重与分母沿用 v2.1 的结构：己方点 0.35（守军够则 0.12），
+        # 其余一律 1.0；分母用**直线距离** / 8。
+        #
+        # v2.2 只加「可达性过滤」，不动排序——可达性才是真正的病根。
+        # 换掉权重或分母会让 AI 的取舍整体偏移：实测平衡从 4:5 掉到 1:9。
+        #
+        # 中立点与敌方点**同等对待**——AI 必须敢于攻打敌方控制的目标点，
+        # 那才是胜负点的主要来源。单独给敌方点降权会让它畏首畏尾。
         n_def = defenders.get((t.x, t.y), 0)
-        if t.owner is side:
-            val *= 0.5 if n_def >= 2 else 1.0
+        weight = (0.35 if n_def < 2 else 0.12) if t.owner is side else 1.0
+        val = weight * (1.0 + t.victory_points * 0.2) \
+            / (1.0 + rules.dist((unit.x, unit.y), (t.x, t.y)) / 8.0)
         plans.append(ObjectivePlan(t, val, reach))
+
     plans.sort(key=lambda p: -p.score)
     return plans
 
@@ -370,6 +404,7 @@ def resupply_needed(state: "GameState", side: Side, unit: Unit) -> bool:
 
 __all__ = [
     "Reach", "evaluate_reach", "ObjectivePlan", "objective_value",
+    "defense_quota", "suited_to_defend",
     "evaluate_objectives", "contested_objectives",
     "strike_priority", "pick_strike_target",
     "defense_position", "air_defense_commitment",

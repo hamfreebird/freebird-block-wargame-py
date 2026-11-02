@@ -803,8 +803,8 @@
    },
    {
     "template": "ah64",
-    "x": 16,
-    "y": 40
+    "x": 17,
+    "y": 37
    },
    {
     "template": "ah64",
@@ -869,8 +869,8 @@
    },
    {
     "template": "m1a2",
-    "x": 38,
-    "y": 23
+    "x": 36,
+    "y": 24
    },
    {
     "template": "bradley",
@@ -884,8 +884,8 @@
    },
    {
     "template": "patriot",
-    "x": 48,
-    "y": 41
+    "x": 49,
+    "y": 39
    },
    {
     "template": "nasams",
@@ -919,8 +919,8 @@
    },
    {
     "template": "himars",
-    "x": 11,
-    "y": 38
+    "x": 9,
+    "y": 36
    },
    {
     "template": "m142_pz",
@@ -934,8 +934,8 @@
    },
    {
     "template": "nasams",
-    "x": 16,
-    "y": 40
+    "x": 17,
+    "y": 37
    },
    {
     "template": "ew_us",
@@ -949,8 +949,8 @@
    },
    {
     "template": "usmc",
-    "x": 12,
-    "y": 42
+    "x": 9,
+    "y": 44
    },
    {
     "template": "hq_brigade",
@@ -964,8 +964,8 @@
    },
    {
     "template": "ew_us",
-    "x": 14,
-    "y": 61
+    "x": 16,
+    "y": 59
    },
    {
     "template": "patriot",
@@ -1117,8 +1117,8 @@
    },
    {
     "template": "s400",
-    "x": 80,
-    "y": 45
+    "x": 78,
+    "y": 43
    },
    {
     "template": "pantsir",
@@ -1207,8 +1207,8 @@
    },
    {
     "template": "thaad",
-    "x": 94,
-    "y": 48
+    "x": 97,
+    "y": 50
    },
    {
     "template": "hq_battalion",
@@ -1237,8 +1237,8 @@
    },
    {
     "template": "s400",
-    "x": 86,
-    "y": 22
+    "x": 88,
+    "y": 17
    },
    {
     "template": "msta",
@@ -1262,8 +1262,8 @@
    },
    {
     "template": "s400",
-    "x": 96,
-    "y": 97
+    "x": 93,
+    "y": 94
    },
    {
     "template": "hq_battalion",

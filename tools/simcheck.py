@@ -34,7 +34,10 @@ def play(st, side):
 def run(map_name, turns=16, seed=1234):
     random.seed(seed)
     sc = load_scenario(f"data/maps/{map_name}.json", "data/units/armory.json")
-    st = GameState(sc, Side.BLUE)
+    # 种子必须传给 GameState——对局随机流由它持有（core/rng.py）。
+    # 只调 random.seed() 是不够的：v2.0 之后规则层的随机判定都走
+    # GameRng，同种子重跑会得到不同结果，平衡回归测量也就不可信。
+    st = GameState(sc, Side.BLUE, seed=seed)
     for _ in range(turns):
         if st.over:
             break

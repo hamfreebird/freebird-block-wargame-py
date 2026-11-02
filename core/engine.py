@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
 from .events import ScenarioEvent, apply_events, parse_events
+from .hooks import Rule, evaluate_rules, parse_rules
 from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
                     ensure_uid_above)
 from . import mods as _mods
@@ -146,11 +147,19 @@ class GameState:
         self.supply_links: dict[int, rules.SupplySource] = {}   # 单位 → 补给源
         # 想定脚本事件（按回合触发）
         self.events: list[ScenarioEvent] = []
+        # v2.2：规则钩子（条件触发 + 组合效果）
+        self.rules: list[Rule] = []
+        self.rule_flags: dict[str, float] = {}
         try:
             self.events = parse_events(scenario.raw.get("events"))
         except Exception as exc:
             self.events = []
             self.log_message(None, f"想定事件解析失败：{exc}", "system")
+        try:
+            self.rules = parse_rules(scenario.raw.get("rules"))
+        except Exception as exc:
+            self.rules = []
+            self.log_message(None, f"想定规则解析失败：{exc}", "system")
 
         self._init_gps()
         self.env_track = EnvironmentTrack.from_scenario(scenario)
@@ -1493,6 +1502,9 @@ class GameState:
         # 想定脚本事件：回合开始时结算，玩家有反应时间
         self._run_events()
 
+        # 规则钩子：条件触发（放在事件之后，让规则看见事件结果）
+        self._run_rules()
+
         # 目标点计分
         for t in self.objective_tiles:
             # 同格可能停驻多支部队（机场停机坪），取任一具备占领能力的单位
@@ -1520,6 +1532,17 @@ class GameState:
             return
         apply_events(self, self.events)
         self.refresh_detection()
+
+    def _run_rules(self) -> None:
+        """结算当前回合的规则钩子。
+
+        规则与事件分开求值：事件是「剧本」，规则是「条件」。
+        规则放在事件之后，让规则能观察到本回合事件的结果。
+        """
+        if not self.rules:
+            return
+        evaluate_rules(self, self.rules)
+
 
     def _announce_environment(self) -> None:
         """播报战场环境变化（时段或天候改变时）。"""

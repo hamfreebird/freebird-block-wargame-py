@@ -204,7 +204,23 @@ class JamField:
         return self.cells.get(pos, 0.0)
 
 
-_jam_cache: dict[tuple, JamField] = {}
+
+
+def _cache_of(state, attr: str) -> dict:
+    """取对局私有的缓存字典（不存在则创建）。
+
+    **缓存必须挂在 state 上，不能放模块级**：模块级缓存若用
+    `id(state)` 做键，CPython 回收旧对局后会复用同一地址——
+    新对局就会命中**上一局**的距离场。这会让同种子的推演
+    得出不同结论，直接破坏「可复现」这条底线（实测平衡结果
+    在两次相同测量间从 2:8 变成 1:7）。
+    """
+    cache = getattr(state, attr, None)
+    if cache is None:
+        cache = {}
+        setattr(state, attr, cache)
+    return cache
+
 
 
 def jam_field(state: "GameState", victim_side, band: str = "radar") -> JamField:
@@ -229,7 +245,7 @@ def jam_field(state: "GameState", victim_side, band: str = "radar") -> JamField:
 
     fp = tuple((u.uid, u.x, u.y, u.jam_on) for u in jammers)
     key = (id(state), victim_side, band, fp)
-    cached = _jam_cache.get(key)
+    cached = _cache_of(state, "_jam_cache").get(key)
     if cached is not None:
         return cached
 
@@ -253,9 +269,10 @@ def jam_field(state: "GameState", victim_side, band: str = "radar") -> JamField:
     # 上限裁剪：与原实现一致
     field_obj = JamField(cells={k: min(0.85, v) for k, v in cells.items()},
                          max_radius=max_r)
-    if len(_jam_cache) > 12:
-        _jam_cache.clear()
-    _jam_cache[key] = field_obj
+    cache = _cache_of(state, "_jam_cache")
+    if len(cache) > 12:
+        cache.clear()
+    cache[key] = field_obj
     return field_obj
 
 
@@ -544,7 +561,7 @@ def _build_detection_index(state: "GameState", viewer_side) -> DetectionIndex | 
     # 指纹：观测者的 uid、位置、射程——任一变化则索引失效
     fp = tuple((u.uid, u.x, u.y, u.best_sensor_range()) for u in observers)
     key = (id(state), viewer_side, fp)
-    cached = _index_cache.get(key)
+    cached = _cache_of(state, "_index_cache").get(key)
     if cached is not None:
         return cached
 
@@ -565,14 +582,14 @@ def _build_detection_index(state: "GameState", viewer_side) -> DetectionIndex | 
         cells.setdefault(key, []).append(u)
 
     idx = DetectionIndex(cells, cell, reach)
-    if len(_index_cache) > 8:
-        _index_cache.clear()
-    _index_cache[key] = idx
+    cache = _cache_of(state, "_index_cache")
+    if len(cache) > 8:
+        cache.clear()
+    cache[key] = idx
     return idx
 
 
-# 观测者空间索引缓存：(state_id, side, 状态指纹) → DetectionIndex
-_index_cache: dict[tuple, DetectionIndex] = {}
+
 
 
 # --------------------------------------------------------------------------- #
@@ -1706,8 +1723,13 @@ def reachable_tiles(state: "GameState", unit: Unit) -> dict[tuple[int, int], flo
 
 
 def flood_reachable(state: "GameState", unit: Unit,
-                    budget: float | None = None) -> dict[tuple[int, int], float]:
-    """以单位所在地为源做受限 Dijkstra，返回 {坐标: 累计消耗}。"""
+                    budget: float | None = None,
+                    allow_fallback: bool = True) -> dict[tuple[int, int], float]:
+    """以单位所在地为源做受限 Dijkstra，返回 {坐标: 累计消耗}。
+
+    `allow_fallback=False` 时不给保底出路——平衡体检用它来发现
+    「部署本身就有问题」的单位（正规移动走不了，只能靠兜底）。
+    """
     import heapq
 
     start = (unit.x, unit.y)
@@ -1733,7 +1755,7 @@ def flood_reachable(state: "GameState", unit: Unit,
                 heapq.heappush(pq, (ncost, (nx, ny)))
     # 可借道通过，但不可停留在友军占据格
     reach = {p: c for p, c in best.items() if p == start or can_end_at(state, unit, p)}
-    if len(reach) <= 1:
+    if len(reach) <= 1 and allow_fallback:
         # 完全动不了：给一条保底出路（见 fallback_moves）
         for p, c in fallback_moves(state, unit).items():
             if can_end_at(state, unit, p):

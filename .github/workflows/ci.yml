@@ -97,6 +97,21 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_perf.py
 
+      - name: AI 战术库自检（可达性 / 保底移动 / 战术规则）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_ai_tactics.py
+
+      - name: 规则钩子自检（条件 / 效果 / 容错）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_hooks.py
+
+      - name: 平衡体检（兵种树 / 想定部署）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/balance_check.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

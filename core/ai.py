@@ -751,6 +751,8 @@ class AIPlanner:
         # v2.1 之前这里用直线距离打分，结果跨海远征看起来很近，
         # AI 便把仅有的两栖力量派去守自己的点，把中立点拱手让人
         # （128×128 想定实测：8 个中立点一个都拿不到）。
+
+
         defenders: dict[tuple[int, int], int] = {}
         for uid, g in self.assign.items():
             if g is not None:
@@ -761,6 +763,23 @@ class AIPlanner:
             self.assign[unit.uid] = (best.tile.x, best.tile.y)
             return self.assign[unit.uid]
         return None
+
+    def _objective_threatened(self, state: "GameState", t) -> bool:
+        """该目标点是否正受威胁（附近有已知敌军）。
+
+        受威胁的点要留冗余守军——一个守军顶不住一次进攻。
+        """
+        for e in state.enemies_of(self.side):
+            if not e.alive:
+                continue
+            if state.known_level(self.side, e) is Detection.NONE:
+                continue
+            if e.domain in (Domain.AIR, Domain.SPACE):
+                continue
+            if rules.dist((t.x, t.y), (e.x, e.y)) <= 8.0:
+                return True
+        return False
+
 
     def _defenders_assigned(self, state: "GameState", t) -> int:
         """统计已被派往防守该目标点的己方单位数量。"""
