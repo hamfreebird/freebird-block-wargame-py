@@ -52,7 +52,6 @@
 """
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -266,7 +265,11 @@ def _do_reinforce(state: "GameState", ev: ScenarioEvent) -> str:
         return f"增援失败：坐标 ({ev.x},{ev.y}) 越界"
     placed: list[str] = []
     for _ in range(ev.count):
-        u = Unit(template=tpl, side=side, x=ev.x, y=ev.y)
+        if hasattr(state, "alloc_uid"):
+            u = Unit(template=tpl, side=side, x=ev.x, y=ev.y,
+                     uid=state.alloc_uid())
+        else:
+            u = Unit(template=tpl, side=side, x=ev.x, y=ev.y)
         # 尝试找一个不冲突的落点
         spot = _free_spot(state, side, ev.x, ev.y, tpl.domain)
         if spot is None:

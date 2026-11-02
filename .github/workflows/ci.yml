@@ -69,6 +69,16 @@ jobs:
       - name: 作战逻辑自检（25 条不变量）
         run: python tools/diag.py 20
 
+      - name: 对局回放自检（可复现 / 可重演）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_replay.py
+
+      - name: 模组接口自检（注册 / 钩子 / 错误隔离）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_mods.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

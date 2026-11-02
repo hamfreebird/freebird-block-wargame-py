@@ -202,6 +202,13 @@ def user_config_path() -> str:
     return os.path.join(user_writable_dir(), "user_config.json")
 
 
+def replays_dir() -> str:
+    """回放文件目录（想定 + 种子 + 命令流）。"""
+    d = os.path.join(user_writable_dir(), "replays")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def reports_dir() -> str:
     """战报导出目录。"""
     d = os.path.join(user_writable_dir(), "reports")

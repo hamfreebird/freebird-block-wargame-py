@@ -23,13 +23,19 @@ import traceback
 
 import pygame
 
+from core import mods as _mods
 from core import rules
+from core.commands import (CMD_DATALINK, CMD_DECOY, CMD_END_TURN, CMD_FIRE,
+                           CMD_FIRE_FACILITY, CMD_FORTIFY, CMD_HOLD, CMD_JAM,
+                           CMD_MOVE, CMD_ORDER, CMD_PREPARE, CMD_PROFILE,
+                           CMD_RADAR, CMD_SMOKE, CommandLog)
 from core import pkg as _pkg
 from core import i18n
 from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_carryover,
                            collect_survivors, list_campaigns, load_campaign,
                            load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
+from core.replay import ReplayFile
 from core.enums import Detection, Domain, Facility, Side
 from core.engine import GameState
 from core.env import environment_for
@@ -44,6 +50,8 @@ from .briefing import (BriefingData, DebriefData, build_briefing, build_debrief,
                        draw_briefing, draw_debrief)
 from .editor import Editor
 from .importdlg import ImportDialog
+from .replaydlg import ReplayDialog
+from .replayplayer import ReplayPlayer
 from .inspect import InspectCard
 from .keymap import build_reverse, hotkey_label, key_code
 from .mapview import MapView
@@ -151,7 +159,11 @@ class App:
         self.menu_scroll = 0          # 想定列表的纵向滚动偏移（行）
         self.menu_side = Side.BLUE
         self._menu_import_btn = pygame.Rect(0, 0, 0, 0)
+        self._menu_replay_btn = pygame.Rect(0, 0, 0, 0)
         self._import_dialog: ImportDialog | None = None
+        self._replay_dialog: ReplayDialog | None = None
+        # 回放播放器（非 None 时处于回放模式）
+        self.replay_player: ReplayPlayer | None = None
         self._menu_buttons: list[Button] = []
         self._tab_rects: list[tuple[pygame.Rect, str]] = []
         self._fire_btn = pygame.Rect(0, 0, 0, 0)
@@ -163,6 +175,14 @@ class App:
         self.keymap = build_reverse(self.cfg)
         self.settings_panel: SettingsPanel | None = None
         self.show_settings = False
+
+        # -- v2.0：模组加载（用户目录优先，安装目录其次）--
+        self.mods = _mods.load_all()
+        for _m in self.mods.mods:
+            if _m.ok:
+                self.cfg.set_pref("last_mods", self.mods.summary())
+            else:
+                self.cfg.set_pref("last_mods", f"{_m.mod_id} 加载失败：{_m.error}")
 
         # -- v1.4：主题 / 音效 / 本地化 --
         # 语言包：先读安装目录，再读用户目录（用户目录优先，可覆盖）
@@ -311,6 +331,13 @@ class App:
         """主菜单「导入想定」按钮。"""
         return pygame.Rect(self.w - 60 - 110, 168, 110, 24)
 
+    def _menu_replay_rect(self) -> pygame.Rect:
+        """主菜单「导入回放」按钮（在「导入想定」左侧）。"""
+        return pygame.Rect(self.w - 60 - 110 - 8 - 110, 168, 110, 24)
+
+    def _replays_dir(self) -> str:
+        return _paths.replays_dir()
+
     def _menu_move_cursor(self, delta_row: int) -> None:
         """上下移动想定选中项（按网格行）。"""
         if not self.scenarios:
@@ -382,9 +409,9 @@ class App:
         if self.tutorial.index != before:
             step = self.tutorial.current
             if step is not None:
-                self.state.log_message(None, f"教学：{step.title}", "system")
+                self.state.log_message(None, f"教学：{step.title}", "tutorial")
             elif self.tutorial.finished:
-                self.state.log_message(None, "教学完成——接下来就看你的了", "system")
+                self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
                 self.tutorial_visible = False
                 self.set_status("教学完成！", 4)
 
@@ -397,9 +424,9 @@ class App:
         if self.tutorial.index != before:
             step = self.tutorial.current
             if step is not None:
-                self.state.log_message(None, f"教学：{step.title}", "system")
+                self.state.log_message(None, f"教学：{step.title}", "tutorial")
             elif self.tutorial.finished:
-                self.state.log_message(None, "教学完成——接下来就看你的了", "system")
+                self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
                 self.tutorial_visible = False
                 self.set_status("教学完成！", 4)
 
@@ -515,6 +542,8 @@ class App:
         self.state = GameState(scenario, self.menu_side)
         self.state.scenario_path = path
         self.state.armory_path = ARMORY
+        # 每局一份新的命令流；种子由 GameState 生成并保存在 state.seed
+        self.cmd_log = CommandLog()
         self.side = self.menu_side
         self.mode = "game"
         self.tab = "unit"
@@ -528,6 +557,8 @@ class App:
         self.debrief = None
         self.show_briefing = False
         self.briefing = None
+        # 玩家命令流——回放用（想定 + 种子 + 命令 = 可完整重演的一局）
+        self.cmd_log = CommandLog()
         # 继承上一关的幸存部队
         carried = apply_carryover(self.state, prog.carryover, self.menu_side)
         if carried:
@@ -721,6 +752,79 @@ class App:
             return
         self.set_status(f"战报已导出：{path}", 6)
 
+    def _play_replay(self, path: str) -> None:
+        """播放一份回放。"""
+        try:
+            rf = ReplayFile.load(path)
+        except Exception as exc:
+            self.set_status(f"回放读取失败：{exc}", 5)
+            return
+        # 想定按文件名在安装目录与用户目录里找
+        name = os.path.basename(rf.scenario)
+        found = None
+        for d in (MAP_DIR, _paths.user_maps_dir()):
+            cand = os.path.join(d, name)
+            if os.path.isfile(cand):
+                found = cand
+                break
+        if found is None:
+            self.set_status(f"回放所需的想定「{name}」不存在", 5)
+            return
+        try:
+            scenario = load_scenario(found, ARMORY)
+        except Exception as exc:
+            self.set_status(f"回放想定载入失败：{exc}", 5)
+            return
+        player = ReplayPlayer(scenario, rf)
+        self.replay_player = player
+        self.state = player.state
+        # 回放不跑教学系统——教学提示条不该出现在重演里
+        self.tutorial = None
+        self.tutorial_visible = False
+        self.side = player.state.player_side
+        self.mode = "replay"
+        self.show_menu = False
+        self.show_help = False
+        self.pending_target = None
+        self.pending_facility = None
+        self.reachable = {}
+        self.tab = "log"
+        self._layout_game()
+        self.set_status(f"回放：{os.path.basename(path)}"
+                        f"（{player.total} 条操作 · 种子 {rf.seed}）", 6)
+
+    def stop_replay(self) -> None:
+        """退出回放，回到主菜单。"""
+        self.replay_player = None
+        self.mode = "menu"
+        self.state = None
+        self._scan_scenarios()
+        self._scan_campaigns()
+        self.set_status("已退出回放", 3)
+
+    def export_replay(self) -> None:
+        """把本局导出为回放文件（想定 + 种子 + 命令流）。"""
+        if self.state is None or self.cmd_log is None:
+            return
+        if not len(self.cmd_log):
+            self.set_status("本局还没有可回放的操作", 4)
+            return
+        scenario = os.path.basename(getattr(self.state, "scenario_path", "") or "")
+        if not scenario:
+            scenario = f"{self.state.map.name}.json"
+        try:
+            rf = ReplayFile.from_game(self.state, scenario, self.cmd_log,
+                                      note=f"{self.state.map.name} · {self.side.label}")
+            d = _paths.replays_dir()
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            path = os.path.join(d, f"{os.path.splitext(scenario)[0]}-{stamp}.bwrep")
+            rf.save(path)
+        except OSError as exc:
+            self.set_status(f"回放导出失败：{exc}", 5)
+            return
+        self.set_status(f"回放已导出：{os.path.basename(path)}"
+                        f"（{len(self.cmd_log)} 条操作 · 种子 {self.state.seed}）", 6)
+
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
         T.draw_text(s, "机制速览", (r.x + 16, r.y + 14), 13, T.CYAN, bold=True)
@@ -771,6 +875,15 @@ class App:
                          border_radius=4)
         T.draw_text(s, i18n.tr("menu.import"), self._menu_import_btn.center, 12,
                     T.TEXT if _imp_hover else T.TEXT_DIM, anchor="center")
+        # 回放按钮：重演之前打过的某一局
+        self._menu_replay_btn = self._menu_replay_rect()
+        _rep_hover = self._menu_replay_btn.collidepoint(self.mouse)
+        pygame.draw.rect(s, T.PANEL_HI if _rep_hover else T.PANEL, self._menu_replay_btn,
+                         border_radius=4)
+        pygame.draw.rect(s, T.CYAN if _rep_hover else T.BORDER_HI, self._menu_replay_btn, 1,
+                         border_radius=4)
+        T.draw_text(s, i18n.tr("menu.replay"), self._menu_replay_btn.center, 12,
+                    T.TEXT if _rep_hover else T.TEXT_DIM, anchor="center")
 
         # 想定卡片：网格排列，超出可视高度时可纵向滚动
         area = self._menu_cards_area()
@@ -958,6 +1071,8 @@ class App:
         self.state = GameState(scenario, self.menu_side)
         self.state.scenario_path = path
         self.state.armory_path = ARMORY
+        # 每局一份新的命令流；种子由 GameState 生成并保存在 state.seed
+        self.cmd_log = CommandLog()
         self.side = self.menu_side
         self.mode = "game"
         self.tab = "unit"
@@ -971,7 +1086,7 @@ class App:
         self.tutorial = build_tutorial(scenario.raw)
         self.tutorial_visible = bool(scenario.raw.get("tutorial")) and not self.cfg.first_run
         if self.tutorial_visible:
-            self.state.log_message(None, f"教学开始：{self.tutorial.current.title if self.tutorial.current else ''}", "system")
+            self.state.log_message(None, f"教学开始：{self.tutorial.current.title if self.tutorial.current else ''}", "tutorial")
         self._layout_game()
         self._select_first_unit()
         # 作战简报：开局前先给玩家看敌情与胜利条件
@@ -1141,6 +1256,8 @@ class App:
             return
         self.pending_target = None
         self.reachable = {}
+        # 命令先记录再推进——回放时按同一条命令重演整个回合（含 AI）
+        self._record(CMD_END_TURN)
         self.state.end_player_turn()
         self._tutorial_note("turn_end")
         if self.state.over:          # 末回合/全歼可能在结算时直接结束对局
@@ -1188,7 +1305,11 @@ class App:
         if cost > u.mp + 1e-6:
             self.set_status(f"机动点不足：需要 {cost:.1f}，剩余 {u.mp:.1f}")
             return
-        self.state.move_unit(u, path)
+        if self.state.move_unit(u, path):
+            self._record(CMD_MOVE, uid=u.uid, x=gx, y=gy)
+            if u.domain is Domain.AIR:
+                # 空中单位的机动是教学里的独立一步（空海天协同）
+                self._tutorial_note("air_move")
         self.reachable = rules.flood_reachable(self.state, u)
         self.reachable.pop((u.x, u.y), None)
 
@@ -1204,6 +1325,9 @@ class App:
                 self.set_status("本单位无可用武器")
                 return
             res = self.state.strike_facility(u, self.pending_facility, w)
+            if res.ok:
+                self._record(CMD_FIRE_FACILITY, attacker=u.uid, weapon=w.id,
+                             x=self.pending_facility[0], y=self.pending_facility[1])
             self.set_status(res.message, 3.5)
             self.pending_facility = None
             self.reachable = {}
@@ -1221,6 +1345,9 @@ class App:
         res = self.state.fire(u, t, w)
         self.set_status(res.message, 3.5)
         if res.ok:
+            # 齐射发数要显式记录——回放时不能依赖回放方的默认设置
+            self._record(CMD_FIRE, attacker=u.uid, target=t.uid, weapon=w.id,
+                         salvo=int(self.state.salvo_setting))
             self._tutorial_note("fire")
         self.pending_target = None
         self.reachable = {}
@@ -1285,6 +1412,24 @@ class App:
                     self.close_settings()
                 return
 
+        if self.mode == "replay":
+            # 回放模式：只认播放控制键，其余一律忽略
+            p = self.replay_player
+            if p is None:
+                self.stop_replay()
+                return
+            if k == pygame.K_ESCAPE:
+                self.stop_replay()
+            elif k == pygame.K_SPACE:
+                p.paused = not p.paused
+            elif k == pygame.K_RIGHT:
+                p.speed = min(8.0, p.speed * 1.5)
+            elif k == pygame.K_LEFT:
+                p.speed = max(0.25, p.speed / 1.5)
+            elif k == pygame.K_END:
+                p.skip_to_end()
+            return
+
         if self.mode == "menu":
             # 导入浮层优先：模态，吞掉所有按键
             if self._import_dialog is not None:
@@ -1292,6 +1437,13 @@ class App:
                     if getattr(self._import_dialog, "close_requested", False):
                         self._import_dialog.close_requested = False
                         self._import_dialog = None
+                return
+            # 回放浮层：模态，吞掉所有按键
+            if self._replay_dialog is not None:
+                if self._replay_dialog.handle_event(e):
+                    if getattr(self._replay_dialog, "close_requested", False):
+                        self._replay_dialog.close_requested = False
+                        self._replay_dialog = None
                 return
             if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.start_game()
@@ -1419,9 +1571,21 @@ class App:
                             self._import_dialog.close_requested = False
                             self._import_dialog = None
                     return
+                # 回放浮层优先
+                if self._replay_dialog is not None:
+                    if self._replay_dialog.handle_event(e):
+                        if getattr(self._replay_dialog, "close_requested", False):
+                            self._replay_dialog.close_requested = False
+                            self._replay_dialog = None
+                    return
                 if self._menu_import_btn.collidepoint(pos):
                     self._import_dialog = ImportDialog(
                         self._packages_dir(), on_import=self._import_package)
+                    self._sfx("click")
+                    return
+                if self._menu_replay_btn.collidepoint(pos):
+                    self._replay_dialog = ReplayDialog(
+                        self._replays_dir(), on_play=self._play_replay)
                     self._sfx("click")
                     return
                 if self._menu_start_rect().collidepoint(pos):
@@ -1490,8 +1654,8 @@ class App:
                             self.export_report("md")
                         elif action == "export_pkg":
                             self.export_scenario_package()
-                        elif action == "import_pkg":
-                            self.import_scenario_package()
+                        elif action == "export_replay":
+                            self.export_replay()
                         elif action == "settings":
                             self.show_menu = False
                             self.open_settings()
@@ -1661,6 +1825,17 @@ class App:
     # 更新
     # ================================================================== #
     def update(self, dt: float) -> None:
+        if self.mode == "replay":
+            p = self.replay_player
+            if p is not None:
+                p.update(dt)
+                self.state = p.state
+                self.state.tick_fx(dt)
+                if self.state.sfx_events:
+                    for name in self.state.sfx_events[:6]:
+                        self._sfx(name)
+                    del self.state.sfx_events[:]
+            return
         if self.mode != "game" or self.state is None:
             return
         st = self.state
@@ -1776,12 +1951,43 @@ class App:
             self._draw_system_menu(s)
         if self.show_settings and self.settings_panel is not None:
             self.settings_panel.draw(s)
+        if self.mode == "replay":
+            self._draw_replay_bar(s)
         if self.mode == "over":
             self._draw_over(s)
         if self.show_briefing and self.briefing is not None:
             self._brief_btn = pygame.Rect(self.w // 2 - 100, self.h // 2 + 232, 200, 42)
             draw_briefing(s, self.briefing, self.mouse, self._brief_btn)
         pygame.display.flip()
+
+    def _draw_replay_bar(self, s: pygame.Surface) -> None:
+        """回放控制条：进度、当前操作、播放/暂停与倍速。"""
+        p = self.replay_player
+        if p is None:
+            return
+        w = self.w
+        h = 56
+        r = pygame.Rect(0, self.h - h, w, h)
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        surf.fill((*T.PANEL_SUNK, 232))
+        s.blit(surf, r.topleft)
+        pygame.draw.rect(s, T.BORDER, pygame.Rect(0, r.y, w, 1))
+        # 进度条
+        bar = pygame.Rect(r.x + 16, r.y + 26, w - 320, 8)
+        pygame.draw.rect(s, T.PANEL, bar, border_radius=4)
+        if bar.width > 0:
+            done = pygame.Rect(bar.x, bar.y, int(bar.width * p.progress), bar.height)
+            pygame.draw.rect(s, T.CYAN, done, border_radius=4)
+        T.draw_text(s, f"回放  {p.index}/{p.total}", (r.x + 16, r.y + 8),
+                    T.FS_SMALL, T.TEXT_DIM, mono=True)
+        T.draw_text(s, p.current_label(), (r.x + 150, r.y + 8), T.FS_SMALL, T.TEXT)
+        # 右侧：播放状态与倍速
+        state_txt = "已播完" if p.finished else ("暂停" if p.paused else "播放中")
+        T.draw_text(s, f"{state_txt}  ×{p.speed:.1f}", (r.right - 16, r.y + 8),
+                    T.FS_SMALL, T.CYAN, anchor="topright")
+        hint = "空格 暂停 · ←→ 调速 · End 快进 · Esc 退出"
+        T.draw_text(s, hint, (r.right - 16, r.y + 28), T.FS_TINY, T.TEXT_FAINT,
+                    anchor="topright")
 
     # -- 教学提示条 -------------------------------------------------------
     def _draw_tutorial_bar(self, s: pygame.Surface) -> None:
@@ -1883,7 +2089,7 @@ class App:
         # 底部按钮行
         btns = [("继续作战", "resume"), ("返回想定选择", "to_menu"),
                 ("导出战报", "export_md"), ("导出想定包", "export_pkg"),
-                ("导入想定包", "import_pkg"), ("设置", "settings"),
+                ("导出回放", "export_replay"), ("设置", "settings"),
                 ("退出游戏", "quit")]
         gap = 8
         pad = 16
@@ -1922,6 +2128,12 @@ class App:
         T.draw_text(s, phase_txt, (x + 66, 22), 12, col, bold=True)
         if st.phase == "ai":
             T.draw_text(s, "推演中", (x + 66, 8), 11, T.AMBER)
+        if self.mode == "replay":
+            # 回放模式：顶栏明确标注，别让人以为是在操作对局
+            _badge = pygame.Rect(x + 132, 9, 66, 20)
+            pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.22), _badge, border_radius=3)
+            pygame.draw.rect(s, T.CYAN, _badge, 1, border_radius=3)
+            T.draw_text(s, "▶ 回放", _badge.center, 11, T.CYAN, anchor="center")
         T.vline(s, 318, 10, TOP_H - 10, T.BORDER)
 
         # 胜负点
@@ -2012,7 +2224,9 @@ class App:
         recent = st.log[-3:]
         if recent:
             h = 14 * len(recent) + 10
-            r = pygame.Rect(mv.rect.x + 10, mv.rect.bottom - h - 8, 470, h)
+            # 回放模式底部有控制条——事件条上移，别被压住
+            _dy = 56 if self.mode == "replay" else 0
+            r = pygame.Rect(mv.rect.x + 10, mv.rect.bottom - h - 8 - _dy, 470, h)
             surf = pygame.Surface(r.size, pygame.SRCALPHA)
             surf.fill((*T.PANEL_SUNK, 190))
             s.blit(surf, r.topleft)
@@ -2212,13 +2426,13 @@ class App:
         acts: list[tuple[str, object, bool]] = []
         if has_radar:
             acts.append(("雷达 开" if u.radar_on else "雷达 关",
-                         lambda: st.toggle_radar(u), u.radar_on))
+                         lambda: self._act_radar(u), u.radar_on))
         if u.template.jam_strength > 0:
             acts.append(("干扰 开" if u.jam_on else "干扰 关",
-                         lambda: st.toggle_jam(u), u.jam_on))
+                         lambda: self._act_jam(u), u.jam_on))
         if u.template.datalink and not u.is_decoy:
             acts.append(("链 通" if u.datalink_on else "链 断",
-                         lambda: st.toggle_datalink(u), u.datalink_on))
+                         lambda: self._act_datalink(u), u.datalink_on))
         if u.template.can_fortify and not u.is_decoy:
             tile = st.map.at(u.x, u.y)
             lvl = tile.fort if tile and tile.fort_owner is u.side else 0
@@ -2263,6 +2477,7 @@ class App:
         st = self.state
         if st.build_fort(u):
             tile = st.map.at(u.x, u.y)
+            self._record(CMD_FORTIFY, uid=u.uid)
             self.set_status(f"{u.name} 构筑工事至 Lv{tile.fort}（消耗 1.0 机动点）", 4)
             self._tutorial_note("fortify")
             return
@@ -2283,6 +2498,8 @@ class App:
         order = ("strike", "cap", "ferry")
         nxt = order[(order.index(u.mission) + 1) % len(order)]
         if self.state.set_mission(u, nxt):
+            self._record(CMD_PROFILE, uid=u.uid, mission=nxt)
+            self._tutorial_note("profile")
             label = {"strike": "打击", "cap": "制空巡逻", "ferry": "转场"}[nxt]
             self.set_status(f"{u.name} 转入{label}剖面"
                             + ("（雷达增益 / 油耗 ×1.3）" if nxt == "cap" else
@@ -2332,6 +2549,9 @@ class App:
             return
         ok, msg = st.issue_order(u, "focus_fire", target=tgt)
         if ok:
+            self._record(CMD_ORDER, commander=u.uid, order="focus_fire",
+                         target=tgt.uid)
+            self._tutorial_note("order")
             self.set_status(msg, 4)
         else:
             self.set_status(f"无法下达指令：{msg}", 4)
@@ -2359,6 +2579,8 @@ class App:
             return
         ok, msg = self.state.register_fire_mission(u, pos)
         if ok:
+            self._record(CMD_PREPARE, uid=u.uid, x=pos[0], y=pos[1])
+            self._tutorial_note("prepare")
             self.set_status(f"射界已登记（{pos[0]},{pos[1]}）——"
                             f"准备完成后对该区域射击命中与毁伤显著提高", 5)
         else:
@@ -2370,6 +2592,9 @@ class App:
         if not u or not self.smoke_weapon:
             return
         if self.state.fire_smoke(u, pos, self.smoke_weapon):
+            self._record(CMD_SMOKE, uid=u.uid, weapon=self.smoke_weapon.id,
+                         x=pos[0], y=pos[1])
+            self._tutorial_note("smoke")
             self.set_status("烟幕已施放：该格 3 回合内遮蔽光电探测与直瞄火力", 4)
         else:
             self.set_status("无法在该位置施放烟幕（需在火炮射程内且高于最小射程）", 3)
@@ -2389,6 +2614,9 @@ class App:
         if not u:
             return
         if self.state.deploy_decoy(u, pos, getattr(self, "decoy_kind", "radar")):
+            self._record(CMD_DECOY, uid=u.uid, kind=getattr(self, "decoy_kind", "radar"),
+                         x=pos[0], y=pos[1])
+            self._tutorial_note("decoy")
             self.set_status("诱饵已投放：敌方态势图上出现一个假目标", 4)
         else:
             self.set_status("该位置无法投放诱饵", 3)
@@ -2397,7 +2625,38 @@ class App:
         """放弃本单位剩余机动点。"""
         u.mp = 0.0
         self.set_status(f"{u.name} 转入待机")
+        self._record(CMD_HOLD, uid=u.uid)
         self.select_unit(None)
+
+    # -- 命令记录（回放） --------------------------------------------------
+    def _record(self, cmd_kind: str, **args) -> None:
+        """记录一条玩家命令。
+
+        命令流 + 对局种子 = 可完整重演的一局。记录的是**语义化**的
+        操作（「3 号单位移到 (10,20)」），不是鼠标坐标——回放不该
+        依赖窗口大小与分辨率。
+
+        第一个参数刻意不叫 ``kind``——``args`` 里可能也有叫 ``kind``
+        的键（比如诱饵类型 radar/ir/visual），重名会撞车。
+        """
+        if self.cmd_log is None or self.state is None:
+            return
+        self.cmd_log.record(cmd_kind, turn=self.state.turn_count, **args)
+
+    def _act_radar(self, u: Unit) -> None:
+        self.state.toggle_radar(u)
+        self._record(CMD_RADAR, uid=u.uid)
+        self._tutorial_note("radar")
+
+    def _act_jam(self, u: Unit) -> None:
+        self.state.toggle_jam(u)
+        self._record(CMD_JAM, uid=u.uid)
+        self._tutorial_note("jam")
+
+    def _act_datalink(self, u: Unit) -> None:
+        self.state.toggle_datalink(u)
+        self._record(CMD_DATALINK, uid=u.uid)
+        self._tutorial_note("datalink")
 
     def _salvo_options(self, u: Unit, w) -> list[int]:
         if w is None:

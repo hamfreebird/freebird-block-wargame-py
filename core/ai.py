@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import math
-import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -185,7 +184,7 @@ class AIPlanner:
                 for w in enemy.weapons:
                     if w.kind is WeaponKind.ARM:
                         if rules.dist((enemy.x, enemy.y), (unit.x, unit.y)) <= w.range_max:
-                            if random.random() < 0.75:
+                            if state.rng.random() < 0.75:
                                 return AIAction("radar", unit.uid,
                                                 note=f"{unit.name} 察觉反辐射威胁，雷达关机")
         # 环境适应：雨雾/夜间光电失效 → 主动雷达开机补足态势
@@ -249,7 +248,7 @@ class AIPlanner:
                             note=f"{unit.name} 因{env.label}天候开机雷达")
         if not optics_degraded and unit.radar_on:
             # 白天晴天：关雷达可显著降低被反辐射导弹锁定的风险
-            if random.random() < 0.35:
+            if state.rng.random() < 0.35:
                 return AIAction("radar", unit.uid,
                                 note=f"{unit.name} 天气良好，关闭雷达降低暴露")
         return None

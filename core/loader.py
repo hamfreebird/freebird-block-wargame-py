@@ -233,7 +233,16 @@ def load_armory(path: str) -> Armory:
             raise LoadError(f"{where}: 兵种 id 重复 '{t.id}'")
         templates[t.id] = t
 
-    return Armory(templates=templates, weapons=weapons, sensors=sensors, meta=raw.get("meta", {}))
+    armory = Armory(templates=templates, weapons=weapons, sensors=sensors,
+                    meta=raw.get("meta", {}))
+
+    # 模组注册的武器与兵种在这里注入——任何调用 load_armory 的地方
+    # 都会自动带上模组内容（想定加载、校验、编辑器都一样）。
+    from . import mods as _mods
+    reg = _mods.default_registry()
+    if reg.mods:
+        reg.apply_to_armory(armory)
+    return armory
 
 
 # --------------------------------------------------------------------------- #

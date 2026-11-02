@@ -245,6 +245,9 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         units.append(u)
     state.units = units
     ensure_uid_above(max_uid)
+    # 恢复对局内 uid 分配器——读档后新增的增援单位不能与存档里的撞号
+    if hasattr(state, "_uid_next"):
+        state._uid_next = max_uid + 1
 
     # 2) 地块可变状态
     for d in data.get("tiles", []):

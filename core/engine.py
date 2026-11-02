@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import copy
 import math
-import random
 from dataclasses import dataclass
 
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
 from .events import ScenarioEvent, apply_events, parse_events
-from .model import FireMission, Missile, Order, Tile, Unit, Weapon
+from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
+                    ensure_uid_above)
+from . import mods as _mods
+from .rng import GameRng
 from .anim import AnimTrack
 from . import rules
 from .env import EnvironmentTrack, environment_for
@@ -32,7 +34,8 @@ class LogEntry:
     turn: int
     side: Side | None
     text: str
-    kind: str = "info"      # info / combat / detect / ew / move / system / victory
+    kind: str = "info"      # info / combat / detect / ew / move / system /
+                            # victory / tutorial（教学提示不参与回放比对）
 
 
 @dataclass
@@ -64,11 +67,28 @@ class FireResult:
 # 游戏状态
 # --------------------------------------------------------------------------- #
 class GameState:
-    def __init__(self, scenario, player_side: Side = Side.BLUE):
+    def __init__(self, scenario, player_side: Side = Side.BLUE,
+                 seed: int | None = None):
         self.scenario = scenario
         self.map = scenario.map
+        # 对局随机流：同一个种子 + 同一串命令，重跑结果逐项一致
+        # （回放的前提，见 core/rng.py）
+        self.rng = GameRng(seed)
+        self.seed = self.rng.seed
+        # 模组注册表：规则钩子的来源（默认取全局）
+        self.mods = _mods.default_registry()
         # 深拷贝：同一想定可反复开局，互不污染
         self.units: list[Unit] = [copy.deepcopy(u) for u in scenario.units]
+        # 单位 uid 重新编号为 1..N（按想定顺序）。原先 uid 来自模块级
+        # 全局计数器，同一进程内第二次开局就会从 43 起步——那会让
+        # 「同一种子重跑得到同一局」失效（单位引用整体错位）。
+        for _i, _u in enumerate(self.units, start=1):
+            _u.uid = _i
+        ensure_uid_above(len(self.units))
+        # 增援单位的对局内 uid 分配器。原先 uid 来自模块级全局计数器，
+        # 同一进程里开两局时增援会互相撞号——那会让「同种子重跑得到
+        # 同一局」失效（单位集合不同）。
+        self._uid_next = len(self.units) + 1
         self.player_side = player_side
         self.ai_side = player_side.foe
         self.turn_count = 1
@@ -143,6 +163,12 @@ class GameState:
     def raw(self) -> dict:
         """想定原始 JSON（供校验器、想定包等外部工具读取）。"""
         return self.scenario.raw
+
+    def alloc_uid(self) -> int:
+        """分配一个对局内唯一的单位 uid。"""
+        uid = getattr(self, "_uid_next", 0) or 1
+        self._uid_next = uid + 1
+        return uid
 
     def unit_at(self, x: int, y: int) -> Unit | None:
         """该格的主要单位。
@@ -359,7 +385,7 @@ class GameState:
                 if t is None or t.fort <= 0 or t.fort_owner is Side.NEUTRAL \
                         or t.fort_owner is unit.side:
                     continue
-                mine_dmg += rules.jitter(t.fort * 4.0)
+                mine_dmg += rules.jitter(t.fort * 4.0, rng=self.rng)
                 mines += 1
 
         start = (unit.x, unit.y)
@@ -472,6 +498,9 @@ class GameState:
         if attacker.side is not acting:
             return FireResult(False, "非本方回合")
 
+        # 开火前钩子：模组可以改状态（装填、撤出、换目标等）
+        self.mods.fire(_mods.EV_BEFORE_FIRE, self, attacker, target, weapon)
+
         prof = rules.shot_profile(self, attacker, target, weapon)
         if not prof.ok:
             return FireResult(False, prof.reason)
@@ -485,7 +514,9 @@ class GameState:
 
         flight = max(1, math.ceil(prof.distance / max(0.5, weapon.speed)))
         if flight <= 1:
-            return self._impact(attacker, target, weapon, salvo=n, prof=prof)
+            res = self._impact(attacker, target, weapon, salvo=n, prof=prof)
+            self.mods.fire(_mods.EV_AFTER_FIRE, self, attacker, target, weapon, res)
+            return res
 
         eta = min(3, flight)
         if weapon.ballistic:
@@ -509,8 +540,10 @@ class GameState:
                          f"{attacker.name} 发射 {weapon.name} × {n} → {target.name}"
                          f"（{prof.distance:.1f} 格，预计 {missile.eta} 回合后抵达）", "combat")
         self.refresh_detection()
-        return FireResult(True, f"发射 {weapon.name}×{n}，飞行 {missile.eta} 回合",
-                          in_flight=True, flight=missile.eta)
+        res = FireResult(True, f"发射 {weapon.name}×{n}，飞行 {missile.eta} 回合",
+                         in_flight=True, flight=missile.eta)
+        self.mods.fire(_mods.EV_AFTER_FIRE, self, attacker, target, weapon, res)
+        return res
 
     def resolve_missiles(self) -> None:
         """推进在飞弹药；抵达者进行末端交战。"""
@@ -528,7 +561,7 @@ class GameState:
                 destroyed = False
                 for d, w, pk in rules.midcourse_interceptors(self, mid, defended):
                     d.ammo[w.id] = max(0, d.ammo.get(w.id, 0) - 1)
-                    if rules.roll(pk):
+                    if rules.roll(pk, self.rng):
                         self.add_fx("intercept", mid, None, ttl=1.2, color=(150, 220, 255),
                                     text="中段拦截")
                         # 逐帧动画：中段拦截的冷色调涟漪
@@ -626,8 +659,8 @@ class GameState:
         hits = 0
         total_damage = 0.0
         for _ in range(max(1, salvo)):
-            if rules.roll(prof.pk):
-                dmg = rules.jitter(prof.damage)
+            if rules.roll(prof.pk, self.rng):
+                dmg = rules.jitter(prof.damage, rng=self.rng)
                 total_damage += dmg
                 hits += 1
         st_att["hits"] += hits
@@ -643,6 +676,15 @@ class GameState:
             self.log_message(attacker.side,
                              f"{attacker.name} → {target.name}｜{weapon.name} 未命中（Pk {prof.pk * 100:.0f}%）", "combat")
             return FireResult(True, "未命中")
+
+        # 伤害修正钩子：模组返回新伤害值（返回 None 表示不改）
+        _mod_dmg = self.mods.fire(_mods.EV_MODIFY_DAMAGE, self, attacker,
+                                  target, weapon, total_damage)
+        if _mod_dmg is not None:
+            try:
+                total_damage = max(0.0, float(_mod_dmg))
+            except (TypeError, ValueError):
+                pass
 
         if target.domain is Domain.AIR:
             if target.template.one_shot_kill:
@@ -685,6 +727,7 @@ class GameState:
         if killed:
             self.casualties[target.side] += 1
             st_att["kills"] += 1
+            self.mods.fire(_mods.EV_UNIT_DESTROYED, self, target)
             self.add_fx("explosion", (target.x, target.y), None, ttl=1.6, color=(255, 90, 60))
             # 逐帧动画：更大的爆炸 + 击毁飘字
             self.anim.add("burst", (target.x, target.y), None, ttl=1.1,
@@ -754,8 +797,8 @@ class GameState:
 
         hits, total = 0, 0.0
         for _ in range(n):
-            if rules.roll(prof.pk):
-                dmg = rules.jitter(prof.damage)
+            if rules.roll(prof.pk, self.rng):
+                dmg = rules.jitter(prof.damage, rng=self.rng)
                 tile.facility_hp = max(0.0, tile.facility_hp - dmg)
                 hits += 1
                 total += dmg
@@ -1239,8 +1282,9 @@ class GameState:
         if not pool:
             return False
 
-        tpl = random.choice([t for t in pool if t.cost >= 100] or pool)
-        d = Unit(template=tpl, side=unit.side, x=pos[0], y=pos[1])
+        tpl = self.rng.choice([t for t in pool if t.cost >= 100] or pool)
+        d = Unit(template=tpl, side=unit.side, x=pos[0], y=pos[1],
+                 uid=self.alloc_uid())
         d.is_decoy = True
         d.decoy_kind = kind
         d.decoy_ttl = ttl
@@ -1404,6 +1448,9 @@ class GameState:
         self._reload_interceptors()
 
         self._tick_satellites()
+
+        # 回合开始钩子：模组可以在这时做全局调整
+        self.mods.fire(_mods.EV_TURN_START, self, self.turn_count)
 
         self.gps = {s: self._compute_gps(s) for s in (Side.BLUE, Side.RED)}
 

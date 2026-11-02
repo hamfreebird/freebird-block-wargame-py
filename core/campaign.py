@@ -292,7 +292,11 @@ def apply_carryover(state, carryover: list[dict], side: Side) -> list[str]:
             spot = _find_spot(state, tpl, same or anchors, side)
             if spot is None:
                 break
-            u = Unit(template=tpl, side=side, x=spot[0], y=spot[1])
+            if hasattr(state, "alloc_uid"):
+                u = Unit(template=tpl, side=side, x=spot[0], y=spot[1],
+                         uid=state.alloc_uid())
+            else:
+                u = Unit(template=tpl, side=side, x=spot[0], y=spot[1])
             state.units.append(u)
             added.append(f"{u.name}×1")
             anchors.append(spot)

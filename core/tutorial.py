@@ -34,6 +34,16 @@ EVENTS = (
     "fortify",         # 玩家构筑了工事
     "turn_end",        # 玩家结束了回合
     "next",            # 玩家点击「下一步」
+    # -- v2.0：空海天协同相关 --
+    "air_move",        # 玩家机动了空中单位
+    "profile",         # 玩家切换了任务剖面
+    "radar",           # 玩家开关了雷达
+    "jam",             # 玩家开关了干扰机
+    "datalink",        # 玩家开关了数据链
+    "smoke",           # 玩家施放了烟幕
+    "decoy",           # 玩家投放了诱饵
+    "prepare",         # 玩家登记了预先射击射界
+    "order",           # 玩家下达了指挥指令
 )
 
 
@@ -76,6 +86,10 @@ class Tutorial:
     index: int = 0
     finished: bool = False
     _pending: set[str] = field(default_factory=set)
+    #: 已经发生过的事件（跨步骤保留）。玩家可能提前做了后面才教的动作
+    #: ——比如在第 1 步就把无人机推了出去。没有这份记忆的话，
+    #: 教学会永远等不到那个事件，把人卡死。
+    _seen: set[str] = field(default_factory=set)
 
     # ------------------------------------------------------------------ #
     # 事件
@@ -89,6 +103,7 @@ class Tutorial:
         if self.finished or not self.steps:
             return
         self._pending.add(event)
+        self._seen.add(event)
         step = self.current
         if step is None:
             return
@@ -96,13 +111,17 @@ class Tutorial:
             self.advance()
 
     def poll(self, state: "GameState") -> None:
-        """轮询状态型步骤：触发事件已发生且状态条件满足时推进。"""
+        """轮询状态型步骤：触发事件已发生且状态条件满足时推进。
+
+        事件在 ``_pending``（本步骤内）或 ``_seen``（此前任何时候）里都算
+        「已发生」——这样玩家提前做过的事不会让教学卡住。
+        """
         if self.finished or not self.steps:
             return
         step = self.current
         if step is None or not step.trigger:
             return
-        if step.trigger not in self._pending:
+        if step.trigger not in self._pending and step.trigger not in self._seen:
             return
         if step.satisfied(state):
             self.advance()

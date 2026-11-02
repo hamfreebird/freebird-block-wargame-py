@@ -103,6 +103,7 @@ class LogView:
             "move": T.mix(T.GREEN, T.TEXT_DIM, 0.5),
             "system": T.CYAN,
             "victory": T.mix(T.AMBER, T.WHITE, 0.4),
+            "tutorial": T.mix(T.GREEN, T.WHITE, 0.35),
         }.get(kind, T.TEXT_DIM)
 
     def __init__(self, rect: pygame.Rect, size: int = 12):

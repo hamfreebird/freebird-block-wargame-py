@@ -259,8 +259,16 @@ def main() -> int:
     check(not app.show_briefing, "教学想定：简报可关闭")
     # 步骤推进：选中单位 → 推进
     tut = app.tutorial
-    check(tut is not None and tut.total >= 5, "教学脚本已装载")
+    check(tut is not None and tut.total >= 12, f"教学脚本已装载（{tut.total} 步）")
     check(app.tutorial_visible, "教学提示条可见")
+    # v2.0：教学扩到 12 步，覆盖空海天协同
+    _trigs = {st.trigger for st in tut.steps if st.trigger}
+    for _need in ("air_move", "profile", "jam", "decoy", "smoke", "prepare"):
+        check(_need in _trigs, f"教学：含「{_need}」步骤")
+    # 教学里教的单位必须真的在战场上
+    _tut_units = {u.template.id for u in app.state.units_of(Side.BLUE)}
+    check("mq9" in _tut_units, "教学：蓝方有空中单位（MQ-9）")
+    check("ew_us" in _tut_units, "教学：蓝方有电子战单位")
     # 开局自动选中了第一个单位，第 1 步应已推进
     check(tut.index >= 1, f"教学步骤已自动推进（index={tut.index}）")
 

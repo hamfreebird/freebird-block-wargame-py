@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterable
 
 from .enums import Detection, Domain, Facility, SensorKind, Side, Terrain, UnitClass, WeaponKind
+from .rng import GameRng
 from .loader import SUB_CAPACITY
 from .model import Tile, Unit, Weapon
 from .env import environment_for
@@ -792,7 +793,7 @@ def resolve_salvo_interception(state: "GameState", pos: tuple[int, int], side: S
                 node.unit.intercepts_used += 1
                 node.unit.ammo[node.weapon.id] = max(
                     0, node.unit.ammo.get(node.weapon.id, 0) - 1)
-            if roll(node.pk):
+            if roll(node.pk, state.rng):
                 events.append(f"{node.name}·{node.role} 拦截 1 发（Pk {node.pk * 100:.0f}%）")
                 killed = True
                 break
@@ -1453,12 +1454,26 @@ def field_to_goal(state: "GameState", unit: Unit, goal: tuple[int, int],
 # --------------------------------------------------------------------------- #
 # 骰子
 # --------------------------------------------------------------------------- #
-def roll(p: float) -> bool:
-    return random.random() < p
+def roll(p: float, rng: "GameRng | None" = None) -> bool:
+    """概率判定。
+
+    ``rng`` 为对局随机流时结果可复现；为 ``None`` 时退回全局
+    ``random``（仅供尚未接入对局流的旧代码路径使用）。
+    """
+    if rng is None:
+        return random.random() < p
+    return rng.random() < p
 
 
-def jitter(amount: float, spread: float = 0.15) -> float:
-    return amount * random.uniform(1.0 - spread, 1.0 + spread)
+def jitter(amount: float, spread: float = 0.15,
+           rng: "GameRng | None" = None) -> float:
+    """伤害浮动。
+
+    ``rng`` 语义同 :func:`roll`。
+    """
+    if rng is None:
+        return amount * random.uniform(1.0 - spread, 1.0 + spread)
+    return amount * rng.uniform(1.0 - spread, 1.0 + spread)
 
 
 __all__ = [

@@ -8,6 +8,7 @@
   "menu.settings": "Settings",
   "menu.select_scenario": "Select Scenario",
   "menu.import": "Import",
+  "menu.replay": "Replay",
   "menu.click_to_choose": "Click to select",
   "menu.tips": "Tips",
   "menu.tip_data": "Editable data: data/maps/*.json defines maps and deployments, data/units/armory.json defines weapons and units",
