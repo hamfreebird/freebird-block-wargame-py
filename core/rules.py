@@ -615,7 +615,7 @@ def sam_for_intercept(d: Unit, pos: tuple[int, int]) -> Weapon | None:
 class ADNNode:
     """防空网中的一个节点——通常是一套防空系统。
 
-    节点记录自己���分工、可用火控通道与剩余拦截弹，网据此统一分配任务。
+    节点记录自己的分工、可用火控通道与剩余拦截弹，网据此统一分配任务。
     """
 
     unit: Unit

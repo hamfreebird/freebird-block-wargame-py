@@ -196,5 +196,40 @@
    }
   ]
  },
- "weather": "clear"
+ "weather": "clear",
+ "meta": {
+  "author": "hamfreebird",
+  "summary": "6 步带你在 3~5 分钟内掌握核心循环：发现→跟踪→打击→防守→工事→结束回合",
+  "difficulty": "easy",
+  "tags": [
+   "教学",
+   "新手"
+  ],
+  "recommended_units": [
+   "hq_battalion",
+   "m1a2",
+   "himars",
+   "inf_light"
+  ],
+  "recommended_side": "BLUE",
+  "version": "1.2"
+ },
+ "events": [
+  {
+   "turn": 3,
+   "type": "weather",
+   "weather": "fog",
+   "message": "海上起雾，能见度骤降——记住：雾天雷达比光学更可靠"
+  },
+  {
+   "turn": 5,
+   "type": "reinforce",
+   "side": "RED",
+   "unit": "bmp3",
+   "x": 15,
+   "y": 10,
+   "count": 1,
+   "message": "红方增援一个 BMP-3 步战车连"
+  }
+ ]
 }

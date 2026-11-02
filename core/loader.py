@@ -288,6 +288,52 @@ def _compute_landmass(tiles: dict[tuple[int, int], Tile], w: int, h: int) -> dic
 
 
 @dataclass
+class ScenarioMeta:
+    """想定元数据：作者、难度、简介、推荐兵力等。
+
+    这些字段不参与规则结算，只用于**展示与检索**——
+    让玩家在菜单里就能判断"这个想定适不适合我现在玩"。
+    """
+
+    author: str = ""
+    summary: str = ""
+    difficulty: str = ""              # 难度标签：easy / normal / hard / extreme
+    tags: list[str] = field(default_factory=list)
+    recommended_units: list[str] = field(default_factory=list)   # 推荐兵种 id
+    recommended_side: str = ""        # 推荐阵营
+    version: str = ""
+    license: str = ""
+    campaign: str = ""                # 所属战役 id（战役模式下多张地图串联）
+    campaign_step: int = 0            # 在战役中的序号
+
+    @property
+    def difficulty_label(self) -> str:
+        return {
+            "easy": "入门", "normal": "标准", "hard": "困难", "extreme": "专家",
+        }.get(self.difficulty, self.difficulty)
+
+    @property
+    def difficulty_color(self) -> str:
+        return {
+            "easy": "green", "normal": "cyan", "hard": "amber", "extreme": "red",
+        }.get(self.difficulty, "cyan")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "author": self.author,
+            "summary": self.summary,
+            "difficulty": self.difficulty,
+            "tags": list(self.tags),
+            "recommended_units": list(self.recommended_units),
+            "recommended_side": self.recommended_side,
+            "version": self.version,
+            "license": self.license,
+            "campaign": self.campaign,
+            "campaign_step": self.campaign_step,
+        }
+
+
+@dataclass
 class Scenario:
     map: MapData
     armory: Armory
@@ -295,6 +341,20 @@ class Scenario:
     turn_limit: int
     side_blue_objectives: list[Objective]
     raw: dict[str, Any] = field(default_factory=dict)
+    meta: ScenarioMeta = field(default_factory=ScenarioMeta)
+    events: list = field(default_factory=list)   # 想定脚本事件（ScenarioEvent）
+
+    @property
+    def id(self) -> str:
+        return str(self.raw.get("id", self.map.id))
+
+    @property
+    def name(self) -> str:
+        return str(self.raw.get("name", self.map.name))
+
+    @property
+    def description(self) -> str:
+        return str(self.raw.get("description", ""))
 
 
 def _parse_rows(raw: dict, key: str, w: int, h: int, where: str) -> list[str]:
@@ -440,11 +500,47 @@ def load_scenario(map_path: str, armory_path: str) -> Scenario:
                 u.altitude = _enum(Altitude, e["altitude"], where + ".altitude")
             units.append(u)
 
+    # 想定脚本事件
+    from .events import EventError, parse_events
+    try:
+        events = parse_events(raw.get("events"))
+    except EventError as exc:
+        events = []
+        # 记录错误供校验器报告，但不阻断加载——让作者能继续查看其它问题
+        raw["_events_error"] = str(exc)
+
     return Scenario(
         map=md, armory=armory, units=units,
         turn_limit=int(raw.get("turn_limit", 20)),
         side_blue_objectives=[o for o in md.objectives if o.side is Side.BLUE],
         raw=raw,
+        meta=_parse_meta(raw),
+        events=events,
+    )
+
+
+def _parse_meta(raw: dict) -> ScenarioMeta:
+    """解析想定元数据（可选字段，缺失时用默认值）。"""
+    m = raw.get("meta")
+    if not isinstance(m, dict):
+        m = {}
+    tags = m.get("tags", raw.get("tags", []))
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    units = m.get("recommended_units", raw.get("recommended_units", []))
+    if isinstance(units, str):
+        units = [u.strip() for u in units.split(",") if u.strip()]
+    return ScenarioMeta(
+        author=str(m.get("author", raw.get("author", ""))),
+        summary=str(m.get("summary", "")),
+        difficulty=str(m.get("difficulty", raw.get("difficulty", ""))),
+        tags=[str(t) for t in tags],
+        recommended_units=[str(u) for u in units],
+        recommended_side=str(m.get("recommended_side", raw.get("recommended_side", ""))),
+        version=str(m.get("version", raw.get("version", ""))),
+        license=str(m.get("license", raw.get("license", ""))),
+        campaign=str(m.get("campaign", raw.get("campaign", ""))),
+        campaign_step=int(m.get("campaign_step", raw.get("campaign_step", 0)) or 0),
     )
 
 
@@ -459,6 +555,6 @@ def list_maps(directory: str) -> list[str]:
 
 
 __all__ = [
-    "LoadError", "Armory", "MapData", "Scenario",
+    "LoadError", "Armory", "MapData", "Scenario", "ScenarioMeta",
     "load_armory", "load_map", "load_scenario", "list_maps",
 ]

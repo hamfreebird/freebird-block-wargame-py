@@ -297,6 +297,47 @@ def run(map_name: str, turns: int) -> Checker:
             if od.turns_left < 0:
                 ck.fail("L17", f"{u.name} 的指令剩余回合为负 {od.turns_left}")
 
+        # L18 想定脚本事件：已触发标记唯一，回合不倒退
+        fired = [e for e in st.events if e.fired]
+        seen_turns = [e.turn for e in fired]
+        if len(seen_turns) != len(set(seen_turns)):
+            ck.fail("L18", f"同一回合有多条事件被触发：{sorted(seen_turns)}")
+        if st.turn_count > 1:
+            for e in fired:
+                if e.turn > st.turn_count:
+                    ck.fail("L18", f"事件 T{e.turn} 在 T{st.turn_count} 前就已触发")
+
+        # L19 想定元数据合法
+        meta = getattr(st, "meta", None)
+        if meta is not None:
+            if meta.difficulty not in ("easy", "normal", "hard", "expert"):
+                ck.fail("L19", f"非法难度标签 {meta.difficulty}")
+            if not isinstance(meta.tags, list):
+                ck.fail("L19", "标签不是列表")
+            if meta.recommended_side not in ("BLUE", "RED", ""):
+                ck.fail("L19", f"非法推荐方 {meta.recommended_side}")
+
+        # L20 想定校验器可正常运行且无内部错误
+        try:
+            from core.validate import validate_scenario
+            rep = validate_scenario(st)
+            for issue in rep.issues:
+                if issue.level == "error":
+                    ck.fail("L20", f"想定校验报错：{issue.code} {issue.message}")
+        except Exception as exc:
+            ck.fail("L20", f"想定校验器异常：{exc}")
+
+        # L21 战役定义结构合法
+        try:
+            from core.campaign import list_campaigns
+            for c in list_campaigns():
+                if c.total_steps <= 0:
+                    ck.fail("L21", f"战役 {c.name} 没有关卡")
+                if not c.steps:
+                    ck.fail("L21", f"战役 {c.name} 关卡列表为空")
+        except Exception as exc:
+            ck.fail("L21", f"战役列表读取异常：{exc}")
+
         # L7 存档往返
         from core.save import load_game, save_game
         st.scenario_path = path

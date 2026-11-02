@@ -17,6 +17,7 @@ import random
 from dataclasses import dataclass
 
 from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponKind
+from .events import ScenarioEvent, apply_events, parse_events
 from .model import FireMission, Missile, Order, Tile, Unit, Weapon
 from . import rules
 from .env import EnvironmentTrack, environment_for
@@ -95,6 +96,13 @@ class GameState:
         self.scenario_path: str = ""       # 存档回放所需的想定路径
         self.armory_path: str = ""
         self.supply_links: dict[int, rules.SupplySource] = {}   # 单位 → 补给源
+        # 想定脚本事件（按回合触发）
+        self.events: list[ScenarioEvent] = []
+        try:
+            self.events = parse_events(scenario.raw.get("events"))
+        except Exception as exc:
+            self.events = []
+            self.log_message(None, f"想定事件解析失败：{exc}", "system")
 
         self._init_gps()
         self.env_track = EnvironmentTrack.from_scenario(scenario)
@@ -104,11 +112,23 @@ class GameState:
         self.log_message(None, f"作战开始：{self.map.name}｜{self.map.width}×{self.map.height} 格"
                                f"（1 格 = {self.map.tile_km:.0f} km）｜限 {self.turn_limit} 回合", "system")
         self.log_message(None, f"战场环境：{env.label} {env.clock}｜{env.describe_effects()}", "system")
+        # 开局即结算第 1 回合的事件（放在开场日志之后，顺序更自然）
+        self._run_events()
 
     # -- 基础查询 ---------------------------------------------------------
     @property
     def objective_tiles(self) -> list[Tile]:
         return [t for t in self.map.iter_tiles() if t.objective]
+
+    @property
+    def meta(self):
+        """想定元数据（作者、难度、标签、推荐兵力）。"""
+        return self.scenario.meta
+
+    @property
+    def raw(self) -> dict:
+        """想定原始 JSON（供校验器、想定包等外部工具读取）。"""
+        return self.scenario.raw
 
     def unit_at(self, x: int, y: int) -> Unit | None:
         for u in self.units:
@@ -1247,6 +1267,9 @@ class GameState:
 
         self._announce_environment()
 
+        # 想定脚本事件：回合开始时结算，玩家有反应时间
+        self._run_events()
+
         # 目标点计分
         for t in self.objective_tiles:
             # 同格可能停驻多支部队（机场停机坪），取任一具备占领能力的单位
@@ -1264,6 +1287,13 @@ class GameState:
         if self._check_end():
             return
         self.log_message(None, f"—— 第 {self.turn_count} 回合 · 蓝方行动 ——", "system")
+
+    def _run_events(self) -> None:
+        """结算当前回合的想定脚本事件。"""
+        if not self.events:
+            return
+        apply_events(self, self.events)
+        self.refresh_detection()
 
     def _announce_environment(self) -> None:
         """播报战场环境变化（时段或天候改变时）。"""

@@ -371,5 +371,25 @@
     "y": 22
    }
   ]
+ },
+ "meta": {
+  "author": "hamfreebird",
+  "summary": "红方装甲集群沿河谷突贯，蓝方以远程火力与无人机迟滞进攻",
+  "difficulty": "normal",
+  "tags": [
+   "陆战",
+   "防空",
+   "纵深"
+  ],
+  "recommended_units": [
+   "hq_battalion",
+   "m1a2",
+   "himars",
+   "patriot",
+   "f35",
+   "thaad"
+  ],
+  "recommended_side": "BLUE",
+  "version": "1.2"
  }
 }

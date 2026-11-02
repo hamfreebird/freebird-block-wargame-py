@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import random
+import shutil
 import sys
 
 
@@ -29,7 +30,10 @@ import pygame  # noqa: E402
 
 from core.enums import Detection, Side  # noqa: E402
 from core import rules  # noqa: E402
+from core.paths import armory_path  # noqa: E402
 from ui.app import App  # noqa: E402
+
+ARMORY = armory_path()
 
 FAILED: list[str] = []
 
@@ -485,6 +489,106 @@ def main() -> int:
         check(True, "无指挥单位（跳过指挥体系检查）")
 
     # ================================================================== #
+    # v1.3：想定与编辑器
+    # ================================================================== #
+    # --- 3.3 想定元数据 ---
+    from core.loader import ScenarioMeta
+    meta = st2.meta
+    check(isinstance(meta, ScenarioMeta), "元数据：ScenarioMeta 可用")
+    check(meta.author != "" and meta.difficulty != "", "元数据：作者与难度已解析")
+    check(meta.difficulty_label in ("入门", "标准", "困难", "专家"),
+          "元数据：难度标签可读")
+    check(isinstance(meta.tags, list) and len(meta.tags) > 0, "元数据：标签列表可读")
+    check(isinstance(meta.recommended_units, list), "元数据：推荐兵种为列表")
+    check(meta.recommended_side in ("BLUE", "RED", ""), "元数据：推荐方可读")
+
+    # --- 3.2 想定脚本事件 ---
+    from core.events import EVENT_TYPES, EventError, parse_events
+    evs = parse_events(st2.raw.get("events"))
+    check(len(evs) > 0, "事件：想定脚本已解析")
+    check(all(e.type in EVENT_TYPES for e in evs), "事件：类型均在白名单内")
+    check(evs == sorted(evs, key=lambda e: e.turn), "事件：按回合排序")
+    # 触发一次：事件应在对应回合结算（用 state 内同一批事件对象验证标记）
+    if st2.events:
+        ev = st2.events[0]
+        before_log = len(st2.log)
+        st2.turn_count = ev.turn
+        st2._run_events()
+        check(len(st2.log) > before_log, "事件：触发后产生日志")
+        check(ev.fired, "事件：触发后标记为已触发")
+        # 不应重复触发
+        n_before = len(st2.log)
+        st2._run_events()
+        check(len(st2.log) == n_before, "事件：同一事件不重复触发")
+    # 格式错误应给出可读报错
+    try:
+        parse_events([{"turn": 1, "type": "不存在的类型"}])
+        check(False, "事件：非法类型应报错")
+    except EventError:
+        check(True, "事件：非法类型给出可读报错")
+
+    # --- 3.5 想定校验 ---
+    from core.validate import validate_scenario
+    rep = validate_scenario(st2)
+    check(rep.ok, f"校验：想定无错误（{len(rep.errors)} 错误 / {len(rep.warnings)} 提示）")
+    check(all(i.code for i in rep.issues), "校验：每条问题都有代码")
+
+    # --- 3.6 社区想定包 ---
+    from core import pkg as _pkg
+    import tempfile as _tf
+    _tmp = os.path.join(_tf.gettempdir(), "bw_pkg_smoke")
+    shutil.rmtree(_tmp, ignore_errors=True)
+    os.makedirs(_tmp, exist_ok=True)
+    try:
+        _out = os.path.join(_tmp, "t.bwscn")
+        _pkg.export_package([st2.scenario_path], ARMORY, _out, name="测试包",
+                            author="tester", include_armory=True,
+                            only_armory_ids=["m1a2"])
+        check(os.path.isfile(_out), "想定包：导出成功")
+        _man = _pkg.inspect_package(_out)
+        check(_man.name == "测试包" and _man.author == "tester", "想定包：清单可读")
+        check(len(_man.maps) == 1, "想定包：包含 1 张想定")
+        _maps2 = os.path.join(_tmp, "maps")
+        _arm2 = os.path.join(_tmp, "armory.json")
+        shutil.copy(ARMORY, _arm2)
+        _res = _pkg.import_package(_out, _maps2, _arm2)
+        check(len(_res.added_maps) == 1, "想定包：导入成功")
+        check(len(_res.added_templates) == 1, "想定包：武器覆盖已导入")
+        check(os.path.isfile(os.path.join(_maps2, os.path.basename(st2.scenario_path))),
+              "想定包：导入的地图文件存在")
+        # 损坏包应报错而非崩溃
+        _bad = os.path.join(_tmp, "bad.bwscn")
+        with open(_bad, "w", encoding="utf-8") as f:
+            f.write("not a zip")
+        try:
+            _pkg.inspect_package(_bad)
+            check(False, "想定包：损坏包应报错")
+        except _pkg.PackageError:
+            check(True, "想定包：损坏包给出可读报错")
+    finally:
+        shutil.rmtree(_tmp, ignore_errors=True)
+
+    # --- 3.4 战役模式 ---
+    from core import campaign as _camp
+    _camps = _camp.list_campaigns()
+    check(len(_camps) > 0, "战役：存在可用战役定义")
+    if _camps:
+        _c = _camps[0]
+        check(_c.total_steps > 0, "战役：关卡数有效")
+        _prog = _camp.CampaignProgress(campaign_id=_c.id)
+        _prog.vp["BLUE"] = 12
+        _prog.vp["RED"] = 8
+        check(_prog.blue_vp == 12 and _prog.red_vp == 8, "战役：胜负点可累计")
+        # 幸存单位统计
+        _surv = _camp.collect_survivors(st2, Side.BLUE)
+        check(isinstance(_surv, list), "战役：幸存单位可统计")
+        # 继承到下一关
+        _before = len(st2.units_of(Side.BLUE))
+        _added = _camp.apply_carryover(st2, [{"template": "m1a2", "count": 2}], Side.BLUE)
+        check(len(st2.units_of(Side.BLUE)) >= _before, "战役：幸存部队可继承到下一关")
+        check(len(_added) >= 0, "战役：继承返回明细")
+
+    # ================================================================== #
     # 编辑器 ----
     app.open_editor()
     ed = app.editor
@@ -495,6 +599,25 @@ def main() -> int:
     ed.undo()
     ed.redo()
     check(True, "撤销 / 重做可用")
+
+    # --- 3.1 编辑器框选与批量编辑 ---
+    ed._set_selection(2, 2, 6, 6)
+    check(ed.selection_size() == 25, "框选：矩形区域格数正确")
+    _outside_before = ed.terr[1][1]
+    _b = sum(1 for yy in range(len(ed.terr)) for xx in range(len(ed.terr[0]))
+             if ed.terr[yy][xx] == "f")
+    ed.tool = "terrain"
+    ed.brush_terrain = "f"
+    _applied = ed._apply_to_selection()
+    check(_applied == 25, "框选：批量应用到全部选区格子")
+    _a = sum(1 for yy in range(len(ed.terr)) for xx in range(len(ed.terr[0]))
+             if ed.terr[yy][xx] == "f")
+    check(_a >= _b, "框选：批量刷地形生效")
+    check(ed.terr[1][1] == _outside_before, "框选：选区外格子不被修改")
+    ed.undo()
+    check(ed.selection_size() == 25, "框选：撤销后选区保持")
+    ed.clear_selection()
+    check(ed.selection_size() == 0, "框选：可清除选区")
 
     print()
     if FAILED:

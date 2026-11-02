@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.2.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.0-5ee7df)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -278,6 +278,74 @@ Pk_i  = 拦截弹基础 Pk × (1 − 弹药突防能力) × (1 − 干扰 × 0.6
   原有两个电子战单位也获得频段配置。
 - AI 会按目标特征选择最有价值的干扰频段（打雷达目标的单位压雷达频段，等等）。
 
+## v1.3 新增功能（想定与编辑器）
+
+### 1. 想定脚本（events）
+
+想定 JSON 增加 `events` 字段，可按回合触发剧本——**改 JSON 即可，无需改代码**：
+
+```json
+"events": [
+  {"turn": 3, "type": "weather", "weather": "fog",
+   "message": "海上起雾，能见度骤降"},
+  {"turn": 5, "type": "reinforce", "side": "RED", "unit": "bmp3",
+   "x": 15, "y": 10, "count": 1, "message": "红方增援一个 BMP-3 连"},
+  {"turn": 8, "type": "airstrike", "side": "BLUE", "x": 20, "y": 12,
+   "weapon": "atgm", "damage": 40, "message": "我方空袭"}
+]
+```
+
+| 事件类型 | 作用 |
+|---|---|
+| `weather` | 改变天候（clear / rain / fog / snow） |
+| `reinforce` | 增援部队到指定坐标 |
+| `airstrike` | 空袭指定坐标 |
+| `objective` | 目标点归属变动 |
+
+事件在对应回合开始时结算；未触发的事件不影响流程，`repeat` 可让事件重复触发。
+
+### 2. 想定元数据（meta）
+
+```json
+"meta": {
+  "author": "hamfreebird",
+  "summary": "红方装甲集群沿河谷突贯，蓝方以远程火力迟滞进攻",
+  "difficulty": "normal",
+  "tags": ["陆战", "防空", "纵深"],
+  "recommended_units": ["hq_battalion", "m1a2", "himars"],
+  "recommended_side": "BLUE"
+}
+```
+
+主菜单卡片直接展示作者、难度、标签与推荐兵力——浏览社区想定时一目了然。
+难度分四档：`easy` 入门 / `normal` 标准 / `hard` 困难 / `expert` 专家。
+
+### 3. 战役模式
+
+多张想定串联成战役：**胜利后继承幸存部队、累计胜负点**，逐关推进。
+战役进度写入用户目录存档，随时可续玩。示例战役见 `data/campaigns/eastern_front.json`。
+
+### 4. 想定校验增强
+
+`python main.py --check` 现在会做深度校验，报错**定位到具体坐标**：
+
+- 地形连通性（目标点是否可从部署位抵达）
+- 目标点可达性（陆上单位无法占领海域目标点）
+- 兵力配比（造价悬殊时给出提示）
+- 同格冲突、陆上单位入海、航空兵无母基地
+- 事件合法性、元数据完整性
+
+### 5. 社区想定包（.bwscn）
+
+一个 zip 就是一份想定包：内含 `maps/` + 可选武器库覆盖 + 清单。
+对局中按 `F10` →「导出想定包」把当前想定打包到用户数据目录的 `packages/`；
+把社区包放进同一目录，再点「导入想定包」即可装入（导入最近修改的那个）。
+
+### 6. 编辑器框选与批量编辑
+
+编辑器新增「框选」工具：左键拖拽圈定矩形区域，切换到任意工具后点击地图，
+工具会**批量应用到整个选区**。配合撤销 / 重做（`Ctrl+Z` / `Ctrl+Y`）可放心试错。
+
 ---
 
 ## 存档与读档
@@ -538,6 +606,10 @@ core/
   tutorial.py           教学引导机：事件驱动的分步脚本
   report.py             战报导出：Markdown / 纯文本
   env.py                战场环境：时段 / 天候与探测系数
+  events.py             想定脚本：按回合触发的事件（天候 / 增援 / 空袭 / 目标点）
+  validate.py           想定深度校验：连通性、目标点可达性、兵力配比
+  pkg.py                社区想定包：.bwscn 导入导出
+  campaign.py           战役模式：跨关共享部队与胜负点、进度存档
   paths.py              资源路径解析（源码 / 冻结 / zipapp 三种形态）
 ui/
   theme.py              配色、字体缓存、文本渲染
@@ -551,12 +623,13 @@ ui/
 data/
   maps/*.json           可编辑地图与想定（training_ground.json 为教学想定）
   units/armory.json     可编辑武器库
+  campaigns/*.json      战役定义（多关卡串联）
 saves/                  存档槽位（运行时生成）
 tools/
   make_maps.py          地图生成脚本（开发用）
   make_icon.py          图标生成（多尺寸 PNG + ICO + SVG）
   simcheck.py           双 AI 推演诊断脚本（开发用）
-  diag.py               作战逻辑自检：13 条不变量 + 存档往返校验
+  diag.py               作战逻辑自检：21 条不变量 + 存档往返校验
   smoke_test.py         无界面 UI 冒烟测试（CI 使用）
 assets/icon/            应用图标（PNG / ICO / SVG）
 packaging/              打包流程（PyInstaller + 便携版 + 源码包）
@@ -576,8 +649,8 @@ python -m pip install -r requirements.txt
 python main.py                 # 运行游戏
 python main.py --check         # 数据校验（地图 + 武器库）
 python main.py --sim 16        # 无界面双 AI 推演
-python tools/diag.py 20        # 作战逻辑自检（11 条不变量）
-python tools/smoke_test.py     # 无界面 UI 冒烟测试（16 项断言）
+python tools/diag.py 20        # 作战逻辑自检（21 条不变量）
+python tools/smoke_test.py     # 无界面 UI 冒烟测试（102 项断言）
 ```
 
 工作流：`main` 分支受保护 → `feature/<主题>` 分支开发 → PR 触发 CI（多版本 + 多平台）

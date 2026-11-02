@@ -28,7 +28,7 @@ FACILITY_ORDER = [Facility.AIRBASE, Facility.PORT, Facility.DEPOT,
                   Facility.RADAR_SITE, Facility.SAM_SITE, Facility.HQ, Facility.CITY]
 TOOLS = [("terrain", "地形"), ("elev_up", "海拔+"), ("elev_dn", "海拔-"),
          ("facility", "设施"), ("fort", "工事"), ("objective", "目标点"),
-         ("unit", "部署"), ("erase", "擦除")]
+         ("unit", "部署"), ("erase", "擦除"), ("select", "框选")]
 
 
 # --------------------------------------------------------------------------- #
@@ -131,6 +131,12 @@ class Editor:
         self.focus: TextInput | None = None
         self.inputs: dict[str, TextInput] = {}
         self.buttons: list[tuple[pygame.Rect, str, object]] = []
+
+        # -- 框选（多选）--
+        self.sel_anchor: tuple[int, int] | None = None   # 框选起点
+        self.sel_rect: tuple[int, int, int, int] | None = None  # (x0,y0,x1,y1) 含端点
+        self.sel_cells: set[tuple[int, int]] = set()     # 选中的格子集合
+        self._sel_dragging = False
 
         self.armory_doc: dict = {}
         self.armory_path = ARMORY
@@ -382,8 +388,15 @@ class Editor:
                 self.oy += e.rel[1]
             else:
                 self.hover = self._at(e.pos)
-                if self._dragging == 1 and self.hover and self.tool in ("terrain", "elev_up",
-                                                                        "elev_dn", "erase"):
+                if self._sel_dragging and self.sel_anchor is not None:
+                    # 框选拖拽中：实时更新选区
+                    cur = self._at(e.pos)
+                    if cur is not None:
+                        self._set_selection(self.sel_anchor[0], self.sel_anchor[1],
+                                            cur[0], cur[1])
+                        self.status = f"已选 {self.selection_size()} 个格子"
+                elif self._dragging == 1 and self.hover and self.tool in ("terrain", "elev_up",
+                                                                          "elev_dn", "erase"):
                     self._apply(self.hover)
         elif e.type == pygame.MOUSEWHEEL:
             if self.picker_open:
@@ -439,14 +452,39 @@ class Editor:
         if cell is None:
             return
         if e.button == 1:
+            if self.tool == "select":
+                # 框选：按下记录起点，拖拽中实时更新
+                self.sel_anchor = cell
+                self._sel_dragging = True
+                self._set_selection(cell[0], cell[1], cell[0], cell[1])
+                self.status = "拖拽框选区域"
+                return
             self._dragging = 1
             self._apply(cell)
         elif e.button == 3:
+            if self.tool == "select" or self.sel_cells:
+                # 右键清除选区
+                self.clear_selection()
+                self.status = "已清除选区"
+                return
             self._erase(cell)
 
     def _do_action(self, action: str, arg) -> None:
         if action == "quit":
             self.quit = True
+        elif action == "fill_sel":
+            if not self.sel_cells:
+                self.status = "尚未框选区域"
+                return
+            # 填充选区：使用当前笔刷地形
+            saved = self.tool
+            self.tool = "terrain"
+            n = self._apply_to_selection()
+            self.tool = saved
+            self.status = f"已填充 {n} 个格子为「{TERRAIN_NAME.get(self.brush_terrain, '')}」"
+        elif action == "clear_sel":
+            self.clear_selection()
+            self.status = "已清除选区"
         elif action == "tool":
             self.tool = str(arg)
             if self.tool == "unit":
@@ -635,6 +673,10 @@ class Editor:
         self._stroke_pending = False
 
     def _apply(self, cell: tuple[int, int]) -> None:
+        # 选区非空时：把工具应用到整个选区（批量编辑）
+        if self.sel_cells and self.tool != "select":
+            self._apply_to_selection()
+            return
         self._begin_stroke()
         x, y = cell
         if self.tool == "terrain":
@@ -691,6 +733,89 @@ class Editor:
 
     def _erase(self, cell: tuple[int, int]) -> None:
         self._begin_stroke()
+        x, y = cell
+        self.fac.pop((x, y), None)
+        self.fort.pop((x, y), None)
+        self.obj.pop((x, y), None)
+        for u in list(self.units):
+            if u["x"] == x and u["y"] == y:
+                self.units.remove(u)
+                return
+        self.terr[y][x] = "p" if self.terr[y][x] != "w" else "w"
+
+    # ------------------------------------------------------------------ #
+    # 框选与批量编辑
+    # ------------------------------------------------------------------ #
+    def _set_selection(self, x0: int, y0: int, x1: int, y1: int) -> None:
+        """设置矩形选区（坐标自动排序，端点含入）。"""
+        w = len(self.terr[0]) if self.terr else 0
+        h = len(self.terr) if self.terr else 0
+        x0, x1 = sorted((max(0, x0), min(w - 1, x1)))
+        y0, y1 = sorted((max(0, y0), min(h - 1, y1)))
+        self.sel_rect = (x0, y0, x1, y1)
+        self.sel_cells = {(x, y)
+                          for y in range(y0, y1 + 1)
+                          for x in range(x0, x1 + 1)}
+
+    def clear_selection(self) -> None:
+        self.sel_anchor = None
+        self.sel_rect = None
+        self.sel_cells = set()
+        self._sel_dragging = False
+
+    def selection_size(self) -> int:
+        return len(self.sel_cells)
+
+    def _apply_to_selection(self) -> int:
+        """把当前工具应用到整个选区，返回受影响的格数。
+
+        选区为空时不做任何事（普通单格编辑不受影响）。
+        """
+        if not self.sel_cells:
+            return 0
+        cells = sorted(self.sel_cells)
+        # 一次操作算一次撤销
+        self.push_undo()
+        for cell in cells:
+            self._apply_single(cell)
+        n = len(cells)
+        self.status = f"批量应用到 {n} 个格子"
+        return n
+
+    def _apply_single(self, cell: tuple[int, int]) -> None:
+        """对单个格子执行当前工具（不重复压撤销栈）。"""
+        x, y = cell
+        if not (0 <= y < len(self.terr) and 0 <= x < len(self.terr[0])):
+            return
+        if self.tool == "terrain":
+            self.terr[y][x] = self.brush_terrain
+            if self.brush_terrain == "w":
+                self.elev[y][x] = 0
+                self.fort.pop((x, y), None)
+            self.fac.pop((x, y), None)
+            self.obj.pop((x, y), None)
+        elif self.tool == "elev_up":
+            self.elev[y][x] = min(9, self.elev[y][x] + 1)
+        elif self.tool == "elev_dn":
+            self.elev[y][x] = max(0, self.elev[y][x] - 1)
+        elif self.tool == "facility":
+            self.fac[(x, y)] = {"x": x, "y": y, "facility": self.brush_facility.value,
+                                "owner": self.brush_side.value, "hp": 100}
+        elif self.tool == "fort":
+            self.fort[(x, y)] = {"x": x, "y": y, "level": max(1, self.brush_fort),
+                                 "owner": self.brush_side.value}
+        elif self.tool == "objective":
+            self.obj[(x, y)] = {
+                "x": x, "y": y,
+                "name": self.inputs["obj_name"].value.strip() or "目标点",
+                "kind": "capture", "side": self.brush_side.value,
+                "value": self.inputs["obj_value"].as_int(3),
+                "owner": self.brush_side.value,
+            }
+        elif self.tool == "erase":
+            self._erase_single(cell)
+
+    def _erase_single(self, cell: tuple[int, int]) -> None:
         x, y = cell
         self.fac.pop((x, y), None)
         self.fort.pop((x, y), None)
@@ -981,6 +1106,20 @@ class Editor:
                 short = tpl[:4].upper()
                 T.draw_text(s, short, body.center, max(7, self.tile // 4),
                             T.SIDE_COLORS[side]["text"], anchor="center")
+        # 选区高亮
+        if self.sel_cells:
+            overlay = pygame.Surface(r.size, pygame.SRCALPHA)
+            for (sx, sy) in self.sel_cells:
+                cell = self._cell(sx, sy)
+                rr = pygame.Rect(cell.x - r.x, cell.y - r.y, cell.width, cell.height)
+                overlay.fill((94, 231, 224, 56), rr)
+            s.blit(overlay, r.topleft)
+            if self.sel_rect:
+                x0, y0, x1, y1 = self.sel_rect
+                c0 = self._cell(x0, y0)
+                c1 = self._cell(x1, y1)
+                box = pygame.Rect(c0.x, c0.y, c1.right - c0.x, c1.bottom - c0.y)
+                pygame.draw.rect(s, T.CYAN, box, 2)
         # 鼠标格
         if self.hover:
             cell = self._cell(*self.hover)
@@ -996,6 +1135,10 @@ class Editor:
         # 尺寸提示
         T.draw_text(s, f"{w}×{h} 格 · 每格 {self.inputs['tile_km'].value} km",
                     (r.x + 10, r.bottom - 20), 10, T.TEXT_FAINT)
+        if self.sel_cells:
+            T.draw_text(s, f"已选 {self.selection_size()} 格"
+                        f"（右键清除）",
+                        (r.x + 10, r.bottom - 36), 10, T.CYAN)
 
     # -- 左侧/右侧面板 ----------------------------------------------------
     def _panel_rect(self) -> pygame.Rect:
@@ -1053,6 +1196,27 @@ class Editor:
             y += 14
             T.draw_text(s, "归属方获得减伤与隐蔽加成", (x, y), 9, T.TEXT_DIM)
             y += 16
+        elif self.tool == "select":
+            T.draw_text(s, "框选与批量编辑", (x, y), 10, T.TEXT_FAINT)
+            y += 18
+            T.draw_text(s, "在地图上左键拖拽框选一块矩形区域，", (x, y), 9, T.TEXT_DIM)
+            y += 15
+            T.draw_text(s, "然后切换到任意工具并点击地图——", (x, y), 9, T.TEXT_DIM)
+            y += 15
+            T.draw_text(s, "工具会应用到整个选区。", (x, y), 9, T.TEXT_DIM)
+            y += 20
+            n = self.selection_size()
+            if n:
+                T.draw_text(s, f"当前已选 {n} 个格子", (x, y), 10, T.CYAN)
+                y += 18
+                r = pygame.Rect(x, y, 108, 26)
+                self._tool_button(s, r, "填充选区", False, ("fill_sel", None))
+                r2 = pygame.Rect(x + 116, y, 108, 26)
+                self._tool_button(s, r2, "清除选区", False, ("clear_sel", None))
+                y += 34
+            else:
+                T.draw_text(s, "尚未框选区域", (x, y), 9, T.TEXT_FAINT)
+                y += 18
         elif self.tool == "objective":
             T.draw_text(s, "目标点设置", (x, y), 10, T.TEXT_FAINT)
             y += 18

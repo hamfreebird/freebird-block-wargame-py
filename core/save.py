@@ -128,6 +128,8 @@ def game_to_dict(state: GameState) -> dict[str, Any]:
                   or t.facility_hp < t.facility_max_hp or t.objective or t.fort > 0
                   or t.fort_owner is not Side.NEUTRAL],
         "missiles": [_missile_dict(m) for m in state.missiles],
+        "events": [{"turn": e.turn, "type": e.type, "fired": e.fired}
+                   for e in getattr(state, "events", [])],
         "log": [{"turn": e.turn, "side": e.side.value if e.side else None,
                  "text": e.text, "kind": e.kind} for e in state.log[-150:]],
     }
@@ -287,7 +289,14 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         ))
     state.missiles = missiles
 
-    # 4) 全局计数与日志
+    # 4b) 想定事件：恢复已触发状态，避免读档后事件重复执行
+    fired_map = {int(d.get("turn", 0)): bool(d.get("fired", False))
+                 for d in data.get("events", []) if isinstance(d, dict)}
+    for ev in getattr(state, "events", []):
+        if ev.turn in fired_map:
+            ev.fired = fired_map[ev.turn]
+
+    # 5) 全局计数与日志
     state.turn_count = int(data.get("turn", 1))
     state.turn_limit = int(data.get("turn_limit", state.turn_limit))
     state.phase = data.get("phase", "player")

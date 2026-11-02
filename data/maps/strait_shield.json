@@ -492,5 +492,24 @@
     "y": 0
    }
   ]
+ },
+ "meta": {
+  "author": "hamfreebird",
+  "summary": "蓝方舰队依托西岸基地群阻止红方突破海峡，制电磁权决定海峡控制权",
+  "difficulty": "hard",
+  "tags": [
+   "海空",
+   "制海权",
+   "反舰"
+  ],
+  "recommended_units": [
+   "type055",
+   "ddg_burke",
+   "j20",
+   "f35",
+   "kj500"
+  ],
+  "recommended_side": "BLUE",
+  "version": "1.2"
  }
 }

@@ -37,6 +37,8 @@ ARMORY = _paths.armory_path()
 
 def check_data() -> int:
     """校验全部想定与武器库，输出可读报告。"""
+    from core.validate import validate_scenario
+    total_errors = 0
     try:
         paths = list_maps(MAP_DIR)
         if not paths:
@@ -48,6 +50,27 @@ def check_data() -> int:
             n_r = len([u for u in sc.units if u.side is Side.RED])
             print(f"[OK] {sc.map.name:<22} {sc.map.width}x{sc.map.height} "
                   f"{sc.map.tile_km:.0f}km/格  回合 {sc.turn_limit}  蓝{n_b}/红{n_r}")
+            # 元数据
+            meta = getattr(sc, "meta", None)
+            if meta is not None and (meta.author or meta.difficulty):
+                bits = []
+                if meta.author:
+                    bits.append(f"作者 {meta.author}")
+                if meta.difficulty:
+                    bits.append(f"难度 {meta.difficulty_label}")
+                if meta.tags:
+                    bits.append(" ".join(f"#{t}" for t in meta.tags))
+                print(f"     {'｜'.join(bits)}")
+            if sc.events:
+                print(f"     脚本事件 {len(sc.events)} 条")
+            # 质量校验
+            rep = validate_scenario(sc)
+            for issue in rep.issues:
+                prefix = {"error": "[错误]", "warn": "[提示]", "info": "[信息]"}.get(
+                    issue.level, "[信息]")
+                loc = f" @{issue.where}" if issue.where else ""
+                print(f"  {prefix} {issue.code}{loc} {issue.message}")
+            total_errors += len(rep.errors)
         armory = load_scenario(paths[0], ARMORY).armory
         print(f"[OK] 武器库: {len(armory.templates)} 兵种 / "
               f"{len(armory.weapons)} 武器 / {len(armory.sensors)} 传感器")
@@ -58,6 +81,9 @@ def check_data() -> int:
             print(f"  … 另有 {len(warns) - 12} 条提示")
     except LoadError as exc:
         print(f"[错误] {exc}")
+        return 1
+    if total_errors:
+        print(f"\n合计 {total_errors} 个错误")
         return 1
     return 0
 

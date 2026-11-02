@@ -24,6 +24,10 @@ import traceback
 import pygame
 
 from core import rules
+from core import pkg as _pkg
+from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_carryover,
+                           collect_survivors, list_campaigns, load_campaign,
+                           load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
 from core.enums import Detection, Domain, Facility, Side
 from core.engine import GameState
@@ -55,6 +59,41 @@ MIN_W, MIN_H = 1180, 740
 
 # 教学想定在主菜单中的固定入口（不依赖想定文件名）
 TUTORIAL_MAP_ID = "training_ground"
+
+
+def _meta_of(raw: dict) -> dict:
+    """从想定 JSON 中提取展示用元数据（不加载完整想定，菜单扫描更轻量）。"""
+    m = raw.get("meta")
+    if not isinstance(m, dict):
+        m = {}
+    tags = m.get("tags", raw.get("tags", []))
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    units = m.get("recommended_units", raw.get("recommended_units", []))
+    if isinstance(units, str):
+        units = [u.strip() for u in units.split(",") if u.strip()]
+    return {
+        "author": str(m.get("author", raw.get("author", ""))),
+        "summary": str(m.get("summary", "")),
+        "difficulty": str(m.get("difficulty", raw.get("difficulty", ""))),
+        "tags": [str(t) for t in tags],
+        "recommended_units": [str(u) for u in units],
+        "recommended_side": str(m.get("recommended_side", raw.get("recommended_side", ""))),
+        "version": str(m.get("version", raw.get("version", ""))),
+        "campaign": str(m.get("campaign", raw.get("campaign", ""))),
+        "campaign_step": int(m.get("campaign_step", raw.get("campaign_step", 0)) or 0),
+    }
+
+
+DIFFICULTY_COLORS = {
+    "easy": (92, 222, 150),
+    "normal": (94, 231, 224),
+    "hard": (255, 196, 92),
+    "extreme": (255, 106, 106),
+}
+DIFFICULTY_LABELS = {
+    "easy": "入门", "normal": "标准", "hard": "困难", "extreme": "专家",
+}
 
 
 class App:
@@ -127,6 +166,13 @@ class App:
         self.inspect = InspectCard()
         self.hover_card = False
 
+        # -- v1.3：战役模式 --
+        self.campaign: CampaignDef | None = None
+        self.campaign_progress: CampaignProgress | None = None
+        self.campaign_pending: bool = False    # 通关后等待玩家确认进入下一关
+        self.campaigns: list[CampaignDef] = []
+        self.show_campaign_menu: bool = False
+
         self._scan_scenarios()
         self._layout_menu()
 
@@ -162,6 +208,8 @@ class App:
                     "blue": len(raw.get("deployments", {}).get("BLUE", [])),
                     "red": len(raw.get("deployments", {}).get("RED", [])),
                     "tutorial": bool(raw.get("tutorial")),
+                    "meta": _meta_of(raw),
+                    "events": len(raw.get("events", []) or []),
                 })
             except Exception as exc:
                 self.error = f"{os.path.basename(path)}: {exc}"
@@ -186,8 +234,11 @@ class App:
     def _menu_tutorial_rect(self) -> pygame.Rect:
         return pygame.Rect(532, self._menu_button_y(), 170, 46)
 
+    def _menu_campaign_rect(self) -> pygame.Rect:
+        return pygame.Rect(718, self._menu_button_y(), 130, 46)
+
     def _menu_settings_rect(self) -> pygame.Rect:
-        return pygame.Rect(718, self._menu_button_y(), 110, 46)
+        return pygame.Rect(864, self._menu_button_y(), 110, 46)
 
     # ------------------------------------------------------------------ #
     # 教学想定
@@ -273,6 +324,230 @@ class App:
         except ConfigError as exc:
             self.set_status(str(exc), 5)
 
+    def _game_over(self) -> None:
+        """对局结束：战役模式下结算本关并准备进入下一关。"""
+        self.mode = "over"
+        if self.campaign is not None and self.campaign_progress is not None \
+                and self.state is not None and self.state.over:
+            self._campaign_step_complete()
+
+    # ------------------------------------------------------------------ #
+    # 战役模式
+    # ------------------------------------------------------------------ #
+    def _scan_campaigns(self) -> None:
+        self.campaigns = list_campaigns()
+
+    def _campaign_root(self) -> str:
+        """战役进度的存放根目录（用户可写目录，冻结版也能写入）。"""
+        return _paths.user_writable_dir()
+
+    def start_campaign(self, camp: CampaignDef) -> None:
+        """开始（或继续）一个战役。"""
+        prog = load_progress(self._campaign_root(), camp.id)
+        if prog is None:
+            prog = CampaignProgress(campaign_id=camp.id)
+        self.campaign = camp
+        self.campaign_progress = prog
+        self.campaign_pending = False
+        self._start_campaign_step()
+
+    def _start_campaign_step(self) -> None:
+        """载入当前关卡，并把上一关的幸存部队带进来。"""
+        camp = self.campaign
+        prog = self.campaign_progress
+        if camp is None or prog is None:
+            return
+        if prog.step_index >= camp.total_steps:
+            self._finish_campaign()
+            return
+        step = camp.steps[prog.step_index]
+        try:
+            path = resolve_map_path(step.map_id, MAP_DIR)
+            scenario = load_scenario(path, ARMORY)
+        except (CampaignError, LoadError) as exc:
+            self.set_status(f"战役无法继续：{exc}", 6)
+            self.mode = "menu"
+            return
+        self.state = GameState(scenario, self.menu_side)
+        self.state.scenario_path = path
+        self.state.armory_path = ARMORY
+        self.side = self.menu_side
+        self.mode = "game"
+        self.tab = "unit"
+        self.pending_target = None
+        self.pending_facility = None
+        self.show_menu = False
+        self.status = ""
+        self.tutorial = None
+        self.tutorial_visible = False
+        # 继承上一关的幸存部队
+        carried = apply_carryover(self.state, prog.carryover, self.menu_side)
+        if carried:
+            self.state.log_message(
+                self.menu_side,
+                f"战役继承：{len(carried)} 支部队随你先遣队抵达（{camp.name} · {step.title}）",
+                "system")
+        # 累计上一关的胜负点
+        if prog.vp:
+            self.state.vp[Side.BLUE] += prog.vp.get("BLUE", 0)
+            self.state.vp[Side.RED] += prog.vp.get("RED", 0)
+        self.state.log_message(None, f"战役「{camp.name}」· {step.title}", "system")
+        if step.brief:
+            self.state.log_message(None, step.brief, "system")
+        self._layout_game()
+        self._select_first_unit()
+        self.set_status(f"{camp.name} · {step.title}", 6)
+
+    def _campaign_step_complete(self) -> None:
+        """一关结束：累计胜负点、收集幸存部队、推进到下一关。"""
+        camp = self.campaign
+        prog = self.campaign_progress
+        if camp is None or prog is None or self.state is None:
+            return
+        prog.vp["BLUE"] = prog.vp.get("BLUE", 0) + self.state.vp[Side.BLUE]
+        prog.vp["RED"] = prog.vp.get("RED", 0) + self.state.vp[Side.RED]
+        step = camp.steps[prog.step_index]
+        prog.completed.append(step.map_id)
+        prog.carryover = collect_survivors(self.state, self.menu_side)
+        prog.step_index += 1
+        prog.log.append(f"完成 {step.title}：累计 "
+                        f"{prog.blue_vp}:{prog.red_vp}，幸存 {len(prog.carryover)} 类部队")
+        save_progress(self._campaign_root(), prog)
+        if prog.step_index >= camp.total_steps:
+            self._finish_campaign()
+        else:
+            self.campaign_pending = True
+            self.set_status(f"{step.title} 完成——按回车进入下一阶段", 8)
+
+    def _finish_campaign(self) -> None:
+        """战役结束。"""
+        camp = self.campaign
+        prog = self.campaign_progress
+        if camp is None or prog is None:
+            return
+        self.campaign_pending = False
+        won = prog.blue_vp > prog.red_vp
+        self.set_status(
+            f"战役「{camp.name}」结束：累计 {prog.blue_vp}:{prog.red_vp}——"
+            + ("胜利！" if won else "失败"), 10)
+        self.state.log_message(
+            None,
+            f"战役「{camp.name}」结束：累计胜负点 {prog.blue_vp}:{prog.red_vp}，"
+            + ("蓝方获胜" if won else "红方获胜"), "victory")
+        self.mode = "over"
+
+    def _campaign_next_step(self) -> None:
+        """玩家确认后进入下一关。"""
+        if not self.campaign_pending:
+            return
+        self.campaign_pending = False
+        self._start_campaign_step()
+
+    # ------------------------------------------------------------------ #
+    # 战役菜单
+    # ------------------------------------------------------------------ #
+    def _draw_campaign_menu(self, s: pygame.Surface) -> None:
+        """战役选择浮层：列出可用战役与进度。"""
+        if not hasattr(self, "campaigns"):
+            self._scan_campaigns()
+        camps = getattr(self, "campaigns", [])
+        w = 620
+        h = 130 + max(1, len(camps)) * 86
+        r = pygame.Rect((self.w - w) // 2, max(60, (self.h - h) // 2), w, h)
+        dim = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        dim.fill((5, 8, 12, 200))
+        s.blit(dim, (0, 0))
+        T.panel(s, r, (14, 19, 27), T.PURPLE, radius=6)
+        T.draw_text(s, "战役模式", (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
+        T.draw_text(s, "连续多张想定共享部队与胜负点——上一关的幸存者会随你进入下一关",
+                    (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
+        T.hline(s, r.x + 20, r.right - 20, r.y + 62, T.BORDER)
+
+        self._campaign_rows: list[tuple[pygame.Rect, CampaignDef]] = []
+        if not camps:
+            T.draw_text(s, "没有可用战役（data/campaigns/*.json）", (r.x + 22, r.y + 84),
+                        12, T.TEXT_DIM)
+        y = r.y + 74
+        for c in camps:
+            prog = load_progress(self._campaign_root(), c.id)
+            row = pygame.Rect(r.x + 16, y, r.width - 32, 78)
+            hover = row.collidepoint(self.mouse)
+            pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL_SUNK, row, border_radius=4)
+            pygame.draw.rect(s, T.PURPLE if hover else T.BORDER, row, 1, border_radius=4)
+            T.draw_text(s, c.name, (row.x + 12, row.y + 8), 15, T.TEXT, bold=True)
+            if c.author:
+                T.draw_text(s, f"作者 {c.author}", (row.right - 12, row.y + 11), 10,
+                            T.TEXT_FAINT, anchor="topright")
+            T.draw_text(s, f"{c.total_steps} 关｜{c.description[:52]}", (row.x + 12, row.y + 30),
+                        10, T.TEXT_DIM)
+            if prog is not None:
+                done = prog.step_index
+                T.draw_text(s, f"进度 {done}/{c.total_steps} 关｜累计 {prog.blue_vp}:{prog.red_vp}",
+                            (row.x + 12, row.y + 50), 10, T.CYAN)
+                T.draw_text(s, "点击继续", (row.right - 12, row.y + 50), 10, T.CYAN,
+                            anchor="topright")
+            else:
+                T.draw_text(s, "点击开始", (row.right - 12, row.y + 50), 10, T.TEXT_FAINT,
+                            anchor="topright")
+            self._campaign_rows.append((row, c))
+            y += 86
+
+    def _click_campaign_menu(self, pos: tuple[int, int]) -> None:
+        for row, c in getattr(self, "_campaign_rows", []):
+            if row.collidepoint(pos):
+                self.show_campaign_menu = False
+                self.start_campaign(c)
+                return
+
+    # ------------------------------------------------------------------ #
+    # 想定包导入导出
+    # ------------------------------------------------------------------ #
+    def _packages_dir(self) -> str:
+        """社区想定包存放目录（用户数据目录下）。"""
+        return os.path.join(_paths.user_writable_dir(), "packages")
+
+    def export_scenario_package(self) -> None:
+        """把当前想定导出为社区包（.bwscn）。"""
+        if self.state is None or not self.state.scenario_path:
+            self.set_status("没有可导出的想定", 3)
+            return
+        try:
+            d = self._packages_dir()
+            os.makedirs(d, exist_ok=True)
+            meta = getattr(self.state.scenario, "meta", None)
+            out = os.path.join(d, os.path.splitext(
+                os.path.basename(self.state.scenario_path))[0] + _pkg.PACKAGE_SUFFIX)
+            _pkg.export_package([self.state.scenario_path], ARMORY, out,
+                                name=self.state.map.name,
+                                author=(meta.author if meta else ""),
+                                include_armory=False)
+            self.set_status(f"想定包已导出：{out}", 6)
+        except (_pkg.PackageError, OSError) as exc:
+            self.set_status(f"导出失败：{exc}", 5)
+
+    def import_scenario_package(self) -> None:
+        """从社区包目录导入最近修改的一个想定包。"""
+        d = self._packages_dir()
+        if not os.path.isdir(d):
+            self.set_status("没有可导入的想定包（先把 .bwscn 放进 packages 目录）", 5)
+            return
+        packs = _pkg.list_packages(d)
+        if not packs:
+            self.set_status("packages 目录中没有 .bwscn 文件", 5)
+            return
+        packs.sort(key=lambda p: os.path.getmtime(p["path"]), reverse=True)
+        path = packs[0]["path"]
+        try:
+            res = _pkg.import_package(path, MAP_DIR, ARMORY, merge_armory=True)
+            self._scan_scenarios()
+            extra = (f"，新增 {len(res.added_templates)} 个兵种"
+                     if res.added_templates else "")
+            self.set_status(
+                f"已导入 {os.path.basename(path)}：{len(res.added_maps)} 张想定"
+                f"（{res.manifest.name}）{extra}", 6)
+        except _pkg.PackageError as exc:
+            self.set_status(f"导入失败：{exc}", 5)
+
     # ------------------------------------------------------------------ #
     # 战报导出
     # ------------------------------------------------------------------ #
@@ -329,7 +604,7 @@ class App:
 
         T.draw_text(s, "选择想定", (60, 176), 13, T.TEXT_DIM, bold=True)
         card_w = min(430, (self.w - 150) // max(1, len(self.scenarios)) - 16)
-        card_h = 168
+        card_h = 208
         x = 60
         for i, sc in enumerate(self.scenarios):
             r = pygame.Rect(x, 200, card_w, card_h)
@@ -350,6 +625,28 @@ class App:
             T.draw_text(s, f"{sc['size'][0]}×{sc['size'][1]} 格 · {sc['tile_km']} km/格 · "
                             f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
                         (r.x + 16, r.y + 62), 11, T.TEXT_FAINT)
+            # 元数据：难度标签 + 作者 + 标签
+            meta = sc.get("meta") or {}
+            diff = meta.get("difficulty", "")
+            bx = r.x + 16
+            if diff:
+                col = DIFFICULTY_COLORS.get(diff, T.CYAN)
+                label = DIFFICULTY_LABELS.get(diff, diff)
+                bw = T.text_width(label, 10) + 14
+                chip = pygame.Rect(bx, r.y + 78, bw, 16)
+                pygame.draw.rect(s, (col[0] // 5, col[1] // 5, col[2] // 5), chip,
+                                 border_radius=3)
+                pygame.draw.rect(s, col, chip, 1, border_radius=3)
+                T.draw_text(s, label, chip.center, 10, col, anchor="center")
+                bx += bw + 6
+            if meta.get("author"):
+                T.draw_text(s, f"作者 {meta['author']}", (bx, r.y + 80), 10, T.TEXT_FAINT)
+            for i, tag in enumerate(meta.get("tags", [])[:2]):
+                tx = r.x + 16 + i * 62
+                T.draw_text(s, f"#{tag}", (tx, r.y + 96), 9, (140, 165, 190))
+            if sc.get("events"):
+                T.draw_text(s, f"脚本事件 {sc['events']} 条", (r.right - 16, r.y + 80), 10,
+                            T.PURPLE, anchor="topright")
             yy = r.y + 84
             for line in T.wrap_text(sc["desc"], 12, r.width - 32)[:3]:
                 T.draw_text(s, line, (r.x + 16, yy), 12, T.TEXT_DIM)
@@ -408,6 +705,14 @@ class App:
         T.draw_text(s, "快速上手  [T]", tut_r.center, 13,
                     T.WHITE if hover else (T.TEXT if not first_run else (180, 255, 215)),
                     bold=first_run, anchor="center")
+
+        # 战役入口
+        camp_r = self._menu_campaign_rect()
+        hover = camp_r.collidepoint(self.mouse)
+        pygame.draw.rect(s, (34, 30, 52) if hover else (22, 20, 34), camp_r, border_radius=4)
+        pygame.draw.rect(s, T.PURPLE if hover else T.BORDER_HI, camp_r, 1, border_radius=4)
+        T.draw_text(s, "战役模式", camp_r.center, 13,
+                    T.WHITE if hover else T.TEXT, anchor="center")
 
         # 设置入口
         set_r = self._menu_settings_rect()
@@ -591,7 +896,7 @@ class App:
         self.state.end_player_turn()
         self._tutorial_note("turn_end")
         if self.state.over:          # 末回合/全歼可能在结算时直接结束对局
-            self.mode = "over"
+            self._game_over()
             return
         self.state.begin_ai_phase()
         self.ai_timer = 0.0
@@ -655,7 +960,7 @@ class App:
             self.pending_facility = None
             self.reachable = {}
             if self.state.over:
-                self.mode = "over"
+                self._game_over()
             return
 
         t = self.pending_target
@@ -672,7 +977,7 @@ class App:
         self.pending_target = None
         self.reachable = {}
         if self.state.over:
-            self.mode = "over"
+            self._game_over()
 
     # ------------------------------------------------------------------ #
     def handle_event(self, e: pygame.event.Event) -> None:
@@ -761,9 +1066,19 @@ class App:
             return
 
         if self.mode == "over":
+            if self.campaign_pending:
+                # 战役：本关已完成，回车进入下一关
+                if k == pygame.K_RETURN or k == pygame.K_SPACE:
+                    self._campaign_next_step()
+                elif k == pygame.K_ESCAPE:
+                    self.campaign_pending = False
+                    self.mode = "menu"
+                    self._scan_campaigns()
+                return
             if k == pygame.K_RETURN:
                 self.mode = "menu"
                 self._scan_scenarios()
+                self._scan_campaigns()
             elif k == pygame.K_ESCAPE:
                 self.running = False
             return
@@ -819,14 +1134,22 @@ class App:
                     self.open_editor()
                 elif self._menu_tutorial_rect().collidepoint(pos):
                     self.start_tutorial()
+                elif self._menu_campaign_rect().collidepoint(pos):
+                    self.show_campaign_menu = not self.show_campaign_menu
                 elif self._menu_settings_rect().collidepoint(pos):
                     self.open_settings()
+                elif self.show_campaign_menu:
+                    self._click_campaign_menu(pos)
             return
         if self.mode == "over":
             if e.button == 1:
                 if pygame.Rect(self.w // 2 - 130, self.h // 2 + 108, 260, 44).collidepoint(pos):
-                    self.mode = "menu"
-                    self._scan_scenarios()
+                    if self.campaign_pending:
+                        self._campaign_next_step()
+                    else:
+                        self.mode = "menu"
+                        self._scan_scenarios()
+                        self._scan_campaigns()
             return
 
         if self.show_help:
@@ -847,6 +1170,10 @@ class App:
                             self._scan_scenarios()
                         elif action == "export_md":
                             self.export_report("md")
+                        elif action == "export_pkg":
+                            self.export_scenario_package()
+                        elif action == "import_pkg":
+                            self.import_scenario_package()
                         elif action == "settings":
                             self.show_menu = False
                             self.open_settings()
@@ -1042,7 +1369,7 @@ class App:
                     st.finish_ai_turn()
                     self.fast = False
                     if st.over:
-                        self.mode = "over"
+                        self._game_over()
                     self._after_turn()
         self.hover_unit = None
         self.hover_card = False
@@ -1098,6 +1425,8 @@ class App:
             return
         if self.mode == "menu":
             self._draw_menu()
+            if self.show_campaign_menu:
+                self._draw_campaign_menu(self.screen)
             if self.show_settings and self.settings_panel is not None:
                 self.settings_panel.draw(self.screen)
             pygame.display.flip()
@@ -1215,14 +1544,16 @@ class App:
 
         y += 6
         btns = [("继续作战", "resume"), ("返回想定选择", "to_menu"),
-                ("导出战报", "export_md"), ("设置", "settings"), ("退出游戏", "quit")]
-        bw = (w - 32 - 16) // 5
+                ("导出战报", "export_md"), ("导出想定包", "export_pkg"),
+                ("导入想定包", "import_pkg"), ("设置", "settings"),
+                ("退出游戏", "quit")]
+        bw = (w - 32 - 16) // 7
         for i, (label, act) in enumerate(btns):
             b = pygame.Rect(r.x + 16 + i * (bw + 8), y, bw, 34)
             hover = b.collidepoint(self.mouse)
             pygame.draw.rect(s, (24, 34, 46) if not hover else (32, 46, 62), b, border_radius=3)
             pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, b, 1, border_radius=3)
-            T.draw_text(s, label, b.center, 12, T.TEXT if hover else T.TEXT_DIM, anchor="center")
+            T.draw_text(s, label, b.center, 11, T.TEXT if hover else T.TEXT_DIM, anchor="center")
             self.menu_rects.append((b, act, None))
 
     # -- 顶栏 -------------------------------------------------------------
@@ -2236,11 +2567,28 @@ class App:
             T.draw_text(s, k, (r.x + 120, y), 13, T.TEXT_FAINT)
             T.draw_text(s, v, (r.right - 120, y), 13, T.TEXT, anchor="topright", mono=True)
             y += 26
+
+        # 战役进度
+        prog = self.campaign_progress
+        if prog is not None and self.campaign is not None:
+            camp = self.campaign
+            T.draw_text(s, f"战役「{camp.name}」· 第 {min(prog.step_index, camp.total_steps)}"
+                           f"/{camp.total_steps} 关",
+                        (r.centerx, y + 4), 12, T.PURPLE, anchor="center")
+            T.draw_text(s, f"累计胜负点 蓝 {prog.blue_vp} : {prog.red_vp} 红",
+                        (r.centerx, y + 24), 12, T.TEXT, anchor="center")
+            y += 44
+
         btn = pygame.Rect(self.w // 2 - 130, self.h // 2 + 108, 260, 44)
         hover = btn.collidepoint(self.mouse)
         pygame.draw.rect(s, (30, 96, 120) if hover else (22, 70, 90), btn, border_radius=4)
         pygame.draw.rect(s, T.CYAN, btn, 1, border_radius=4)
-        T.draw_text(s, "返回想定选择  [Enter]", btn.center, 14, T.WHITE, bold=True, anchor="center")
+        if self.campaign_pending:
+            T.draw_text(s, "进入下一阶段  [Enter]", btn.center, 14, T.WHITE, bold=True,
+                        anchor="center")
+        else:
+            T.draw_text(s, "返回想定选择  [Enter]", btn.center, 14, T.WHITE, bold=True,
+                        anchor="center")
 
     # ================================================================== #
     def run(self) -> None:
