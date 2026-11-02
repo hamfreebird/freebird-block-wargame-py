@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from . import rules
+from . import ai_tactics as tactics
 from .enums import Detection, Domain, Facility, SensorKind, Side, UnitClass, WeaponKind
 from .env import environment_for
 from .model import Unit
@@ -278,6 +279,10 @@ class AIPlanner:
                 val = p.pk * (1.0 - p.intercept_pk) * p.damage
                 val += enemy.template.cost / 90.0
                 val += (1.0 - enemy.hp_ratio) * 2.5
+                # 斩首加成：优先打「打掉之后能让我们多拿分」的目标——
+                # 敌方据点的守卫、能压制我方的防空。
+                # 否则 AI 会把弹药浪费在无关紧要的目标上。
+                val += tactics.strike_priority(state, self.side, enemy) * 0.9
                 # 集中火力：指定目标获得显著加成
                 if focus is not None and enemy is focus:
                     val *= 2.2
@@ -528,6 +533,16 @@ class AIPlanner:
         here = (unit.x, unit.y)
         ordered = getattr(unit, "order", None)
 
+        # 撤退：重伤且孤立时脱离接触。
+        # 「活着回去」比「拼掉」更有价值——尤其是有占领能力的单位，
+        # 打残了带不回下一关，等于白送。
+        if tactics.should_retreat(state, self.side, unit):
+            spot = self._retreat_spot(state, unit)
+            if spot is not None:
+                path = rules.find_path(state, unit, spot)
+                if path:
+                    return path
+
         # 固守指令：不脱离当前阵位，只在原地附近择优（不前出）
         if ordered is not None and ordered.kind == "hold":
             base = self._score_tile(state, unit, here, 0.0)
@@ -551,7 +566,10 @@ class AIPlanner:
 
         # 主策略：沿目标距离场下降，保证持续推进
         if goal is not None and goal != here:
-            field = rules.field_to_goal(state, unit, goal)
+            # ignore_units=True：梯度用纯地形距离场（可缓存），
+            # 友军阻挡由 find_path 精搜时处理——否则距离场每回合都在变，
+            # 128×128 想定里这会吃掉 87% 的 AI 回合时间。
+            field = rules.field_to_goal(state, unit, goal, ignore_units=True)
             if here in field:
                 best_pos, best_val = None, None
                 for pos, cost in reach.items():
@@ -584,6 +602,36 @@ class AIPlanner:
         if best_pos is None:
             return None
         return rules.find_path(state, unit, best_pos)
+
+    def _retreat_spot(self, state: "GameState", unit: Unit) -> tuple[int, int] | None:
+        """撤退目的地：己方控制区内、离敌人最远的一个可达点。
+
+        优先己方目标点（那里通常有掩护与补给），否则退向己方基地方向。
+        """
+        reach = rules.flood_reachable(state, unit)
+        if len(reach) <= 1:
+            return None
+        own_pts = [(t.x, t.y) for t in state.objective_tiles if t.owner is self.side]
+        foes = [e for e in state.enemies_of(self.side)
+                if e.alive and state.known_level(self.side, e) is not Detection.NONE]
+        best: tuple[int, int] | None = None
+        best_score = -1e9
+        for pos, cost in reach.items():
+            if pos == (unit.x, unit.y):
+                continue
+            d = min((rules.dist(pos, (e.x, e.y)) for e in foes), default=99.0)
+            # 己方目标点额外加权
+            s = d - cost * 0.5
+            if pos in own_pts:
+                s += 6.0
+            # 别退到敌方控制区去
+            t = state.map.at(*pos)
+            if t is not None and t.owner is not None and t.owner is not self.side:
+                s -= 8.0
+            if s > best_score:
+                best_score, best = s, pos
+        return best
+
 
     def _nearest_base(self, state: "GameState", unit: Unit) -> tuple[int, int] | None:
         """最近的己方可用机场（或航母）。"""
@@ -651,9 +699,6 @@ class AIPlanner:
                 self.assign[unit.uid] = best
                 return best
 
-        best: tuple[int, int] | None = None
-        best_score = -1.0
-
         # 防空单位守土：优先守住己方目标点，不轻易前出
         if unit.template.interceptors > 0:
             own = [t for t in state.objective_tiles if t.owner is self.side]
@@ -702,26 +747,20 @@ class AIPlanner:
                 self.assign[unit.uid] = (t.x, t.y)
                 return self.assign[unit.uid]
 
-        for t in state.objective_tiles:
-            # 按作战域筛选可达目标，避免单位永远朝着到不了的点位机动
-            if unit.domain is Domain.LAND and not unit.template.amphibious:
-                if not state.map.same_landmass((unit.x, unit.y), (t.x, t.y)):
-                    continue
-            if unit.domain in (Domain.SEA, Domain.SUB) and not t.passable_sea:
-                continue
-            if unit.template.can_capture:
-                if t.owner is self.side:
-                    weight = 0.35 if self._defenders_assigned(state, t) < 2 else 0.12
-                else:
-                    weight = 1.0
-            else:
-                weight = 0.55
-            d = rules.dist((unit.x, unit.y), (t.x, t.y))
-            sc = weight * (1.0 + t.victory_points * 0.2) / (1.0 + d / 8.0)
-            if sc > best_score:
-                best_score, best = sc, (t.x, t.y)
-        self.assign[unit.uid] = best
-        return best
+        # ---- 目标争夺：用战术库按「路径成本」而非直线距离评估 ----
+        # v2.1 之前这里用直线距离打分，结果跨海远征看起来很近，
+        # AI 便把仅有的两栖力量派去守自己的点，把中立点拱手让人
+        # （128×128 想定实测：8 个中立点一个都拿不到）。
+        defenders: dict[tuple[int, int], int] = {}
+        for uid, g in self.assign.items():
+            if g is not None:
+                defenders[g] = defenders.get(g, 0) + 1
+        plans = tactics.evaluate_objectives(state, self.side, unit, defenders)
+        if plans:
+            best = plans[0]
+            self.assign[unit.uid] = (best.tile.x, best.tile.y)
+            return self.assign[unit.uid]
+        return None
 
     def _defenders_assigned(self, state: "GameState", t) -> int:
         """统计已被派往防守该目标点的己方单位数量。"""

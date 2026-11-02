@@ -120,6 +120,8 @@ class GameState:
         self._detect_gen = 0            # 全局世代号：环境/干扰等全局变化时递增
         self._detect_fp: dict[int, tuple] = {}   # 单位状态指纹 → 世代号
         self._detect_global_fp: tuple = ()       # 全局指纹
+        # 寻路距离场缓存（纯地形，随 map_epoch 失效）——见 rules.field_to_goal
+        self._field_cache: dict[tuple, dict] = {}
         self.sat_recon: dict[Side, set[int]] = {Side.BLUE: set(), Side.RED: set()}
         self.sat_track: dict[int, Detection] = {}
         self.vp: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
