@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.1.2-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v2.2.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -81,6 +81,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **对局回放** | 想定 + 对局种子 + 命令流 = 完整重演任意一局，逐项一致 |
 | **可复现随机** | 所有随机判定由对局种子派生，同种子必得同结果 |
 | **模组接口** | 第三方 Python 模块可注册新武器、新兵种并订阅规则钩子 |
+| **规则钩子** | 想定 JSON 可声明「条件 + 效果」规则——不写 Python 也能做模组 |
 
 ### 内容与性能（v2.1）
 
@@ -107,6 +108,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v2.1** | 内容与性能 | **可视化战役编辑器**、**可替换单位图标包**、**分块渲染 + 增量探测**（渲染提速 4.3 倍） |
 | **v2.1.1** | 缺陷修复 | 修复战役编辑器文字锚点崩溃（pygame 只认 9 种锚点） |
 | **v2.1.2** | 交互修复 | 主菜单**点击才选中**（不再悬停即切换）、修复「导入回放」浮层不显示 |
+| **v2.2** | 深度与智能 | **AI 战术库**（可达性判断 / 斩首 / 撤退）、**大地图寻路优化**、**JSON 规则钩子**、**平衡体检** |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -191,7 +193,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v1.5**（已发布）—— 同格共存机制 · 128×128 大型战役想定 · 美方兵种扩充
 - **v2.0**（已发布）—— 对局回放 · 可复现随机流 · 模组接口 · 12 步教学
 - **v2.1**（已发布）—— 战役编辑器 · 单位图标包 · 性能提升
-- **v2.2** —— AI 战术库 · 大地图寻路优化 · 规则钩子系统 · 平衡体检
+- **v2.2**（已发布）—— AI 战术库 · 大地图寻路优化 · 规则钩子系统 · 平衡体检
 - **v3.0** —— 官方模组 SDK · 多语言扩展 · 无障碍完善
 
 ---
