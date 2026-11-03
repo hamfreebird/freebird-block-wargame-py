@@ -117,6 +117,9 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_theme.py
 
+      - name: 文档自检（目录 / 锚点 / 版本号）
+        run: python tools/check_docs.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

@@ -41,7 +41,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 
 ## 机制速览
 
-四十余项机制按主题归类，完整规则见 [GAME_GUIDE 第 5 章](GAME_GUIDE.md#5-作战机制)。
+四十余项机制按主题归类，完整规则见 [GAME_GUIDE 第 5 章](GAME_GUIDE.md#5-核心机制)。
 
 ### 情报与感知
 
@@ -132,7 +132,7 @@ data/
 
 1. **可视化编辑**——主菜单「地图 / 武器编辑器」，支持框选批量编辑与框选刷地形；
 2. **写 JSON**——照抄一份现有想定改。格式速查见
-   [GAME_GUIDE 第 9 章](GAME_GUIDE.md#9-数据文件格式)。
+   [GAME_GUIDE 第 13 章](GAME_GUIDE.md#13-数据文件格式)。
 
 **想做多关卡战役？** 编辑器新增「战役编排」标签页：左边排关卡、右边填内容，
 底部有难度曲线。多关之间的**难度**与**继承策略**（全继承 / 只继承精锐 / 独立）
@@ -161,6 +161,7 @@ python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动
 python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
 python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
 python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）
+python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 
