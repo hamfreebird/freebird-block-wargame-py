@@ -35,7 +35,7 @@ python main.py --sim 16 --map strait_shield # 无界面双 AI 推演 16 回合
 python tools/diag.py                       # 作战逻辑自检（25 条不变量）
 ```
 
-环境：Python 3.9+ / pygame 2.5+。窗口可自由缩放（最小 1180×740）。
+环境：Python 3.10+ / pygame 2.5+。窗口可自由缩放（最小 1180×740）。
 
 ---
 
@@ -171,7 +171,7 @@ python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自�
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 
-CI 在 Python 3.10–3.13 × Ubuntu/Windows 矩阵上跑完整校验；布局自检与冒烟测试
+CI 在 Python 3.10–3.13 × Ubuntu/Windows 矩阵上跑完整校验（3.9 未纳入矩阵，故不作支持承诺）；布局自检与冒烟测试
 会在回归发生时直接让流水线失败。
 
 自检脚本会把用户数据目录重定向到临时目录，**不会污染你的设置与存档**。

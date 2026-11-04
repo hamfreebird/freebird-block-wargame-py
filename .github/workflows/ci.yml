@@ -34,6 +34,10 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 文档自检要比对「最新 git 标签 == 基线」。默认的浅克隆不带标签，
+          # 那条校验会静默跳过——取全量历史才能真的校验。
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
