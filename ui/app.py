@@ -1528,7 +1528,13 @@ class App:
         self._ensure_cursor_visible()
 
     def _ensure_cursor_visible(self) -> None:
-        """光标接近地图视窗边缘时自动滚屏，始终保持在视野内。"""
+        """光标接近地图视窗边缘时自动滚屏，始终保持在视野内。
+
+        ``MapView.pan(dx)`` 让地图**内容**整体右移 dx（与鼠标拖拽同向），
+        所以要把越界的光标拉回视野，必须朝**相反**方向平移内容。
+        这里的正负号是这个方法唯一容易写反的地方，改前请对照
+        :meth:`MapView.pan` 的语义。
+        """
         mv = self.mapview
         if mv is None:
             return
@@ -1536,13 +1542,13 @@ class App:
         margin = mv.tile
         view = mv.rect
         if r.right > view.right - margin:
-            mv.pan(r.right - (view.right - margin), 0)
+            mv.pan(-(r.right - (view.right - margin)), 0)
         elif r.left < view.left + margin:
-            mv.pan(r.left - (view.left + margin), 0)
+            mv.pan((view.left + margin) - r.left, 0)
         if r.bottom > view.bottom - margin:
-            mv.pan(0, r.bottom - (view.bottom - margin))
+            mv.pan(0, -(r.bottom - (view.bottom - margin)))
         elif r.top < view.top + margin:
-            mv.pan(0, r.top - (view.top + margin))
+            mv.pan(0, (view.top + margin) - r.top)
 
     def _activate_at(self, grid: tuple[int, int]) -> None:
         """在 grid 处执行与鼠标左键等价的上下文动作。

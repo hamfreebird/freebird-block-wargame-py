@@ -232,6 +232,46 @@ def main() -> int:
                 check(False, "实战：未找到己方单位用于测试")
         else:
             check(False, "实战：无可加载的想定")
+
+        # ---- 5. 键盘光标自动滚屏方向 --------------------------------------
+        # 回归：v3.0 曾把 pan 符号写反——光标越界后画面朝同方向推，
+        # 光标从视野里越跑越远。这里用假地图视图直接验四个方向。
+        class _FakeMV:
+            def __init__(self):
+                self.rect = pygame.Rect(0, 0, 400, 300)
+                self.tile = 20
+                self.ox = 0.0
+                self.oy = 0.0
+
+            def grid_to_rect(self, x, y):
+                return pygame.Rect(int(self.rect.x + self.ox + x * self.tile),
+                                   int(self.rect.y + self.oy + y * self.tile),
+                                   self.tile, self.tile)
+
+            def pan(self, dx, dy):
+                self.ox += dx
+                self.oy += dy
+
+        class _Dummy:
+            pass
+
+        scrolled_ok = True
+        for label, cur in (("右", (25, 2)), ("左", (-3, 2)),
+                           ("下", (5, 20)), ("上", (5, -2))):
+            d = _Dummy()
+            d.mapview = _FakeMV()
+            d.cursor = cur
+            App._ensure_cursor_visible(d)
+            r = d.mapview.grid_to_rect(*cur)
+            m = d.mapview.tile
+            inside = (r.left >= d.mapview.rect.left + m
+                      and r.right <= d.mapview.rect.right - m
+                      and r.top >= d.mapview.rect.top + m
+                      and r.bottom <= d.mapview.rect.bottom - m)
+            if not inside:
+                scrolled_ok = False
+                print(f"        {label}越界未回到视野：{r}")
+        check(scrolled_ok, "实战：光标越界自动滚屏方向正确（上下左右）")
     finally:
         shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
 
