@@ -15,6 +15,8 @@ import pygame
 from core.enums import Detection, Domain, Side
 from core.model import Unit
 
+from core.i18n import tr
+
 from . import theme as T
 
 
@@ -31,49 +33,54 @@ def build_rows(unit: Unit, viewer_side: Side, known: Detection,
                state=None) -> list[tuple[str, str, tuple[int, int, int]]]:
     """构造信息卡的行：(键, 值, 颜色)。"""
     rows: list[tuple[str, str, tuple[int, int, int]]] = []
-    rows.append(("类型", f"{unit.template.unit_class.label} · {unit.domain.label}", T.TEXT_DIM))
+    rows.append((tr("ui.card.type"),
+                 f"{unit.template.unit_class.label} · {unit.domain.label}", T.TEXT_DIM))
 
     if unit.side is viewer_side:
         # 己方单位：完整信息
-        rows.append(("血量", f"{unit.hp:.0f} / {unit.template.hp:.0f}", T.hp_color(unit.hp_ratio)))
-        rows.append(("机动点", f"{unit.mp:.1f} / {unit.template.mp:.1f}", T.TEXT_DIM))
+        rows.append((tr("ui.card.hp"), f"{unit.hp:.0f} / {unit.template.hp:.0f}",
+                     T.hp_color(unit.hp_ratio)))
+        rows.append((tr("ui.card.mp"), f"{unit.mp:.1f} / {unit.template.mp:.1f}", T.TEXT_DIM))
         if unit.domain is Domain.AIR:
-            rows.append(("燃油", f"{unit.fuel * 100:.0f}%",
+            rows.append((tr("ui.card.fuel"), f"{unit.fuel * 100:.0f}%",
                          T.RED if unit.fuel < 0.35 else T.TEXT_DIM))
         if unit.ammo:
             ammo_parts = []
             for w in unit.template.weapons:
                 n = unit.ammo.get(w.id, 0)
                 ammo_parts.append(f"{w.name.split(' ')[0][:6]}×{n}")
-            rows.append(("弹药", " ".join(ammo_parts), T.AMBER))
+            rows.append((tr("ui.card.ammo"), " ".join(ammo_parts), T.AMBER))
         tile = state.map.at(unit.x, unit.y) if state else None
         if tile is not None and tile.fort > 0 and tile.fort_owner is unit.side:
-            rows.append(("工事", f"Lv{tile.fort} 阵地", T.GREEN))
+            rows.append((tr("ui.card.fort"), tr("ui.card.fort_fmt") % (tile.fort,), T.GREEN))
         if unit.entrench > 0:
-            rows.append(("掩体", f"驻守 {unit.entrench} 级", T.GREEN))
+            rows.append((tr("ui.card.entrench"),
+                         tr("ui.card.entrench_fmt") % (unit.entrench,), T.GREEN))
         if unit.radar_on and any(s.kind.value == "radar" for s in unit.template.sensors):
-            rows.append(("雷达", "开机（暴露）", T.RED))
+            rows.append((tr("ui.card.radar"), tr("ui.card.radar_on"), T.RED))
         if unit.jam_on:
-            rows.append(("干扰", "工作中", T.PURPLE))
+            rows.append((tr("ui.card.jam"), tr("ui.card.jam_on"), T.PURPLE))
     else:
         # 敌方单位：按识别等级给出对应深度的信息
         if known is Detection.CONTACT:
-            rows.append(("识别", "仅接触：不知兵种", T.AMBER))
-            rows.append(("提示", "抵近侦察以获取详情", T.TEXT_FAINT))
+            rows.append((tr("ui.card.detect"), tr("ui.card.contact_only"), T.AMBER))
+            rows.append((tr("ui.card.hint"), tr("ui.card.hint_scout"), T.TEXT_FAINT))
         else:
-            rows.append(("识别", known.label, _det_color(known)))
-            rows.append(("血量", f"{unit.hp:.0f} / {unit.template.hp:.0f}",
+            rows.append((tr("ui.card.detect"), known.label, _det_color(known)))
+            rows.append((tr("ui.card.hp"), f"{unit.hp:.0f} / {unit.template.hp:.0f}",
                          T.hp_color(unit.hp_ratio)))
             if known is Detection.TRACKED:
                 if unit.ammo:
                     total = sum(unit.ammo.values())
-                    rows.append(("弹药", f"约 {total} 发", T.AMBER))
+                    rows.append((tr("ui.card.ammo"), tr("ui.card.ammo_approx_fmt") % (total,),
+                                 T.AMBER))
                 tile = state.map.at(unit.x, unit.y) if state else None
                 if tile is not None and tile.fort > 0 and tile.fort_owner is unit.side:
-                    rows.append(("工事", f"Lv{tile.fort} 阵地", T.GREEN))
+                    rows.append((tr("ui.card.fort"), tr("ui.card.fort_fmt") % (tile.fort,), T.GREEN))
                 rng = unit.max_intercept_range()
                 if rng > 0:
-                    rows.append(("防空包线", f"{rng:.1f} 格", T.RED))
+                    rows.append((tr("ui.card.intercept"),
+                                 tr("ui.card.intercept_fmt") % (f"{rng:.1f}",), T.RED))
                 if state is not None:
                     mine = [u for u in state.units_of(viewer_side)
                             if u.alive and u.domain is Domain.LAND]
@@ -83,7 +90,8 @@ def build_rows(unit: Unit, viewer_side: Side, known: Detection,
                                 continue
                             import core.rules as rules
                             if rules.dist_units(m, unit) <= w.range_max:
-                                rows.append(("威胁", f"{m.name} 可直接打击", T.RED))
+                                rows.append((tr("ui.card.threat"),
+                                             tr("ui.card.threat_fmt") % (m.name,), T.RED))
                                 break
                         break
     return rows

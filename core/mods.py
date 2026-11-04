@@ -293,6 +293,34 @@ class LoadedMod:
         return f"{self.display_name} v{self.version}"
 
 
+def resolve_entry(directory: str, entry_name: str) -> tuple[str, str]:
+    """把 manifest 里的 ``entry`` 解析成**目录内**的绝对路径。
+
+    返回 ``(路径, 错误说明)``；错误说明非空时路径无意义。
+
+    **为什么要卡这一道**：``mod.json`` 是第三方写的，而 ``entry`` 会直接
+    交给 importlib 执行。写 ``../../main.py``、``/etc/passwd`` 或
+    ``C:\\Windows\\system32\\x.py`` 都能让它跑到模组目录之外去。
+    眼下模组只从用户自己的 ``mods/`` 目录加载，风险不高；但这个
+    「路径来自数据」的位置一旦被复用（导入他人打包的模组、从创意工坊
+    拉取），就是现成的入口。
+
+    判定用 :func:`os.path.realpath` 后再比公共前缀，顺带挡住符号链接
+    跳出目录；空字符串回退到 ``main.py``。
+    """
+    name = (entry_name or "").strip() or "main.py"
+    if os.path.isabs(name) or os.path.splitdrive(name)[0]:
+        return "", f"模组入口不能是绝对路径：'{name}'"
+    base = os.path.realpath(directory)
+    try:
+        target = os.path.realpath(os.path.join(base, name))
+        inside = os.path.commonpath([base, target]) == base
+    except (OSError, ValueError):
+        return "", f"模组入口路径非法：'{name}'"
+    if not inside:
+        return "", f"模组入口跳出模组目录：'{name}'"
+    return target, ""
+
 
 class ModRegistry:
     """已加载的模组集合。"""
@@ -345,7 +373,15 @@ class ModRegistry:
         """
         manifest = load_manifest(directory)
         entry_name = manifest.entry if (manifest and manifest.ok) else "main.py"
-        entry_path = os.path.join(directory, entry_name)
+        entry_path, entry_err = resolve_entry(directory, entry_name)
+        if entry_err:
+            m = manifest or ModManifest(mod_id=os.path.basename(directory))
+            mod_id = m.mod_id or os.path.basename(directory)
+            entry = LoadedMod(mod_id=mod_id, path=entry_name, manifest=m,
+                              error=entry_err)
+            self.mods.append(entry)
+            self.errors.append(f"{mod_id}: {entry.error}")
+            return entry
         if manifest is None and not os.path.isfile(entry_path):
             return None
         if not os.path.isfile(entry_path):
@@ -679,5 +715,5 @@ __all__ = [
     "EV_TURN_START", "EV_UNIT_DESTROYED", "HOOK_EVENTS", "HOOK_SIGNATURES",
     "API_VERSION", "PUBLIC_API", "DEPRECATED",
     "default_registry", "set_default_registry", "default_mod_dirs", "load_all",
-    "apply_localization", "mod_report",
+    "apply_localization", "mod_report", "resolve_entry",
 ]

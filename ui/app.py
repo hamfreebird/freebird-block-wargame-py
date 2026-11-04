@@ -439,14 +439,14 @@ class App:
         """从主菜单直接进入教学想定。"""
         idx = self._tutorial_index()
         if idx < 0:
-            self.set_status("未找到教学想定", 4)
+            self.set_status(tr("ui.st.tutorial_no_map"), 4)
             return
         self.menu_index = idx
         self.start_game()
         if self.state is not None:
             self.tutorial_visible = True
             self._tutorial_notice = 3.0
-            self.set_status("教学开始：按提示逐步操作，随时可按「跳过教学」退出", 6)
+            self.set_status(tr("ui.st.tutorial_start"), 6)
 
     def _toggle_tutorial(self) -> None:
         """显示 / 隐藏教学提示条。"""
@@ -458,7 +458,7 @@ class App:
         if self.tutorial is not None:
             self.tutorial.skip()
         self.tutorial_visible = False
-        self.set_status("已退出教学", 3)
+        self.set_status(tr("ui.st.tutorial_exit"), 3)
 
     def _tutorial_note(self, event: str) -> None:
         """把事件投递给教学引导机，并在推进时刷新提示。"""
@@ -473,7 +473,7 @@ class App:
             elif self.tutorial.finished:
                 self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
                 self.tutorial_visible = False
-                self.set_status("教学完成！", 4)
+                self.set_status(tr("ui.st.tutorial_done"), 4)
 
     def _tutorial_poll(self) -> None:
         """轮询状态型教学步骤。"""
@@ -488,7 +488,7 @@ class App:
             elif self.tutorial.finished:
                 self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
                 self.tutorial_visible = False
-                self.set_status("教学完成！", 4)
+                self.set_status(tr("ui.st.tutorial_done"), 4)
 
     # ------------------------------------------------------------------ #
     # 设置
@@ -547,7 +547,7 @@ class App:
         try:
             self.cfg.save()
             self.keymap = build_reverse(self.cfg)
-            self.set_status("键位设置已保存", 3)
+            self.set_status(tr("ui.st.keymap_saved"), 3)
         except ConfigError as exc:
             self.set_status(str(exc), 5)
 
@@ -607,7 +607,7 @@ class App:
             path = resolve_map_path(step.map_id, MAP_DIR)
             scenario = load_scenario(path, ARMORY)
         except (CampaignError, LoadError) as exc:
-            self.set_status(f"战役无法继续：{exc}", 6)
+            self.set_status(tr("ui.st.campaign_cannot_continue_fmt") % (exc,), 6)
             self.mode = "menu"
             return
         self.state = GameState(scenario, self.menu_side)
@@ -684,7 +684,7 @@ class App:
             self._finish_campaign()
         else:
             self.campaign_pending = True
-            self.set_status(f"{step.title} 完成——按回车进入下一阶段", 8)
+            self.set_status(tr("ui.st.step_done_fmt") % (step.title,), 8)
 
     def _finish_campaign(self) -> None:
         """战役结束。"""
@@ -695,8 +695,9 @@ class App:
         self.campaign_pending = False
         won = prog.blue_vp > prog.red_vp
         self.set_status(
-            f"战役「{camp.name}」结束：累计 {prog.blue_vp}:{prog.red_vp}——"
-            + ("胜利！" if won else "失败"), 10)
+            tr("ui.st.campaign_end_fmt") % (
+                camp.name, prog.blue_vp, prog.red_vp,
+                tr("ui.st.victory") if won else tr("ui.st.defeat")), 10)
         self.state.log_message(
             None,
             f"战役「{camp.name}」结束：累计胜负点 {prog.blue_vp}:{prog.red_vp}，"
@@ -776,7 +777,7 @@ class App:
     def export_scenario_package(self) -> None:
         """把当前想定导出为社区包（.bwscn）。"""
         if self.state is None or not self.state.scenario_path:
-            self.set_status("没有可导出的想定", 3)
+            self.set_status(tr("ui.st.no_export_map"), 3)
             return
         try:
             d = self._packages_dir()
@@ -788,19 +789,19 @@ class App:
                                 name=self.state.map.name,
                                 author=(meta.author if meta else ""),
                                 include_armory=False)
-            self.set_status(f"想定包已导出：{out}", 6)
+            self.set_status(tr("ui.st.package_exported_fmt") % (out,), 6)
         except (_pkg.PackageError, OSError) as exc:
-            self.set_status(f"导出失败：{exc}", 5)
+            self.set_status(tr("ui.st.export_failed_fmt") % (exc,), 5)
 
     def import_scenario_package(self) -> None:
         """从社区包目录导入最近修改的一个想定包。"""
         d = self._packages_dir()
         if not os.path.isdir(d):
-            self.set_status("没有可导入的想定包（先把 .bwscn 放进 packages 目录）", 5)
+            self.set_status(tr("ui.st.no_package_import"), 5)
             return
         packs = _pkg.list_packages(d)
         if not packs:
-            self.set_status("packages 目录中没有 .bwscn 文件", 5)
+            self.set_status(tr("ui.st.no_package_file"), 5)
             return
         packs.sort(key=lambda p: os.path.getmtime(p["path"]), reverse=True)
         self._import_package(packs[0]["path"])
@@ -818,10 +819,11 @@ class App:
             extra = (f"，新增 {len(res.added_templates)} 个兵种"
                      if res.added_templates else "")
             self.set_status(
-                f"已导入 {os.path.basename(path)}：{len(res.added_maps)} 张想定"
-                f"（{res.manifest.name}）{extra}", 6)
+                tr("ui.st.package_imported_fmt") % (
+                    os.path.basename(path), len(res.added_maps),
+                    res.manifest.name, extra), 6)
         except _pkg.PackageError as exc:
-            self.set_status(f"导入失败：{exc}", 5)
+            self.set_status(tr("ui.st.import_failed_fmt") % (exc,), 5)
 
     # ------------------------------------------------------------------ #
     # 战报导出
@@ -833,16 +835,16 @@ class App:
         try:
             path = _report.export_report(self.state, _paths.reports_dir(), fmt)
         except OSError as exc:
-            self.set_status(f"战报导出失败：{exc}", 5)
+            self.set_status(tr("ui.st.report_export_failed_fmt") % (exc,), 5)
             return
-        self.set_status(f"战报已导出：{path}", 6)
+        self.set_status(tr("ui.st.report_exported_fmt") % (path,), 6)
 
     def _play_replay(self, path: str) -> None:
         """播放一份回放。"""
         try:
             rf = ReplayFile.load(path)
         except Exception as exc:
-            self.set_status(f"回放读取失败：{exc}", 5)
+            self.set_status(tr("ui.st.replay_read_failed_fmt") % (exc,), 5)
             return
         # 想定按文件名在安装目录与用户目录里找
         name = os.path.basename(rf.scenario)
@@ -853,12 +855,12 @@ class App:
                 found = cand
                 break
         if found is None:
-            self.set_status(f"回放所需的想定「{name}」不存在", 5)
+            self.set_status(tr("ui.st.replay_map_missing_fmt") % (name,), 5)
             return
         try:
             scenario = load_scenario(found, ARMORY)
         except Exception as exc:
-            self.set_status(f"回放想定载入失败：{exc}", 5)
+            self.set_status(tr("ui.st.replay_map_failed_fmt") % (exc,), 5)
             return
         player = ReplayPlayer(scenario, rf)
         self.replay_player = player
@@ -875,8 +877,8 @@ class App:
         self.reachable = {}
         self.tab = "log"
         self._layout_game()
-        self.set_status(f"回放：{os.path.basename(path)}"
-                        f"（{player.total} 条操作 · 种子 {rf.seed}）", 6)
+        self.set_status(tr("ui.st.replay_started_fmt") % (
+                        os.path.basename(path), player.total, rf.seed), 6)
 
     def stop_replay(self) -> None:
         """退出回放，回到主菜单。"""
@@ -885,14 +887,14 @@ class App:
         self.state = None
         self._scan_scenarios()
         self._scan_campaigns()
-        self.set_status("已退出回放", 3)
+        self.set_status(tr("ui.st.replay_exit"), 3)
 
     def export_replay(self) -> None:
         """把本局导出为回放文件（想定 + 种子 + 命令流）。"""
         if self.state is None or self.cmd_log is None:
             return
         if not len(self.cmd_log):
-            self.set_status("本局还没有可回放的操作", 4)
+            self.set_status(tr("ui.st.replay_empty"), 4)
             return
         scenario = os.path.basename(getattr(self.state, "scenario_path", "") or "")
         if not scenario:
@@ -905,10 +907,11 @@ class App:
             path = os.path.join(d, f"{os.path.splitext(scenario)[0]}-{stamp}.bwrep")
             rf.save(path)
         except OSError as exc:
-            self.set_status(f"回放导出失败：{exc}", 5)
+            self.set_status(tr("ui.st.replay_export_failed_fmt") % (exc,), 5)
             return
-        self.set_status(f"回放已导出：{os.path.basename(path)}"
-                        f"（{len(self.cmd_log)} 条操作 · 种子 {self.state.seed}）", 6)
+        self.set_status(tr("ui.st.replay_exported_fmt") % (
+                        os.path.basename(path), len(self.cmd_log),
+                        self.state.seed), 6)
 
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
@@ -1005,7 +1008,7 @@ class App:
             T.draw_text(s, sc["name"], (r.x + 16, head_y + (20 if is_tut else 0)), 16,
                         T.TEXT, bold=True)
             T.draw_text(s, tr("ui.map_size_fmt") % (sc['size'][0], sc['size'][1], sc['tile_km'],) +
-                            f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
+                            tr("ui.map_turns_fmt") % (sc['turns'], sc['blue'], sc['red']),
                         (r.x + 16, head_y + 38), 11, T.TEXT_FAINT)
             # 元数据：难度标签 + 作者 + 事件数（同一行内横向排布）
             meta = sc.get("meta") or {}
@@ -1256,7 +1259,7 @@ class App:
             return
         try:
             save_game(self.state, slot_path(ROOT, i))
-            self.set_status(f"已保存至槽位 {i}（第 {self.state.turn_count} 回合）")
+            self.set_status(tr("ui.st.saved_slot_fmt") % (i, self.state.turn_count))
         except SaveError as exc:
             self.set_status(str(exc), 5)
         self._refresh_slots()
@@ -1288,7 +1291,7 @@ class App:
         self.mapview.state = st
         self.mapview.fit()
         self._select_first_unit()
-        self.set_status(f"已读取槽位 {i}：第 {st.turn_count} 回合")
+        self.set_status(tr("ui.st.loaded_slot_fmt") % (i, st.turn_count))
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()
@@ -1420,7 +1423,7 @@ class App:
         i = order.index(self.mapview.overlay) if self.mapview.overlay in order else 0
         self.mapview.overlay = order[(i + 1) % len(order)]
         names = {"none": "无覆盖", "sensors": "侦察覆盖", "threat": "敌方防空包线"}
-        self.set_status(f"叠加层：{names[self.mapview.overlay]}")
+        self.set_status(tr("ui.st.overlay_fmt") % (names[self.mapview.overlay],))
 
     def set_status(self, text: str, ttl: float = 3.0) -> None:
         self.status = text
@@ -1443,11 +1446,11 @@ class App:
             return
         path = rules.find_path(self.state, u, (gx, gy))
         if not path:
-            self.set_status("无法抵达该位置")
+            self.set_status(tr("ui.st.unreachable"))
             return
         cost = rules.path_cost(self.state, u, path)
         if cost > u.mp + 1e-6:
-            self.set_status(f"机动点不足：需要 {cost:.1f}，剩余 {u.mp:.1f}")
+            self.set_status(tr("ui.st.mp_short_fmt") % (f"{cost:.1f}", f"{u.mp:.1f}"))
             return
         if self.state.move_unit(u, path):
             self._record(CMD_MOVE, uid=u.uid, x=gx, y=gy)
@@ -1466,7 +1469,7 @@ class App:
                 return
             w = u.weapon_by_id(self.state.selected_weapon or "")
             if w is None:
-                self.set_status("本单位无可用武器")
+                self.set_status(tr("ui.st.no_weapon"))
                 return
             res = self.state.strike_facility(u, self.pending_facility, w)
             if res.ok:
@@ -1484,7 +1487,7 @@ class App:
             return
         w = u.weapon_by_id(self.state.selected_weapon or "")
         if w is None:
-            self.set_status("本单位无可用武器")
+            self.set_status(tr("ui.st.no_weapon"))
             return
         res = self.state.fire(u, t, w)
         self.set_status(res.message, 3.5)
@@ -1586,7 +1589,8 @@ class App:
             w = sel.weapon_by_id(st.selected_weapon or "")
             prof = rules.facility_strike_profile(st, sel, tile, w) if w else None
             if prof is None or not prof.ok:
-                self.set_status(f"无法打击该设施：{prof.reason if prof else '无可用武器'}")
+                self.set_status(tr("ui.st.facility_strike_failed_fmt") % (
+                    prof.reason if prof else tr("ui.st.no_weapon"),))
                 return
             if self.pending_facility == grid:
                 self.confirm_fire()
@@ -1595,14 +1599,15 @@ class App:
                 self.pending_facility = grid
                 self.tab = "unit"
                 self.set_status(
-                    f"选定设施 {tile.facility.label}({tile.x},{tile.y})｜{w.name} "
-                    f"Pk {prof.pk * 100:.0f}%｜再次点击或回车确认打击", 5)
+                    tr("ui.st.facility_selected_fmt") % (
+                        tile.facility.label, tile.x, tile.y, w.name,
+                        f"{prof.pk * 100:.0f}"), 5)
             return
 
         if u is not None and u.side is not self.side and sel is not None:
             lvl = st.known_level(self.side, u)
             if lvl.level < Detection.CLASSIFIED.level:
-                self.set_status("目标未识别，无法装订射击诸元")
+                self.set_status(tr("ui.st.target_unidentified"))
                 return
             if self.pending_target is u:
                 self.confirm_fire()
@@ -1614,10 +1619,11 @@ class App:
                 if w:
                     p = rules.shot_profile(st, sel, u, w)
                     if p.ok:
-                        self.set_status(f"选定目标 {u.name}｜{w.name} Pk {p.pk * 100:.0f}%"
-                                        f"｜再次点击或回车确认开火", 5)
+                        self.set_status(tr("ui.st.target_selected_fmt") % (
+                                        u.name, w.name,
+                                        f"{p.pk * 100:.0f}"), 5)
                     else:
-                        self.set_status(f"无法射击：{p.reason}", 4)
+                        self.set_status(tr("ui.st.cannot_fire_fmt") % (p.reason,), 4)
             return
 
         if sel is not None:
@@ -1821,7 +1827,7 @@ class App:
                 self.prepare_mode = False
                 self.command_mode = False
                 self.command_issuer = None
-                self.set_status("已取消当前操作")
+                self.set_status(tr("ui.st.cancelled"))
             else:
                 self.select_unit(None)
         elif action == "next_unit":
@@ -2022,11 +2028,11 @@ class App:
                 if rect.collidepoint(pos):
                     u = st.selected_unit()
                     if u is None:
-                        self.set_status("先在「单位详情」中选择一个具备反卫星能力的单位", 4)
+                        self.set_status(tr("ui.st.asat_pick_unit"), 4)
                         return
                     w = next((x for x in u.usable_weapons() if x.asat), None)
                     if w is None:
-                        self.set_status(f"{u.name} 不具备反卫星能力", 4)
+                        self.set_status(tr("ui.st.asat_no_capability_fmt") % (u.name,), 4)
                         return
                     st.selected_weapon = w.id
                     self.pending_target = sat
@@ -2034,8 +2040,9 @@ class App:
                     self.tab = "unit"
                     prof = rules.shot_profile(st, u, sat, w)
                     self.set_status(
-                        f"反卫星交战：{sat.name}｜{w.name} Pk {prof.pk * 100:.0f}%"
-                        f"｜回车确认发射", 5)
+                        tr("ui.st.asat_engage_fmt") % (
+                            sat.name, w.name,
+                            f"{prof.pk * 100:.0f}"), 5)
                     return
         # 侧栏行动按钮（雷达 / 干扰 / 筑工事 / 诱饵 / 剖面 / 烟幕 / 待机）
         for b in self.action_buttons:
@@ -2303,7 +2310,7 @@ class App:
                 ts = time.strftime("%m-%d %H:%M", time.localtime(info.get("mtime", 0)))
                 sc_name = os.path.splitext(info.get("scenario", ""))[0]
                 T.draw_text(s, tr("ui.turn_line_fmt") % (info.get('turn', 0), sc_name,) +
-                                f"{'蓝方' if info.get('player') == 'BLUE' else '红方'} · {ts}",
+                                f"{tr('ui.side_blue') if info.get('player') == 'BLUE' else tr('ui.side_red')} · {ts}",
                             (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
             else:
                 T.draw_text(s, tr("ui.slot_empty"), (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
@@ -2398,7 +2405,8 @@ class App:
                              pygame.Rect(bar_r.x, bar_r.y, bw, bar_r.height), border_radius=3)
         T.draw_text(s, str(st.vp[Side.RED]), (x + 146, 20), 15,
                     T.side_color(Side.RED), bold=True, mono=True)
-        T.draw_text(s, "红", (x + 146 + T.text_width(str(st.vp[Side.RED]), 15, mono=True) + 4, 25),
+        T.draw_text(s, tr("ui.side_red_short"),
+                    (x + 146 + T.text_width(str(st.vp[Side.RED]), 15, mono=True) + 4, 25),
                     11, T.side_color(Side.RED))
         T.vline(s, 512, 10, TOP_H - 10, T.BORDER)
 
@@ -2418,7 +2426,8 @@ class App:
         for i, side in enumerate((Side.BLUE, Side.RED)):
             yy = 24 + i * 12
             v = st.gps[side]
-            T.draw_text(s, tr("ui.side_blue_short") if side is Side.BLUE else "红", (x, yy - 2), 11, T.side_color(side))
+            T.draw_text(s, tr("ui.side_blue_short") if side is Side.BLUE
+                    else tr("ui.side_red_short"), (x, yy - 2), 11, T.side_color(side))
             T.bar(s, pygame.Rect(x + 14, yy, 50, 5), v, T.hp_color(v))
             T.draw_text(s, f"{v * 100:.0f}%", (x + 70, yy - 4), 11, T.TEXT_DIM, mono=True)
         T.vline(s, 742, 10, TOP_H - 10, T.BORDER)
@@ -2696,9 +2705,10 @@ class App:
             fm = u.fire_mission
             if fm is not None and fm.active:
                 acts.append((f"射界 {fm.x},{fm.y}", lambda: self.set_status(
-                    f"射界 ({fm.x},{fm.y})｜"
-                    + ("已准备，射击命中与毁伤显著提高" if fm.prepared
-                       else f"准备中（剩余 {fm.turns_left} 回合）")), True))
+                    tr("ui.st.fa_state_fmt") % (
+                        fm.x, fm.y,
+                        tr("ui.st.fa_prepared") if fm.prepared
+                        else tr("ui.st.fa_preparing_fmt") % (fm.turns_left,))), True))
             else:
                 acts.append(("预先射击", lambda: self.begin_prepare_fire(u), False))
         if u.template.command_radius > 0 and not u.is_decoy and u.side is self.side:
@@ -2725,21 +2735,21 @@ class App:
         if st.build_fort(u):
             tile = st.map.at(u.x, u.y)
             self._record(CMD_FORTIFY, uid=u.uid)
-            self.set_status(f"{u.name} 构筑工事至 Lv{tile.fort}（消耗 1.0 机动点）", 4)
+            self.set_status(tr("ui.st.fort_built_fmt") % (u.name, tile.fort), 4)
             self._tutorial_note("fortify")
             return
         # 给出具体原因，便于玩家判断
         tile = st.map.at(u.x, u.y)
         if not u.template.can_fortify:
-            self.set_status(f"{u.name} 不具备构筑工事能力（需步兵或工兵）", 3)
+            self.set_status(tr("ui.st.fort_no_capability_fmt") % (u.name,), 3)
         elif u.mp < 1.0:
-            self.set_status(f"机动点不足（{u.mp:.1f} < 1.0），无法构筑工事", 3)
+            self.set_status(tr("ui.st.fort_mp_short_fmt") % (f"{u.mp:.1f}",), 3)
         elif tile is None or tile.terrain.value == "water":
-            self.set_status("水域无法构筑野战工事", 3)
+            self.set_status(tr("ui.st.fort_water"), 3)
         elif tile.fort >= 3 and tile.fort_owner is u.side:
-            self.set_status(f"该处工事已达最高等级（Lv3）", 3)
+            self.set_status(tr("ui.st.fort_max"), 3)
         else:
-            self.set_status("无法在此构筑工事", 3)
+            self.set_status(tr("ui.st.fort_invalid"), 3)
 
     def cycle_mission(self, u: Unit) -> None:
         order = ("strike", "cap", "ferry")
@@ -2748,9 +2758,11 @@ class App:
             self._record(CMD_PROFILE, uid=u.uid, mission=nxt)
             self._tutorial_note("profile")
             label = {"strike": "打击", "cap": "制空巡逻", "ferry": "转场"}[nxt]
-            self.set_status(f"{u.name} 转入{label}剖面"
-                            + ("（雷达增益 / 油耗 ×1.3）" if nxt == "cap" else
-                               "（油耗 ×0.5 · 机动 +25% · 禁止射击）" if nxt == "ferry" else ""), 4)
+            self.set_status(
+                tr("ui.st.profile_changed_fmt") % (
+                    u.name, label,
+                    tr("ui.st.profile_cap_note") if nxt == "cap"
+                    else tr("ui.st.profile_ferry_note") if nxt == "ferry" else ""), 4)
 
     def begin_smoke(self, u: Unit) -> None:
         """进入烟幕投放模式：点击射程内的地块即施放烟幕。"""
@@ -2760,7 +2772,7 @@ class App:
         self.smoke_mode = True
         self.smoke_weapon = next((w for w in u2.usable_weapons()
                                   if w.kind.value in ("artillery", "mlrs")), None)
-        self.set_status("烟幕：点击射程内目标格（Esc 取消）", 8)
+        self.set_status(tr("ui.st.smoke_pick"), 8)
 
     def begin_prepare_fire(self, u: Unit) -> None:
         """进入火力准备模式：点击射程内且有情报的格子登记射界。"""
@@ -2768,19 +2780,18 @@ class App:
         if u2 is None:
             return
         self.prepare_mode = True
-        self.set_status("预先射击：点击射程内有情报的格登记射界（Esc 取消）", 8)
+        self.set_status(tr("ui.st.fa_pick"), 8)
 
     # -- 指挥指令 ---------------------------------------------------------
     def begin_command(self, u: Unit) -> None:
         """进入指挥模式：选择指令类型后再选目标。"""
         subs = self.state.subordinates_of(u)
         if not subs:
-            self.set_status(f"{u.name} 指挥半径内没有下级单位", 3)
+            self.set_status(tr("ui.st.command_no_sub_fmt") % (u.name,), 3)
             return
         self.command_mode = True
         self.command_issuer = u
-        self.set_status("指挥：点击敌方目标下达「集中火力」，"
-                        "或按 Esc 取消（更多指令见下方说明）", 8)
+        self.set_status(tr("ui.st.command_pick"), 8)
 
     def _place_command(self, pos: tuple[int, int]) -> None:
         """在指定位置下达集中火力指令。"""
@@ -2792,7 +2803,7 @@ class App:
         st = self.state
         tgt = st.unit_at(*pos)
         if tgt is None:
-            self.set_status("该格没有单位，无法下达集中火力指令", 3)
+            self.set_status(tr("ui.st.command_no_unit"), 3)
             return
         ok, msg = st.issue_order(u, "focus_fire", target=tgt)
         if ok:
@@ -2801,7 +2812,7 @@ class App:
             self._tutorial_note("order")
             self.set_status(msg, 4)
         else:
-            self.set_status(f"无法下达指令：{msg}", 4)
+            self.set_status(tr("ui.st.command_failed_fmt") % (msg,), 4)
 
     def issue_hold_order(self) -> None:
         """下达固守指令：下级单位不再前出。"""
@@ -2809,7 +2820,7 @@ class App:
         if u is None:
             return
         ok, msg = self.state.issue_order(u, "hold")
-        self.set_status(msg if ok else f"无法下达指令：{msg}", 4)
+        self.set_status(msg if ok else tr("ui.st.command_failed_fmt") % (msg,), 4)
 
     def issue_priority_order(self, cls: str) -> None:
         """下达优先目标指令：下级优先打击某类目标。"""
@@ -2817,7 +2828,7 @@ class App:
         if u is None:
             return
         ok, msg = self.state.issue_order(u, "priority", priority_class=cls)
-        self.set_status(msg if ok else f"无法下达指令：{msg}", 4)
+        self.set_status(msg if ok else tr("ui.st.command_failed_fmt") % (msg,), 4)
 
     def _place_prepare_fire(self, pos: tuple[int, int]) -> None:
         u = self.state.selected_unit()
@@ -2828,10 +2839,9 @@ class App:
         if ok:
             self._record(CMD_PREPARE, uid=u.uid, x=pos[0], y=pos[1])
             self._tutorial_note("prepare")
-            self.set_status(f"射界已登记（{pos[0]},{pos[1]}）——"
-                            f"准备完成后对该区域射击命中与毁伤显著提高", 5)
+            self.set_status(tr("ui.st.fa_registered_fmt") % (pos[0], pos[1]), 5)
         else:
-            self.set_status(f"无法登记射界：{msg}", 4)
+            self.set_status(tr("ui.st.fa_failed_fmt") % (msg,), 4)
 
     def _place_smoke(self, pos: tuple[int, int]) -> None:
         u = self.state.selected_unit()
@@ -2842,9 +2852,9 @@ class App:
             self._record(CMD_SMOKE, uid=u.uid, weapon=self.smoke_weapon.id,
                          x=pos[0], y=pos[1])
             self._tutorial_note("smoke")
-            self.set_status("烟幕已施放：该格 3 回合内遮蔽光电探测与直瞄火力", 4)
+            self.set_status(tr("ui.st.smoke_done"), 4)
         else:
-            self.set_status("无法在该位置施放烟幕（需在火炮射程内且高于最小射程）", 3)
+            self.set_status(tr("ui.st.smoke_invalid"), 3)
 
     def begin_decoy(self, u: Unit, kind: str = "radar") -> None:
         """进入诱饵投放模式：下一次点击地图即在该格生成假目标。"""
@@ -2853,7 +2863,7 @@ class App:
         self.decoy_mode = True
         self.decoy_kind = kind
         label = rules.DECOY_LABELS.get(kind, kind)
-        self.set_status(f"投放{label}：选择位置（Esc 取消）", 8)
+        self.set_status(tr("ui.st.decoy_pick_fmt") % (label,), 8)
 
     def _place_decoy(self, pos: tuple[int, int]) -> None:
         u = self.state.selected_unit()
@@ -2864,14 +2874,14 @@ class App:
             self._record(CMD_DECOY, uid=u.uid, kind=getattr(self, "decoy_kind", "radar"),
                          x=pos[0], y=pos[1])
             self._tutorial_note("decoy")
-            self.set_status("诱饵已投放：敌方态势图上出现一个假目标", 4)
+            self.set_status(tr("ui.st.decoy_done"), 4)
         else:
-            self.set_status("该位置无法投放诱饵", 3)
+            self.set_status(tr("ui.st.decoy_invalid"), 3)
 
     def _standby(self, u: Unit) -> None:
         """放弃本单位剩余机动点。"""
         u.mp = 0.0
-        self.set_status(f"{u.name} 转入待机")
+        self.set_status(tr("ui.st.standby_fmt") % (u.name,))
         self._record(CMD_HOLD, uid=u.uid)
         self.select_unit(None)
 
@@ -2960,8 +2970,9 @@ class App:
         T.panel(s, r, T.button_fill(T.RED), T.mix(T.BORDER, T.RED, 0.55), radius=4)
         T.draw_text(s, tr("ui.engage_target"), (r.x + 10, r.y + 8), 11, T.RED, bold=True)
         T.draw_text(s, t.name, (r.x + 10, r.y + 24), 13, T.TEXT, bold=True)
-        T.draw_text(s, f"{t.template.unit_class.label} · {lvl.label} · "
-                        f"距离 {prof.distance if prof else rules.dist_units(u, t):.1f} 格",
+        T.draw_text(s, tr("ui.st.inspect_distance_fmt") % (
+                        t.template.unit_class.label, lvl.label,
+                        f"{prof.distance if prof else rules.dist_units(u, t):.1f}"),
                     (r.x + 10, r.y + 42), 11, T.TEXT_FAINT)
         if lvl is Detection.TRACKED:
             T.draw_text(s, f"HP {t.hp:.0f}/{t.template.hp:.0f}", (r.right - 10, r.y + 24), 11,
@@ -2976,7 +2987,7 @@ class App:
                             pk_col, anchor="topright", bold=True, mono=True)
                 yy += 16
                 parts = [f"{k}×{v:.2f}" for k, v in prof.factors.items() if v < 0.999]
-                T.draw_text(s, " ".join(parts)[:52] or "无修正", (r.x + 10, yy), 11, T.TEXT_FAINT)
+                T.draw_text(s, " ".join(parts)[:52] or tr("ui.st.no_modifiers"), (r.x + 10, yy), 11, T.TEXT_FAINT)
                 yy += 14
                 ic = " · 拦截风险 %.0f%%" % (prof.intercept_pk * 100) if prof.intercept_pk > 0.01 else ""
                 T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
@@ -3081,7 +3092,7 @@ class App:
         T.draw_text(s, f"{tile.facility.label} ({tile.x},{tile.y})", (r.x + 10, r.y + 24), 13,
                     T.TEXT, bold=True)
         T.draw_text(s, tr("ui.structure_fmt") % (tile.facility_hp_ratio * 100,) +
-                        f"{'运作中' if tile.operational else '已失能'}",
+                        f"{tr('ui.st.facility_operational') if tile.operational else tr('ui.st.facility_disabled')}",
                     (r.x + 10, r.y + 42), 11,
                     T.hp_color(tile.facility_hp_ratio))
         T.bar(s, pygame.Rect(r.x + 10, r.y + 56, r.width - 20, 5),
@@ -3095,7 +3106,7 @@ class App:
                         pk_col, anchor="topright", bold=True, mono=True)
             yy += 16
             parts = [f"{k}×{v:.2f}" for k, v in prof.factors.items() if v < 0.999]
-            T.draw_text(s, " ".join(parts)[:52] or "无修正", (r.x + 10, yy), 11, T.TEXT_FAINT)
+            T.draw_text(s, " ".join(parts)[:52] or tr("ui.st.no_modifiers"), (r.x + 10, yy), 11, T.TEXT_FAINT)
             yy += 14
             ic = f" · 拦截风险 {prof.intercept_pk * 100:.0f}%" if prof.intercept_pk > 0.01 else ""
             T.draw_text(s, tr("ui.structure_damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
@@ -3209,7 +3220,7 @@ class App:
             asat = st.asat_capable(side)
             T.draw_text(s, side.label, (body.x, y), 11, T.side_color(side), bold=True)
             T.draw_text(s, tr("ui.gps_jammer_fmt") % (st.gps[side] * 100, len(ew),) +
-                            f"反卫星 {len(asat)}", (body.x + 44, y), 11, T.TEXT_DIM)
+                            tr("ui.st.asat_count_fmt") % (len(asat),), (body.x + 44, y), 11, T.TEXT_DIM)
             y += 16
             if not alive:
                 T.draw_text(s, tr("ui.no_sat_asset"), (body.x + 8, y), 11, T.RED)
@@ -3431,7 +3442,7 @@ class App:
         if prog is not None and self.campaign is not None:
             camp = self.campaign
             T.draw_text(s, tr("ui.campaign_step_fmt") % (camp.name, min(prog.step_index, camp.total_steps),) +
-                           f"/{camp.total_steps} 关",
+                           tr("ui.st.campaign_levels_suffix_fmt") % (camp.total_steps,),
                         (r.centerx, y + 4), 12, T.PURPLE, anchor="center")
             T.draw_text(s, tr("ui.vp_total_fmt") % (prog.blue_vp, prog.red_vp,),
                         (r.centerx, y + 24), 12, T.TEXT, anchor="center")

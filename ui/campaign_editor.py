@@ -563,7 +563,7 @@ class CampaignEditor:
             hit = br.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, T.PANEL_HI if hit else T.PANEL, br, border_radius=2)
             T.draw_text(s, {CARRYOVER_ALL: tr("ui.camp_editor_all"), CARRYOVER_VETERANS: tr("ui.camp_editor_veterans"),
-                            CARRYOVER_NONE: "无"}[pol],
+                            CARRYOVER_NONE: tr("common.none")}[pol],
                         br.center, 10, T.TEXT_DIM if hit else T.TEXT_FAINT, anchor="center")
             self._row_buttons.append((br, "carry", pol))
 

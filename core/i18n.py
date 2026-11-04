@@ -309,6 +309,10 @@ _tables: dict[str, dict[str, str]] = {}
 _loaded_dirs: list[str] = []
 #: 安装目录语言包是否已懒加载过（见 _ensure_default_packs）
 _default_packs_loaded = False
+#: 懒加载连续失败次数（见 _ensure_default_packs）
+_default_pack_failures = 0
+#: 连续失败到这么多次就放弃重试，避免每次 tr() 都吃一次异常
+_DEFAULT_PACK_MAX_FAILURES = 3
 
 
 def _builtin_table(lang: str) -> dict[str, str]:
@@ -382,15 +386,22 @@ def _ensure_default_packs() -> None:
     的优先级。目录不存在或不可读时静默跳过——内置词条足以兜底，
     查表不该因为一个可选的资源目录而崩。
     """
-    global _default_packs_loaded
+    global _default_packs_loaded, _default_pack_failures
     if _default_packs_loaded:
         return
-    _default_packs_loaded = True
     try:
         from .paths import lang_dir
         load_language_dir(lang_dir())
     except Exception:
-        pass
+        # **失败不置「已加载」**：安装目录可能只是一时读不到（网络盘掉线、
+        # 权限刚改、路径正在被安装程序替换），下一次查表该有机会重试。
+        # 但也不能无限重试——每次都抛一次异常会让 tr() 变成隐性性能坑，
+        # 所以连续失败到上限就认命。
+        _default_pack_failures += 1
+        if _default_pack_failures >= _DEFAULT_PACK_MAX_FAILURES:
+            _default_packs_loaded = True
+        return
+    _default_packs_loaded = True
 
 
 def available_languages() -> list[str]:

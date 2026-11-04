@@ -1199,7 +1199,7 @@ class Editor:
                     (r.x + 10, r.bottom - 20), 11, T.TEXT_FAINT)
         if self.sel_cells:
             T.draw_text(s, tr("ui.editor_selected_fmt") % (self.selection_size(),) +
-                        f"（右键清除）",
+                        tr("ui.editor_right_click_clear"),
                         (r.x + 10, r.bottom - 36), 11, T.CYAN)
 
     # -- 左侧/右侧面板 ----------------------------------------------------

@@ -44,7 +44,61 @@ def check(cond: bool, msg: str) -> None:
         FAILS.append(msg)
 
 
+def test_lazy_load_retries() -> None:
+    """懒加载失败后要能重试。
+
+    这里守的是一条容易被写成「一次性开关」的边界：把「已加载」标志
+    在 try 之前置真，一次瞬时失败（安装目录在换盘、权限刚改）就会让
+    整个进程剩余时间里都拿不到语言包，界面全变裸键名。
+    """
+    print("懒加载失败重试：")
+    calls = {"n": 0}
+    real = i18n.load_language_dir
+
+    def flaky(directory: str) -> int:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("模拟安装目录一时不可读")
+        return real(directory)
+
+    i18n.load_language_dir = flaky          # type: ignore[assignment]
+    i18n._default_packs_loaded = False      # noqa: SLF001 - 自检需要构造未加载状态
+    i18n._default_pack_failures = 0         # noqa: SLF001
+    try:
+        i18n.set_language("ja")
+        first = i18n.tr("ui.camp_editor_levels_count_fmt")
+        check(first == "ui.camp_editor_levels_count_fmt",
+              "首次加载失败不崩（回退为键名）")
+        second = i18n.tr("ui.camp_editor_levels_count_fmt")
+        check(second != "ui.camp_editor_levels_count_fmt",
+              "第二次查表重试成功装到语言包")
+        check(calls["n"] == 2, f"确实只重试了一次（调用 {calls['n']} 次）")
+
+        # 连续失败到上限后不再重试，避免每次查表都吃一次异常
+        i18n._default_packs_loaded = False  # noqa: SLF001
+        i18n._default_pack_failures = 0     # noqa: SLF001
+
+        def always_fail(directory: str) -> int:
+            calls["n"] += 1
+            raise OSError("一直读不到")
+
+        i18n.load_language_dir = always_fail  # type: ignore[assignment]
+        before = calls["n"]
+        for _ in range(6):
+            i18n.tr("menu.start")
+        check(calls["n"] - before == i18n._DEFAULT_PACK_MAX_FAILURES,
+              f"失败 {i18n._DEFAULT_PACK_MAX_FAILURES} 次后停止重试"
+              f"（实际 {calls['n'] - before} 次）")
+    finally:
+        i18n.load_language_dir = real       # type: ignore[assignment]
+        i18n._default_packs_loaded = False  # noqa: SLF001
+        i18n._default_pack_failures = 0     # noqa: SLF001
+
+
 def main() -> int:
+    # -- 懒加载的失败与重试（必须在任何 tr() 之前）--------------------------
+    test_lazy_load_retries()
+
     # -- 语言切换与显示名 -------------------------------------------------
     i18n.set_language("zh")
     check(i18n.tr("menu.start") == "开始作战", "中文：内置词条")

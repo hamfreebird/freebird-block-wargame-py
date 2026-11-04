@@ -289,6 +289,42 @@ def test_unknown_event() -> None:
           f"错误信息可读（{reg.errors[:1]}）")
 
 
+def test_entry_path_guard() -> None:
+    """manifest 的 entry 不能把加载器带到模组目录之外。"""
+    print("入口路径约束：")
+    base = os.path.join(_TEST_USER_DIR, "entry_guard", "pkg")
+    os.makedirs(os.path.join(base, "sub"), exist_ok=True)
+    write_mod(os.path.join(base, "sub"), "main.py", GOOD_MOD)
+
+    # resolve_entry 是纯函数，先把判定边界钉死
+    path, err = _mods.resolve_entry(base, "")
+    check(not err and path.endswith("main.py"), "空 entry 回退到 main.py")
+    path, err = _mods.resolve_entry(base, "sub/main.py")
+    check(not err and os.path.isfile(path), "子目录入口被接受")
+    for bad in ("../outside.py", "a/../../outside.py",
+                os.path.join(base, "outside.py")):
+        _p, err = _mods.resolve_entry(base, bad)
+        check(bool(err), f"拒绝越界入口 '{bad}' → {err or '（未拒绝）'}")
+
+    # 端到端：越界入口的模组必须加载失败，且那个文件不能被执行
+    # 注意把 outside.py 放在**被扫描目录之外**，否则它会被当成单文件模组直接加载
+    marker = os.path.join(_TEST_USER_DIR, "ESCAPED.txt")
+    outside = os.path.join(_TEST_USER_DIR, "outside_escape.py")
+    with open(outside, "w", encoding="utf-8") as f:
+        f.write("open(r'%s', 'w').write('executed')\n" % marker.replace("\\", "\\\\"))
+    pkg = os.path.join(base, "evil")
+    os.makedirs(pkg, exist_ok=True)
+    with open(os.path.join(pkg, "mod.json"), "w", encoding="utf-8") as f:
+        f.write('{"id": "evil", "entry": "../../outside_escape.py"}')
+
+    reg = _mods.load_all([base])
+    check(not os.path.exists(marker), "越界入口的文件没有被执行")
+    check(not any(m.ok and m.mod_id == "evil" for m in reg.mods),
+          "越界入口的模组加载失败")
+    check(any("跳出模组目录" in e for e in reg.errors),
+          f"错误信息说清原因（{reg.errors[:1]}）")
+
+
 def test_example_mod() -> None:
     """官方示例模组可用。"""
     print("示例模组：")
@@ -314,6 +350,7 @@ def main() -> int:
     test_hooks_fire()
     test_error_isolation()
     test_unknown_event()
+    test_entry_path_guard()
     test_example_mod()
     print()
     if FAILED:
