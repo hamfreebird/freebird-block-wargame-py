@@ -965,6 +965,8 @@ class GameState:
                     tiles.append(t2)
         for t in tiles:
             t.smoke = 3
+        # 地块状态变了，渲染层的烟幕索引要跟着失效（它按回合号 + 世代号缓存）
+        self.map_epoch += 1
         self.add_fx("ping", pos, None, ttl=1.0, color=(200, 205, 215), text="烟幕")
         # 逐帧动画：烟幕逐团膨胀扩散
         for i, t in enumerate(tiles):

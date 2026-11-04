@@ -46,6 +46,8 @@ class MapView:
         self._weather_cache: dict[tuple, pygame.Surface] = {}
         self._tint_cache: dict[tuple, pygame.Surface] = {}
         self._smoke_cache: dict[tuple, pygame.Surface] = {}
+        self._smoke_key: tuple | None = None
+        self._smoke_list: list[Tile] = []
         self._fx_layer: pygame.Surface | None = None
         self._anim_layer: pygame.Surface | None = None
         self._ring_cache: dict[tuple, pygame.Surface] = {}
@@ -342,26 +344,31 @@ class MapView:
         逐帧画而不是烘进地形块——遮蔽团每回合都在动，
         浓淡也跟着剩余回合数走，玩家一眼能看出「这团烟快散了」。
         """
-        md = self.state.map
-        ts = self.tile
-        gx0 = max(0, int((-self.ox) // ts))
-        gy0 = max(0, int((-self.oy) // ts))
-        gx1 = min(md.width - 1, int((self.rect.width - self.ox) // ts) + 1)
-        gy1 = min(md.height - 1, int((self.rect.height - self.oy) // ts) + 1)
-        for y in range(gy0, gy1 + 1):
-            for x in range(gx0, gx1 + 1):
-                t = md.at(x, y)
-                if t is None or t.smoke <= 0:
-                    continue
-                # 剩余回合越多越浓：3 → 130，2 → 100，1 → 70
-                alpha = min(150, 40 + 30 * t.smoke)
-                key = (ts, alpha)
-                layer = self._smoke_cache.get(key)
-                if layer is None:
-                    layer = pygame.Surface((ts, ts), pygame.SRCALPHA)
-                    layer.fill((120, 120, 120, alpha))
-                    self._smoke_cache[key] = layer
-                surf.blit(layer, self.grid_to_rect(x, y).topleft)
+        for t in self._smoke_tiles():
+            # 剩余回合越多越浓：3 → 130，2 → 100，1 → 70
+            alpha = min(150, 40 + 30 * t.smoke)
+            key = (self.tile, alpha)
+            layer = self._smoke_cache.get(key)
+            if layer is None:
+                layer = pygame.Surface((self.tile, self.tile), pygame.SRCALPHA)
+                layer.fill((120, 120, 120, alpha))
+                self._smoke_cache[key] = layer
+            r = self.grid_to_rect(t.x, t.y)
+            if self.rect.colliderect(r):
+                surf.blit(layer, r.topleft)
+
+    def _smoke_tiles(self) -> list[Tile]:
+        """有烟幕的格子，按「回合号 + 地块世代」缓存。
+
+        烟幕每回合随风移动，不能并进 `_scan_tiles` 那种只随 map_epoch
+        失效的索引；但更不能每帧扫视口——大地图缩到最小格时视口有两万格，
+        而实际有烟的通常只有个位数。
+        """
+        key = (self.state.turn_count, self.state.map_epoch)
+        if getattr(self, "_smoke_key", None) != key:
+            self._smoke_key = key
+            self._smoke_list = [t for t in self.state.map.iter_tiles() if t.smoke > 0]
+        return self._smoke_list
 
     def draw(self, surf: pygame.Surface, hover: tuple[int, int] | None = None,
              reachable: dict | None = None, path: list | None = None,
