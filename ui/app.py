@@ -1064,11 +1064,11 @@ class App:
                 T.draw_text(s, line, (r.x + 16, yy), 11, T.TEXT_DIM)
             # 底部提示：选中态显示「已选中」，悬停但未选中显示「点击选择」
             if active:
-                hint, hint_col = "已选中", T.CYAN
+                hint, hint_col = tr("ui.menu.picked"), T.CYAN
             elif hovered:
-                hint, hint_col = "点击选择", T.mix(T.CYAN, T.TEXT_DIM, 0.4)
+                hint, hint_col = tr("ui.menu.click_pick"), T.mix(T.CYAN, T.TEXT_DIM, 0.4)
             else:
-                hint, hint_col = "点击选择", T.TEXT_FAINT
+                hint, hint_col = tr("ui.menu.click_pick"), T.TEXT_FAINT
             T.draw_text(s, hint, (r.x + 16, r.bottom - 20), 11, hint_col)
 
         # 滚动条：想定多于可视行数时才出现
@@ -1176,10 +1176,7 @@ class App:
             T.draw_text(s, tr("ui.first_run_hint"),
                         (60, y + 190), 12, T.GREEN)
 
-        tips = [
-            "数据可编辑：data/maps/*.json 定义地图与部署，data/units/armory.json 定义武器与兵种",
-            "左键选择/移动，右键下达机动指令，滚轮缩放，中键拖动平移，空格结束回合，F1 查看规则",
-        ]
+        tips = [tr("ui.menu.tip_data"), tr("ui.menu.tip_controls")]
         yy = self.h - 92
         for t in tips:
             T.draw_text(s, t, (60, yy), 12, T.TEXT_FAINT)
@@ -1227,7 +1224,8 @@ class App:
         self.tutorial_visible = self.tutorial is not None
         if self.tutorial_visible and self.tutorial.current is not None:
             self.state.log_message(
-                None, f"教学开始：{self.tutorial.current.title}", "tutorial")
+                None, tr("ui.log.tutorial_start_fmt") % (self.tutorial.current.title,),
+                "tutorial")
         self._layout_game()
         self._select_first_unit()
         # 作战简报：开局前先给玩家看敌情与胜利条件
@@ -1453,7 +1451,8 @@ class App:
         order = ["none", "sensors", "threat"]
         i = order.index(self.mapview.overlay) if self.mapview.overlay in order else 0
         self.mapview.overlay = order[(i + 1) % len(order)]
-        names = {"none": "无覆盖", "sensors": "侦察覆盖", "threat": "敌方防空包线"}
+        names = {"none": tr("ui.hud.overlay_none"), "sensors": tr("ui.hud.overlay_sensors"),
+                 "threat": tr("ui.hud.overlay_threat")}
         self.set_status(tr("ui.st.overlay_fmt") % (names[self.mapview.overlay],))
 
     def set_status(self, text: str, ttl: float = 3.0) -> None:
@@ -2275,10 +2274,12 @@ class App:
                     T.FS_SMALL, T.TEXT_DIM, mono=True)
         T.draw_text(s, p.current_label(), (r.x + 150, r.y + 8), T.FS_SMALL, T.TEXT)
         # 右侧：播放状态与倍速
-        state_txt = "已播完" if p.finished else ("暂停" if p.paused else "播放中")
+        state_txt = (tr("ui.replay.finished") if p.finished
+                     else tr("ui.replay.paused") if p.paused
+                     else tr("ui.replay.playing"))
         T.draw_text(s, f"{state_txt}  ×{p.speed:.1f}", (r.right - 16, r.y + 8),
                     T.FS_SMALL, T.CYAN, anchor="topright")
-        hint = "空格 暂停 · ←→ 调速 · End 快进 · Esc 退出"
+        hint = tr("ui.replay.hint")
         T.draw_text(s, hint, (r.right - 16, r.y + 28), T.FS_TINY, T.TEXT_FAINT,
                     anchor="topright")
 
@@ -3104,30 +3105,35 @@ class App:
         out: list[tuple[str, str, tuple[int, int, int]]] = []
         if threat.intercept_pk > 0.01:
             col = T.RED if threat.intercept_pk > 0.35 else T.AMBER
-            out.append(("拦截", f"{threat.intercept_pk * 100:.0f}%　"
-                                f"{len(threat.interceptors)} 个防空单元", col))
+            out.append((tr("ui.threat.intercept"),
+                        tr("ui.threat.units_fmt") % (f"{threat.intercept_pk * 100:.0f}",
+                                                     len(threat.interceptors)), col))
             for name in threat.interceptors[:2]:
                 out.append(("　└", name[:30], T.TEXT_FAINT))
         else:
-            out.append(("拦截", "无敌方防空覆盖", T.GREEN))
+            out.append((tr("ui.threat.intercept"), tr("ui.threat.no_cover"), T.GREEN))
 
         # 防空网分工：谁负责哪一段防区
         if threat.adn_roles:
-            roles = "、".join(sorted({r for _, r, _ in threat.adn_roles}))
-            out.append(("防空网", f"{roles}｜余 {threat.adn_channels} 通道", T.BLUE))
+            roles = tr("env.join").join(sorted({r for _, r, _ in threat.adn_roles}))
+            out.append((tr("ui.threat.adn"),
+                        tr("ui.threat.adn_fmt") % (roles, threat.adn_channels), T.BLUE))
         if threat.reply_units:
             col = T.RED if threat.enemy_fire_control else T.AMBER
-            out.append(("反击", f"{len(threat.reply_units)} 个敌方单元可打你"
-                                f"（最高 Pk {threat.reply_pk * 100:.0f}%）", col))
+            out.append((tr("ui.threat.reply"),
+                        tr("ui.threat.reply_fmt") % (len(threat.reply_units),
+                                                     f"{threat.reply_pk * 100:.0f}"), col))
             for name in threat.reply_weapons[:1]:
                 out.append(("　└", name[:30], T.TEXT_FAINT))
         else:
-            out.append(("反击", "无可威胁到你的敌方火力", T.GREEN))
+            out.append((tr("ui.threat.reply"), tr("ui.threat.no_reply"), T.GREEN))
 
-        fc = "已跟踪到我方" if threat.enemy_fire_control else "未跟踪到我方"
-        out.append(("敌方火控", fc, T.RED if threat.enemy_fire_control else T.TEXT_DIM))
+        fc = (tr("ui.threat.fc_tracked") if threat.enemy_fire_control
+              else tr("ui.threat.fc_untracked"))
+        out.append((tr("ui.threat.fc"), fc,
+                    T.RED if threat.enemy_fire_control else T.TEXT_DIM))
         for b in threat.blockers[:2]:
-            out.append(("阻碍", b[:32], T.AMBER))
+            out.append((tr("ui.threat.block"), b[:32], T.AMBER))
         return out
 
     def _draw_counter_threat(self, s, panel: pygame.Rect, threat, u: Unit, t: Unit,
@@ -3203,18 +3209,25 @@ class App:
         return r.bottom + 8
 
     def _draw_unit_notes(self, s, body, u: Unit, y: int) -> None:
-        sen = "、".join(f"{sc.kind.label} {sc.range_max:.1f}" for sc in u.template.sensors) or "无"
-        rows = [("传感器", sen)]
+        sen = tr("env.join").join(
+            f"{sc.kind.label} {sc.range_max:.1f}" for sc in u.template.sensors) or tr("common.none")
+        rows = [(tr("ui.note.sensors"), sen)]
         if u.template.stealth > 0:
-            rows.append(("隐身系数", f"{u.template.stealth * 100:.0f}%"))
+            rows.append((tr("ui.note.stealth"), f"{u.template.stealth * 100:.0f}%"))
         if u.template.armor > 0:
-            rows.append(("装甲防护", f"{u.template.armor * 100:.0f}%"))
+            rows.append((tr("ui.note.armor"), f"{u.template.armor * 100:.0f}%"))
         if u.template.interceptors > 0:
-            rows.append(("拦截通道", f"{u.template.interceptors} 枚/回合 · {u.template.intercept_pk * 100:.0f}%"))
+            rows.append((tr("ui.note.intercept"),
+                         tr("ui.note.intercept_fmt") % (
+                             u.template.interceptors,
+                             f"{u.template.intercept_pk * 100:.0f}")))
         if u.template.jam_radius > 0:
-            rows.append(("干扰范围", f"{u.template.jam_radius:.0f} 格 · 强度 {u.template.jam_strength * 100:.0f}%"))
+            rows.append((tr("ui.note.jam"),
+                         tr("ui.note.jam_fmt") % (
+                             f"{u.template.jam_radius:.0f}",
+                             f"{u.template.jam_strength * 100:.0f}")))
         if u.template.amphibious:
-            rows.append(("部署能力", "两栖投送"))
+            rows.append((tr("ui.note.deploy"), tr("ui.note.amphib")))
         notes = T.wrap_text(u.template.notes, 10, body.width - 20)[:3] if u.template.notes else []
         h = 26 + len(rows) * 15 + (len(notes) * 13 + 6 if notes else 0) + 10
         h = min(h, body.bottom - y)
@@ -3250,7 +3263,7 @@ class App:
             T.draw_text(s, f"{t.name}", (r.x + 10, r.y + 5), 12, T.TEXT)
             T.draw_text(s, f"({t.x},{t.y})", (r.x + 10 + T.text_width(t.name, 12) + 6, r.y + 7),
                         11, T.TEXT_FAINT, mono=True)
-            owner_txt = own.label if own is not Side.NEUTRAL else "争夺中"
+            owner_txt = own.label if own is not Side.NEUTRAL else tr("ui.sit.contested")
             T.draw_text(s, tr("ui.objective_value_fmt") % (owner_txt, t.value,), (r.right, r.y + 5), 11,
                         col, anchor="topright")
             y += 27
