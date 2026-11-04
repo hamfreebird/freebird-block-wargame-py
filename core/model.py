@@ -168,7 +168,9 @@ class Tile:
     facility_max_hp: float = 100.0
     fort: int = 0                    # 野战工事等级 0-3（堑壕/掩体/雷场）
     fort_owner: Side = Side.NEUTRAL  # 工事归属方
-    fort_progress: int = 0           # 修复进度（每 2 点恢复 1 级）
+    fort_progress: int = 0           # 驻守计时（无人维护时累计到 3 掉一级）
+    fort_build: int = 0              # 当前等级已投入的工时，攒够才涨级（v3.1）
+    fort_rubble: bool = False        # 被打塌后的废墟：在原地重建要多花工时
 
     @property
     def is_water(self) -> bool:
@@ -409,7 +411,7 @@ class Missile:
     eta: int                          # 剩余飞行回合
     salvo: int = 1
     intercepted: bool = False
-    midcourse_done: bool = False     # 是否已完成中段反导窗口
+    midcourse_windows: int = 0        # 已用掉的中段交战窗口数（v3.1：可多次）
     label: str = ""
 
     @property

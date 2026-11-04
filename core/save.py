@@ -99,6 +99,8 @@ def _tile_dict(t) -> dict[str, Any]:
         "fort": t.fort,
         "fort_owner": t.fort_owner.value,
         "fort_progress": t.fort_progress,
+        "fort_build": t.fort_build,
+        "fort_rubble": t.fort_rubble,
     }
 
 
@@ -112,7 +114,7 @@ def _missile_dict(m: Missile) -> dict[str, Any]:
         "target_pos": list(m.target_pos),
         "eta": m.eta,
         "salvo": m.salvo,
-        "midcourse_done": m.midcourse_done,
+        "midcourse_windows": m.midcourse_windows,
         "label": m.label,
     }
 
@@ -141,7 +143,7 @@ def game_to_dict(state: GameState) -> dict[str, Any]:
         "tiles": [_tile_dict(t) for t in state.map.iter_tiles()
                   if t.owner is not Side.NEUTRAL or t.smoke or t.facility is not Facility.NONE
                   or t.facility_hp < t.facility_max_hp or t.objective or t.fort > 0
-                  or t.fort_owner is not Side.NEUTRAL],
+                  or t.fort_owner is not Side.NEUTRAL or t.fort_build > 0 or t.fort_rubble],
         "missiles": [_missile_dict(m) for m in state.missiles],
         "events": [{"turn": e.turn, "type": e.type, "fired": e.fired}
                    for e in getattr(state, "events", [])],
@@ -324,6 +326,9 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
         t.fort = max(0, min(3, int(d.get("fort", t.fort))))
         t.fort_owner = Side(d.get("fort_owner", t.fort_owner.value))
         t.fort_progress = int(d.get("fort_progress", 0))
+        # v3.1 新增：缺失取默认，v6 旧档照常读（工时从 0 起算，废墟标记为假）
+        t.fort_build = max(0, int(d.get("fort_build", 0)))
+        t.fort_rubble = bool(d.get("fort_rubble", False))
 
     # 目标点归属同步
     for o in state.map.objectives:
@@ -350,7 +355,7 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
             origin=tuple(d.get("origin", (attacker.x, attacker.y))),
             target_pos=tuple(d.get("target_pos", (attacker.x, attacker.y))),
             eta=int(d.get("eta", 1)), salvo=int(d.get("salvo", 1)),
-            midcourse_done=bool(d.get("midcourse_done", False)),
+            midcourse_windows=int(d.get("midcourse_windows", 0)),
             label=d.get("label", w.name),
         ))
     state.missiles = missiles

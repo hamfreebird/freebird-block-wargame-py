@@ -658,6 +658,35 @@ def bar(surface: pygame.Surface, rect: pygame.Rect, ratio: float,
                          border_radius=radius)
 
 
+def draw_wind_icon(surface: pygame.Surface, center: tuple[int, int],
+                   vec: tuple[int, int], speed: int, color=None,
+                   length: int = 7) -> None:
+    """画风向箭头：箭头指向烟幕**漂移**的方向。
+
+    顶栏环境块只有 128 px 宽、挤着三行字，「西北风 2 级」这种句子
+    在任何语言里都塞不进去（德语光是天候名就要 40 px）。
+    方向这件事看图比读字快，所以只画箭头 + 风力数字；
+    文字版仍留在战报里，需要准确描述的地方不缺。
+    """
+    t = _current
+    col = color if color is not None else (t.text_dim if speed <= 1 else t.cyan)
+    cx, cy = int(center[0]), int(center[1])
+    vx, vy = vec
+    if speed <= 0 or (vx == 0 and vy == 0):
+        # 静风：空心小圈，表示「烟糊在原地不挪窝」
+        pygame.draw.circle(surface, col, (cx, cy), 3, 1)
+        return
+    # 8 方位归一化，否则斜向箭头会比正交箭头长出 40%
+    inv = 0.7071 if vx and vy else 1.0
+    ux, uy = vx * inv, vy * inv
+    tip = (cx + ux * length, cy + uy * length)
+    pygame.draw.line(surface, col, (cx - ux * length, cy - uy * length), tip, 1)
+    px, py = -uy, ux                      # 垂直于箭头方向
+    bx, by = tip[0] - ux * 4, tip[1] - uy * 4
+    pygame.draw.line(surface, col, tip, (bx + px * 2.5, by + py * 2.5), 1)
+    pygame.draw.line(surface, col, tip, (bx - px * 2.5, by - py * 2.5), 1)
+
+
 def hp_color(ratio: float) -> tuple[int, int, int]:
     t = _current
     if ratio > 0.65:

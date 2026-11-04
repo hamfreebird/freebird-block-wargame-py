@@ -53,6 +53,28 @@ WEATHER_FACTORS: dict[Weather, dict[str, float]] = {
     Weather.SNOW: {"optical": 0.68, "thermal": 0.86, "radar": 0.78},
 }
 
+# 风向按汉语习惯用**来向**命名（西北风 = 从西北来、吹向东南），
+# 但烟幕移动用的是**去向**。两者相差 180°，所以这张表存的是
+# 「指定来向时，格子坐标该往哪边挪」，方向必须反着写——
+# 写成同向会让「顺风放烟」变成往敌人脸上送烟。
+# 地图 y 轴向下（北 = y 减小），故北风的去向是 (0, +1)。
+WIND_VECTORS: tuple[tuple[int, int], ...] = (
+    (0, 1),     # 0 北风 → 向南
+    (-1, 1),    # 1 东北风 → 向西南
+    (-1, 0),    # 2 东风 → 向西
+    (-1, -1),   # 3 东南风 → 向西北
+    (0, -1),    # 4 南风 → 向北
+    (1, -1),    # 5 西南风 → 向东北
+    (1, 0),     # 6 西风 → 向东
+    (1, 1),     # 7 西北风 → 向东南
+)
+
+#: 风向标签的键后缀（与 WIND_VECTORS 同序）
+WIND_CODES: tuple[str, ...] = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
+
+#: 风力档位（0 静风 … 3 强风）：决定烟幕移动与消散速度
+WIND_MAX = 3
+
 # 天候变化倾向：雨雾不会连续出现太久
 WEATHER_CHAIN: dict[Weather, tuple[Weather, ...]] = {
     Weather.CLEAR: (Weather.CLEAR, Weather.CLEAR, Weather.RAIN, Weather.FOG, Weather.CLEAR),
@@ -91,6 +113,8 @@ class Environment:
     weather: Weather = Weather.CLEAR
     turn: int = 1
     day_length: int = DEFAULT_DAY_LENGTH
+    wind_index: int = 0
+    wind_speed: int = 0
 
     @property
     def label(self) -> str:
@@ -124,6 +148,32 @@ class Environment:
             if abs(f - 1.0) >= 0.02:
                 parts.append(tr("env.effect_fmt", "%s×%.2f") % (kind.label, f))
         return tr("env.join", "、").join(parts) if parts else tr("env.no_effect", "无显著影响")
+
+    # -- 风 ---------------------------------------------------------------
+    @property
+    def wind_vector(self) -> tuple[int, int]:
+        """烟幕随风漂移的格偏移（去向）。"""
+        return WIND_VECTORS[self.wind_index % len(WIND_VECTORS)]
+
+    @property
+    def wind_label(self) -> str:
+        """风向名（来向），如「西北」。"""
+        from .i18n import tr
+        code = WIND_CODES[self.wind_index % len(WIND_CODES)]
+        return tr(f"env.wind_{code}", {"n": "北", "ne": "东北", "e": "东", "se": "东南",
+                                       "s": "南", "sw": "西南", "w": "西", "nw": "西北"}[code])
+
+    def wind_text(self) -> str:
+        """顶栏与战报用的一句话，如「西北风 2 级」。"""
+        from .i18n import tr
+        return tr("env.wind_fmt", "%s风 %d 级") % (self.wind_label, self.wind_speed)
+
+    @property
+    def smoke_period(self) -> int:
+        """烟幕多少回合移动一格：静风不移动，微风两回合，和风以上每回合。"""
+        if self.wind_speed <= 0:
+            return 0
+        return 2 if self.wind_speed == 1 else 1
 
 
 def _seeded_chain(seed: int, length: int) -> list[Weather]:
@@ -193,8 +243,28 @@ class EnvironmentTrack:
         # 按作战日长度把回合映射到 24 小时的一天
         hours = (5 * self.day_length + idx * 24) // max(1, self.day_length)
         tod = TIME_TABLE[hours % 24]
+        wi, ws = self.wind_at(turn)
         return Environment(time_of_day=tod, weather=self.weather_at(turn), turn=turn,
-                           day_length=self.day_length)
+                           day_length=self.day_length, wind_index=wi, wind_speed=ws)
+
+    def wind_at(self, turn: int) -> tuple[int, int]:
+        """第 turn 回合的风（来向索引, 风力档位）。
+
+        与天候共用想定种子，但走**另一条哈希流**：风场不该因为
+        「某回合下了雨」而整体错位，否则调天候参数会连带改掉全部风向，
+        想定作者就说不清自己改的是什么了。天候只作为**修正项**叠加：
+        雨雪伴随大风（+1 档），雾天近地面风弱（压到 1 档以内）。
+        """
+        digest = hashlib.sha256(f"{self.seed}:wind".encode("utf-8")).digest()
+        i = (max(1, turn) - 1) * 2
+        idx = digest[i % len(digest)] % len(WIND_VECTORS)
+        speed = digest[(i + 1) % len(digest)] % 3        # 基础 0–2 档
+        w = self.weather_at(turn)
+        if w in (Weather.RAIN, Weather.SNOW):
+            speed += 1                                   # 雨雪压不住烟，反而吹得散
+        elif w is Weather.FOG:
+            speed = min(speed, 1)                        # 雾天近地面静稳，烟幕糊在原地
+        return idx, max(0, min(WIND_MAX, speed))
 
 
 def environment_for(state) -> Environment:
@@ -240,5 +310,5 @@ def env_tint(env: Environment) -> tuple[tuple[int, int, int], int]:
 __all__ = [
     "Environment", "EnvironmentTrack", "TIME_TABLE", "TIME_FACTORS",
     "WEATHER_FACTORS", "WEATHER_CHAIN", "environment_for", "env_tint",
-    "DEFAULT_DAY_LENGTH",
+    "DEFAULT_DAY_LENGTH", "WIND_VECTORS", "WIND_CODES", "WIND_MAX",
 ]

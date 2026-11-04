@@ -2491,6 +2491,10 @@ class App:
                 Weather.FOG: T.TEXT_DIM, Weather.SNOW: T.CYAN}.get(
                     env.weather, T.TEXT_DIM)
         T.draw_text(s, tr("ui.env_label"), (x, 7), 11, T.TEXT_FAINT)
+        # 风向箭头 + 风力：烟幕会顺风漂移，这一格现在能决定烟往哪边糊
+        T.draw_wind_icon(s, (x + 106, 12), env.wind_vector, env.wind_speed)
+        T.draw_text(s, str(env.wind_speed), (x + 116, 7), T.FS_TINY,
+                    T.TEXT_FAINT if env.wind_speed <= 1 else T.CYAN, mono=True)
         T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
         T.draw_text(s, env.clock, (x + 34, 22), 11, T.TEXT_DIM, mono=True)
         T.draw_text(s, env.weather.label, (x + 68, 22), 11, wcol)
@@ -2662,6 +2666,10 @@ class App:
         _tile = self.state.map.at(u.x, u.y)
         if _tile is not None and _tile.fort > 0 and _tile.fort_owner is u.side:
             state_bits.append(tr("ui.hud.fort_level_fmt") % (f"Lv{_tile.fort}",))
+            # 工事要攒够工时才涨级：进度不显示出来，玩家会以为按钮失效了
+            if _tile.fort < 3:
+                state_bits.append(tr("ui.hud.fort_build_fmt") % (
+                    f"{_tile.fort_build}/{self.state.fort_need(_tile)}",))
         if u.suppressed:
             state_bits.append(tr("ui.hud.state_suppressed"))
         if u.domain is Domain.AIR:

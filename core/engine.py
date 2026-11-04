@@ -24,7 +24,7 @@ from . import mods as _mods
 from .rng import GameRng
 from .anim import AnimTrack
 from . import rules
-from .env import EnvironmentTrack, environment_for
+from .env import WIND_MAX, EnvironmentTrack, environment_for
 
 
 # --------------------------------------------------------------------------- #
@@ -168,7 +168,8 @@ class GameState:
         env = environment_for(self)
         self.log_message(None, f"作战开始：{self.map.name}｜{self.map.width}×{self.map.height} 格"
                                f"（1 格 = {self.map.tile_km:.0f} km）｜限 {self.turn_limit} 回合", "system")
-        self.log_message(None, f"战场环境：{env.label} {env.clock}｜{env.describe_effects()}", "system")
+        self.log_message(None, f"战场环境：{env.label} {env.clock}｜{env.wind_text()}"
+                               f"｜{env.describe_effects()}", "system")
         # 开局即结算第 1 回合的事件（放在开场日志之后，顺序更自然）
         self._run_events()
 
@@ -463,6 +464,8 @@ class GameState:
         if t.fort > 0 and t.fort_owner is not Side.NEUTRAL and t.fort_owner is not unit.side:
             t.fort = 0
             t.fort_progress = 0
+            t.fort_build = 0
+            t.fort_rubble = False    # 人工拆除，不是打塌的，不算废墟
             self.map_epoch += 1
             self.log_message(unit.side, f"{unit.name} 清除了 ({t.x},{t.y}) 的敌方工事", "combat")
         if t.facility is not Facility.NONE and t.owner is not unit.side:
@@ -575,10 +578,44 @@ class GameState:
                          f"{attacker.name} 发射 {weapon.name} × {n} → {target.name}"
                          f"（{prof.distance:.1f} 格，预计 {missile.eta} 回合后抵达）", "combat")
         self.refresh_detection()
+        # 上升段拦截：部署到对方发射阵位旁边的反导系统，能在弹头最脆弱的
+        # 那几十秒里打掉它——这是「前推部署」唯一能拿到的回报
+        if weapon.ballistic and self._boost_interception(missile):
+            res = FireResult(True, "发射后即遭上升段拦截", intercepted=True)
+            self.mods.fire(_mods.EV_AFTER_FIRE, self, attacker, target, weapon, res)
+            return res
         res = FireResult(True, f"发射 {weapon.name}×{n}，飞行 {missile.eta} 回合",
                          in_flight=True, flight=missile.eta)
         self.mods.fire(_mods.EV_AFTER_FIRE, self, attacker, target, weapon, res)
         return res
+
+    def _boost_interception(self, missile) -> bool:
+        """上升段拦截：弹头还在助推段，只有贴着发射点的反导系统够得着。
+
+        命中率按中段 Pk 的三成多算——窗口太短，火控来不及稳定跟踪。
+        拦下来就把这发从在飞列表里摘掉，返回 True。
+        """
+        defended = missile.attacker_side.foe
+        for d, w, pk in rules.midcourse_interceptors(self, missile.origin, defended):
+            d.ammo[w.id] = max(0, d.ammo.get(w.id, 0) - 1)
+            boost_pk = pk * rules.BOOST_PK_SCALE
+            if rules.roll(boost_pk, self.rng):
+                self.add_fx("intercept", missile.origin, None, ttl=1.2,
+                            color=(255, 190, 140), text="上升段拦截")
+                self.anim.add("intercept", missile.origin, None, ttl=1.0,
+                              color=(255, 190, 140))
+                self.anim.add("label", missile.origin, None, ttl=1.2,
+                              color=(255, 210, 170), text="上升段拦截")
+                self.emit_sfx("intercept")
+                self.log_message(defended,
+                                 f"{d.name} 发射 {w.name}，在 {missile.label} 的上升段"
+                                 f"将其击落（Pk {boost_pk * 100:.0f}%）", "combat")
+                if missile in self.missiles:
+                    self.missiles.remove(missile)
+                return True
+            self.log_message(defended,
+                             f"{d.name} 试图在上升段拦截 {missile.label}，未能命中", "combat")
+        return False
 
     def resolve_missiles(self) -> None:
         """推进在飞弹药；抵达者进行末端交战。"""
@@ -587,11 +624,16 @@ class GameState:
             attacker = self.unit_by_uid(m.attacker_uid)
             target = self.unit_by_uid(m.target_uid)
 
-            # 弹道导弹的中段窗口：只有专用反导系统（SM-3/THAAD/77N6）能够交战
-            if m.weapon.ballistic and not m.midcourse_done:
-                m.midcourse_done = True
-                mid = ((m.origin[0] + m.target_pos[0]) // 2,
-                       (m.origin[1] + m.target_pos[1]) // 2)
+            # 弹道导弹的中段窗口：只有专用反导系统（SM-3/THAAD/77N6）能够交战。
+            # v3.1 起不再「一次窗口定生死」——弹头在飞，防御方可以打第二轮，
+            # 每轮换一批火控通道与备弹，直到它进入末段（eta == 1）。
+            if (m.weapon.ballistic and m.eta > 1
+                    and m.midcourse_windows < rules.MIDCOURSE_WINDOWS):
+                m.midcourse_windows += 1
+                # 第二个窗口挪到弹道后段：越接近目标，能参与交战的反导系统越少
+                frac = 0.5 + 0.25 * (m.midcourse_windows - 1)
+                mid = (int(round(m.origin[0] + (m.target_pos[0] - m.origin[0]) * frac)),
+                       int(round(m.origin[1] + (m.target_pos[1] - m.origin[1]) * frac)))
                 defended = m.attacker_side.foe
                 destroyed = False
                 for d, w, pk in rules.midcourse_interceptors(self, mid, defended):
@@ -606,8 +648,8 @@ class GameState:
                                       color=(180, 235, 255), text="中段拦截")
                         self.emit_sfx("intercept")
                         self.log_message(defended,
-                                         f"{d.name} 发射 {w.name} 在中段成功拦截 {m.label}"
-                                         f"（单发 Pk {pk * 100:.0f}%）", "combat")
+                                         f"{d.name} 发射 {w.name} 在中段第 {m.midcourse_windows} 轮"
+                                         f"成功拦截 {m.label}（单发 Pk {pk * 100:.0f}%）", "combat")
                         destroyed = True
                         break
                     else:
@@ -663,7 +705,7 @@ class GameState:
 
         # 逐发拦截：每发弹药独立经过防空网，拦截消耗防守方通道与备弹
         salvo = max(1, salvo)
-        leakers, events = rules.resolve_salvo_interception(
+        leakers, events, partial = rules.resolve_salvo_interception(
             self, (target.x, target.y), target.side, weapon, salvo, self_unit=target)
         # 统计：开火数与被拦截数
         st_att = self.stats[attacker.side]
@@ -688,14 +730,20 @@ class GameState:
             self.log_message(attacker.side,
                              f"{weapon.name} 齐射 {salvo} 发，{salvo - leakers} 发被拦截，"
                              f"{leakers} 发突防", "combat")
+        if partial > 0:
+            self.log_message(attacker.side,
+                             f"其中 {partial} 发被破片击伤，弹体受损、毁伤下降", "combat")
         salvo = leakers
 
         # 逐发命中
         hits = 0
         total_damage = 0.0
-        for _ in range(max(1, salvo)):
+        for i in range(max(1, salvo)):
             if rules.roll(prof.pk, self.rng):
-                dmg = rules.jitter(prof.damage, rng=self.rng)
+                # 被打残的那几发按 PARTIAL_DAMAGE 折算：破片撕开弹体，
+                # 战斗部剩下的能量不足以打出标称毁伤
+                scale = rules.PARTIAL_DAMAGE if i < partial else 1.0
+                dmg = rules.jitter(prof.damage, rng=self.rng) * scale
                 total_damage += dmg
                 hits += 1
         st_att["hits"] += hits
@@ -752,6 +800,9 @@ class GameState:
                 tgt_tile.fort = max(0, tgt_tile.fort - weapon.anti_fort)
                 if tgt_tile.fort == 0:
                     tgt_tile.fort_progress = 0
+                    tgt_tile.fort_build = 0
+                    # 打塌了就是废墟：原地重建要多花工时（清障、回填）
+                    tgt_tile.fort_rubble = before > 0
                 if tgt_tile.fort < before:
                     self.map_epoch += 1
                     self.log_message(attacker.side,
@@ -815,8 +866,9 @@ class GameState:
                     ttl=0.6, color=(255, 200, 120))
 
         n_before = n
+        partial = 0
         if tile.owner in (Side.BLUE, Side.RED):
-            leakers, events = rules.resolve_salvo_interception(
+            leakers, events, partial = rules.resolve_salvo_interception(
                 self, (tile.x, tile.y), tile.owner, weapon, n)
             if events:
                 self.add_fx("intercept", (tile.x, tile.y), None, ttl=0.9, color=(120, 255, 200))
@@ -832,9 +884,11 @@ class GameState:
                              f"对 {name} 的打击：{n_before - n} 发被拦截，{n} 发突防", "combat")
 
         hits, total = 0, 0.0
-        for _ in range(n):
+        for i in range(n):
             if rules.roll(prof.pk, self.rng):
-                dmg = rules.jitter(prof.damage, rng=self.rng)
+                # 被破片打残的那几发只带来部分毁伤
+                scale = rules.PARTIAL_DAMAGE if i < partial else 1.0
+                dmg = rules.jitter(prof.damage, rng=self.rng) * scale
                 tile.facility_hp = max(0.0, tile.facility_hp - dmg)
                 hits += 1
                 total += dmg
@@ -846,9 +900,12 @@ class GameState:
             return FireResult(True, "未命中")
 
         if weapon.anti_fort > 0 and tile.fort > 0 and tile.fort_owner is not attacker.side:
+            before = tile.fort
             tile.fort = max(0, tile.fort - weapon.anti_fort)
             if tile.fort == 0:
                 tile.fort_progress = 0
+                tile.fort_build = 0
+                tile.fort_rubble = before > 0
             self.map_epoch += 1
         self.add_fx("explosion", (tile.x, tile.y), None, ttl=0.9, color=(255, 160, 80),
                     text=f"-{total:.0f}")
@@ -915,9 +972,50 @@ class GameState:
                           color=(205, 208, 216), size=0.8 + 0.15 * (i % 3))
         self.log_message(unit.side,
                          f"{unit.name} 对 ({pos[0]},{pos[1]}) 施放烟幕"
-                         f"（遮蔽 {len(tiles)} 格，持续 3 回合）", "combat")
+                         f"（遮蔽 {len(tiles)} 格，持续 3 回合，"
+                         f"{environment_for(self).wind_text()}）", "combat")
         self.refresh_detection()
         return True
+
+    def _tick_smoke(self) -> None:
+        """烟幕随风漂移与消散。
+
+        遮蔽团整体下风移动，风力决定移动快慢与消散速度：
+        静风糊在原地、微风两回合挪一格、和风以上每回合挪一格，
+        强风还会额外缩短一回合寿命。
+
+        因此「顺风放烟」才是正确用法——逆风施放，烟会飘回自己头上。
+        这也让天候与地形（山谷、城区）对遮蔽的影响第一次变得可感知。
+        """
+        env = environment_for(self)
+        dx, dy = env.wind_vector
+        period = env.smoke_period
+        drift = period > 0 and self.turn_count % period == 0
+        fast = env.wind_speed >= WIND_MAX
+
+        puffs: list[tuple[int, int, int]] = []
+        for t in self.map.iter_tiles():
+            if t.smoke > 0:
+                puffs.append((t.x, t.y, t.smoke))
+                t.smoke = 0
+
+        for x, y, remain in puffs:
+            # 漂移与消散在同一拍结算：先算寿命，再定落点
+            remain -= 1
+            if fast:
+                remain -= 1
+            nx, ny = x, y
+            if drift:
+                tile = self.map.at(x + dx, y + dy)
+                if tile is not None:
+                    nx, ny = tile.x, tile.y
+            if remain <= 0:
+                continue
+            tile = self.map.at(nx, ny)
+            if tile is None:
+                continue
+            # 两团烟叠在一格取较浓的一侧，不累加成永久遮蔽
+            tile.smoke = max(tile.smoke, remain)
 
     def set_mission(self, unit: Unit, mission: str) -> bool:
         """切换航空兵任务剖面：strike 打击 / cap 制空巡逻 / ferry 转场。"""
@@ -1346,8 +1444,44 @@ class GameState:
         return True
 
     # -- 野战工事 ---------------------------------------------------------
+    #: 升到 Lv1 / Lv2 / Lv3 各自需要的**工时**（不是回合数：工兵一次投入 2 工时）
+    FORT_WORK = (1, 2, 3)
+    #: 在被打塌的废墟上重建，每级多花的工时（先清障、再动土）
+    RUBBLE_EXTRA = 1
+
+    def fort_need(self, tile) -> int:
+        """升到下一级还差多少工时。"""
+        nxt = min(3, tile.fort + 1)
+        need = self.FORT_WORK[nxt - 1]
+        if tile.fort_rubble and tile.fort == 0:
+            need += self.RUBBLE_EXTRA
+        return need
+
+    def _fort_add_work(self, tile, work: int) -> int:
+        """投入工时并结算涨级，返回本次涨了几级。
+
+        涨级逻辑只此一处：主动施工与驻守维修走同一条路径，
+        否则「挖」和「修」的判定迟早会分叉。
+        """
+        if work <= 0 or tile.fort >= 3:
+            return 0
+        gained = 0
+        tile.fort_build += work
+        while tile.fort < 3 and tile.fort_build >= self.fort_need(tile):
+            tile.fort_build -= self.fort_need(tile)
+            tile.fort += 1
+            tile.fort_rubble = False
+            gained += 1
+        return gained
+
     def build_fort(self, unit: Unit) -> bool:
-        """构筑 / 加固野战工事：消耗 1.0 机动点，工事等级提升 1 级（上限 3）。"""
+        """构筑 / 加固野战工事：消耗 1.0 机动点，投入本回合的施工工时。
+
+        工事不是一拍即成的：Lv1 要 1 工时、Lv2 要 2、Lv3 要 3，
+        工兵（fort_power 2）一次能投 2 工时，步兵只有 1。
+        所以「步兵一个动作挖出三层永备工事」不再可能——
+        想要硬阵地，就得让这支部队在原地说服自己别乱动。
+        """
         if not unit.alive or unit.is_decoy or not unit.template.can_fortify:
             return False
         if unit.mp < 1.0:
@@ -1360,27 +1494,38 @@ class GameState:
                              f"{unit.name} 所在的 ({tile.x},{tile.y}) 工事已达最高等级", "info")
             return False
         if tile.fort_owner is not unit.side:
+            # 换手：上一家的工事既不能直接用，也不算自己挖的
             tile.fort = 0
             tile.fort_progress = 0
-        gain = max(1, unit.template.fort_power)
+            tile.fort_build = 0
+            tile.fort_rubble = False
+            tile.fort_owner = unit.side
+        work = max(1, unit.template.fort_power)
         before = tile.fort
-        tile.fort = min(3, tile.fort + gain)
-        tile.fort_owner = unit.side
+        self._fort_add_work(tile, work)
         self.map_epoch += 1
         unit.mp = max(0.0, unit.mp - 1.0)
         unit.moved = True          # 构筑工事期间无法同时保持隐蔽机动
         self.refresh_detection()
         self.add_fx("ping", (tile.x, tile.y), None, ttl=0.9, color=(200, 220, 140))
-        if before == 0:
+        if tile.fort > before:
+            verb = "开始构筑" if before == 0 else "加固"
             self.log_message(unit.side,
-                             f"{unit.name} 在 ({tile.x},{tile.y}) 开始构筑野战工事（Lv{tile.fort}）", "move")
+                             f"{unit.name} {verb} ({tile.x},{tile.y}) 工事至 Lv{tile.fort}"
+                             f"（投入 {work} 工时）", "move")
         else:
             self.log_message(unit.side,
-                             f"{unit.name} 加固 ({tile.x},{tile.y}) 工事至 Lv{tile.fort}", "move")
+                             f"{unit.name} 在 ({tile.x},{tile.y}) 继续施工"
+                             f"（{tile.fort_build}/{self.fort_need(tile)} 工时，"
+                             f"Lv{tile.fort}）", "move")
         return True
 
     def _tick_fortifications(self) -> None:
-        """工事维护：己方工兵/步兵驻守可修复，无人维护则逐步荒废。"""
+        """工事维护：己方工兵/步兵驻守可继续施工，无人维护则逐步荒废。
+
+        驻守产出的是**工时**而不是直接涨级——同一支部队挖两回合
+        才够把 Lv1 夯成 Lv2，跟主动施工走同一条路。
+        """
         changed = False
         for t in self.map.iter_tiles():
             if t.fort <= 0:
@@ -1390,15 +1535,18 @@ class GameState:
             if crew and not any(u.moved for u in crew):
                 t.fort_progress += 1
                 if t.fort_progress >= 2 and t.fort < 3:
-                    t.fort += 1
+                    # 一个班组两回合的持续作业，折 1 工时
+                    if self._fort_add_work(t, 1):
+                        changed = True
                     t.fort_progress = 0
-                    changed = True
             elif t.fort_owner is not Side.NEUTRAL:
                 # 无人维护：每 3 回合衰减 1 级
                 t.fort_progress += 1
                 if t.fort_progress >= 3:
                     t.fort = max(0, t.fort - 1)
                     t.fort_progress = 0
+                    if t.fort == 0:
+                        t.fort_build = 0
                     changed = True
         if changed:
             self.map_epoch += 1
@@ -1483,9 +1631,7 @@ class GameState:
         for u in self.units:
             if u.alive:
                 u.reset_turn(self.turn_count)
-        for t in self.map.iter_tiles():
-            if t.smoke > 0:
-                t.smoke -= 1
+        self._tick_smoke()
 
         self._tick_logistics()
         self._reload_interceptors()
@@ -1557,7 +1703,7 @@ class GameState:
             return
         if prev.weather is not env.weather:
             self.log_message(None,
-                             f"天候转为{env.weather.label}｜{desc}", "detect")
+                             f"天候转为{env.weather.label}（{env.wind_text()}）｜{desc}", "detect")
         else:
             self.log_message(None,
                              f"进入{env.time_of_day.label}（{env.clock}）｜{desc}", "detect")

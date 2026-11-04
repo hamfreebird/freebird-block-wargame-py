@@ -296,6 +296,10 @@ def _placeholders(text: str) -> list[str]:
     应该都是 ``%%``，不属于「占位符数量」的一部分。
     """
     import re
+    # 先把 ``%%`` 整体吃掉再扫描：否则 "%% gefallen" 的第二个 %
+    # 会被当成 "% g"（空格是合法标志位），德语/法语里这几乎必然出现，
+    # 报出来的却是「译文占位符多一个」，查半天查不到真正的错。
+    text = text.replace("%%", "\x00")
     return re.findall(r"%(?![%])[-+ #0-9.]*[a-zA-Z]", text)
 
 

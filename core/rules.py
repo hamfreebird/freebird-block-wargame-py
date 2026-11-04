@@ -88,6 +88,20 @@ CLOSE_TRACK_RANGE = 1.6
 # 近战单位会陷入「贴脸却无法开火」的死角。容差取半格，只影响相邻圈。
 RANGE_TOLERANCE = 0.45
 
+# 破片战斗部的「打残」概率：防空导弹靠近炸引信与破片杀伤，
+# 命中不等于把弹体打碎——弹头可能带着残余能量继续飞。
+# 这发仍算突防，但毁伤按 PARTIAL_DAMAGE 打折。
+FRAG_PARTIAL_CHANCE = 0.25
+PARTIAL_DAMAGE = 0.45
+
+# 弹道导弹的拦截窗口数（中段）。一次窗口只有一次交战机会时，
+# 反导系统的备弹再充足也打不出「多轮拦截」的层次；两轮之后弹头进入末段。
+MIDCOURSE_WINDOWS = 2
+
+# 上升段拦截的难度系数：弹头还在助推、速度尚未拉满，但拦截窗口只有几十秒，
+# 且只有部署到发射点附近的反导系统才够得着。
+BOOST_PK_SCALE = 0.35
+
 
 def _bresenham(x0: int, y0: int, x1: int, y1: int) -> Iterable[tuple[int, int]]:
     dx = abs(x1 - x0)
@@ -1048,23 +1062,31 @@ def adn_summary_for(state: "GameState", side: Side, pos: tuple[int, int],
 
 def resolve_salvo_interception(state: "GameState", pos: tuple[int, int], side: Side,
                                weapon: Weapon, count: int,
-                               self_unit: Unit | None = None) -> tuple[int, list[str]]:
+                               self_unit: Unit | None = None) -> tuple[int, list[str], int]:
     """逐发拦截结算（由防空网统一派工）。
 
     每发来袭弹药交由防空网分配给**最合适的节点**；节点消耗一条火控通道
     与一枚拦截弹。同一节点在通道耗尽或弹尽后退出网，
     下一发弹药改派其他节点——这就是「跨单位分配」而非「各打各的」。
+
+    第三个返回值 ``partial`` 是**被破片击伤、但没被彻底摧毁**的发数。
+    防空导弹是破片杀伤，近炸引信常常只是把弹体打坏，弹头带着残余能量
+    继续扑过来——这发仍算突防，只是毁伤要打折（由调用方结算）。
+    弹道/高超音速目标不适用：那种速度下只有直接碰撞才算命中。
     """
     if not weapon.interceptable or weapon.strategic:
-        return count, []
+        return count, [], 0
     net = AirDefenseNetwork.build(state, side, pos, weapon, self_unit=self_unit)
     if not net.nodes:
-        return count, []
+        return count, [], 0
 
+    # 硬目标只能被打碎，不存在「打残了还飞过来」这回事
+    frag_ok = not (weapon.ballistic or weapon.hypersonic)
     leakers = 0
+    partial = 0
     events: list[str] = []
     for _ in range(max(1, count)):
-        killed = False
+        outcome = "leak"
         # 网内择优派工：可能有多层拦截机会（远层失败后交给近层）
         for node in list(net.nodes):
             if node.ciws:
@@ -1082,12 +1104,19 @@ def resolve_salvo_interception(state: "GameState", pos: tuple[int, int], side: S
                 node.unit.ammo[node.weapon.id] = max(
                     0, node.unit.ammo.get(node.weapon.id, 0) - 1)
             if roll(node.pk, state.rng):
-                events.append(f"{node.name}·{node.role} 拦截 1 发（Pk {node.pk * 100:.0f}%）")
-                killed = True
+                if frag_ok and roll(FRAG_PARTIAL_CHANCE, state.rng):
+                    events.append(f"{node.name}·{node.role} 破片命中 1 发（弹体受损未解体）")
+                    outcome = "partial"
+                else:
+                    events.append(f"{node.name}·{node.role} 拦截 1 发（Pk {node.pk * 100:.0f}%）")
+                    outcome = "kill"
                 break
-        if not killed:
-            leakers += 1
-    return leakers, events
+        if outcome == "kill":
+            continue
+        leakers += 1
+        if outcome == "partial":
+            partial += 1
+    return leakers, events, partial
 
 
 def midcourse_interceptors(state: "GameState", pos: tuple[int, int], side: Side):
@@ -1114,12 +1143,12 @@ def interception_estimate(state: "GameState", attacker: Unit, target: Unit,
                           weapon: Weapon) -> tuple[float, list[str]]:
     """评估防守方对来袭弹药的拦截概率（由防空网统一派工）。"""
     if weapon.strategic:
-        # 洲际弹道导弹：只能在飞行中段被专用反导系统拦截（预览按弹道中点估算）
+        # 洲际弹道导弹：中段有 MIDCOURSE_WINDOWS 轮窗口，每轮按弹道中点估算
         mid = ((attacker.x + target.x) // 2, (attacker.y + target.y) // 2)
         survive = 1.0
         names = []
         for d, w, pk in midcourse_interceptors(state, mid, target.side):
-            survive *= (1.0 - pk)
+            survive *= (1.0 - pk) ** MIDCOURSE_WINDOWS
             names.append(f"{d.name}·中段 {w.name[:8]} ({pk * 100:.0f}%)")
         return 1.0 - survive, names
     if not weapon.interceptable:

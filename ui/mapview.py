@@ -45,6 +45,7 @@ class MapView:
         self._vector_icons: dict[tuple, pygame.Surface] = {}
         self._weather_cache: dict[tuple, pygame.Surface] = {}
         self._tint_cache: dict[tuple, pygame.Surface] = {}
+        self._smoke_cache: dict[tuple, pygame.Surface] = {}
         self._fx_layer: pygame.Surface | None = None
         self._anim_layer: pygame.Surface | None = None
         self._ring_cache: dict[tuple, pygame.Surface] = {}
@@ -328,14 +329,40 @@ class MapView:
             pygame.draw.arc(surf, dark, pygame.Rect(r.x + 2, r.y + ts // 3, ts - 4, ts // 2),
                             0.2, 2.9, max(1, ts // 15))
 
-        if t.smoke > 0:
-            s_ = pygame.Surface((ts, ts), pygame.SRCALPHA)
-            s_.fill((120, 120, 120, 120))
-            surf.blit(s_, r.topleft)
+        # 烟幕不在这里画：它每回合随风漂移、逐渐变淡，
+        # 而地形块缓存只在换主题/改缩放时失效——画进来就会一直留着
+        # 上一回合的旧烟。见 _draw_smoke()。
 
     # ------------------------------------------------------------------ #
     # 主绘制
     # ------------------------------------------------------------------ #
+    def _draw_smoke(self, surf: pygame.Surface) -> None:
+        """烟幕：顺风漂移、逐渐变淡的半透明幕。
+
+        逐帧画而不是烘进地形块——遮蔽团每回合都在动，
+        浓淡也跟着剩余回合数走，玩家一眼能看出「这团烟快散了」。
+        """
+        md = self.state.map
+        ts = self.tile
+        gx0 = max(0, int((-self.ox) // ts))
+        gy0 = max(0, int((-self.oy) // ts))
+        gx1 = min(md.width - 1, int((self.rect.width - self.ox) // ts) + 1)
+        gy1 = min(md.height - 1, int((self.rect.height - self.oy) // ts) + 1)
+        for y in range(gy0, gy1 + 1):
+            for x in range(gx0, gx1 + 1):
+                t = md.at(x, y)
+                if t is None or t.smoke <= 0:
+                    continue
+                # 剩余回合越多越浓：3 → 130，2 → 100，1 → 70
+                alpha = min(150, 40 + 30 * t.smoke)
+                key = (ts, alpha)
+                layer = self._smoke_cache.get(key)
+                if layer is None:
+                    layer = pygame.Surface((ts, ts), pygame.SRCALPHA)
+                    layer.fill((120, 120, 120, alpha))
+                    self._smoke_cache[key] = layer
+                surf.blit(layer, self.grid_to_rect(x, y).topleft)
+
     def draw(self, surf: pygame.Surface, hover: tuple[int, int] | None = None,
              reachable: dict | None = None, path: list | None = None,
              pending_target: Unit | None = None) -> None:
@@ -356,6 +383,7 @@ class MapView:
         pygame.draw.rect(surf, T.BORDER_HI, frame, 1)
 
         self._draw_forts(surf)
+        self._draw_smoke(surf)
         self._draw_fire_missions(surf)
         self._draw_supply_lines(surf)
         self._draw_overlay(surf)
