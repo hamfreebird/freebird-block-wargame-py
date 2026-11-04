@@ -126,6 +126,20 @@ def main() -> int:
     check(i18n.tr("test.i18n.no_such") == "test.i18n.no_such",
           "彻底缺失的键回退为键名")
 
+    # -- 枚举显示名随语言切换 ---------------------------------------------
+    # 这些名字在顶栏、信息卡、编辑器、战报里各画一遍，是最容易「只翻了一半」的层。
+    from core.enums import Facility, Side, Terrain
+
+    i18n.set_language("de")
+    check(Terrain.URBAN.label == "Stadt", f"枚举：德语地形名（{Terrain.URBAN.label}）")
+    check(Side.BLUE.label == "Blau", f"枚举：德语阵营名（{Side.BLUE.label}）")
+    i18n.set_language("zh")
+    check(Terrain.URBAN.label == "城区", "枚举：中文地形名回到原文")
+    check(Side.BLUE.label == "蓝方", "枚举：中文阵营名回到原文")
+    check(Facility.NONE.label == "", "枚举：无名成员返回空串而非内部键名")
+    check(i18n.tr("enum.nope.xxx", "中文兜底") == "中文兜底",
+          "枚举：缺译文时回退调用方给的中文，不暴露键名")
+
     # -- 模组词条不覆盖本体键 ---------------------------------------------
     check(not i18n.register_mod_entry("en", "menu.start", "HACK"),
           "模组词条不可覆盖本体键")

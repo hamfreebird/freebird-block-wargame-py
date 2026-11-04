@@ -17,6 +17,24 @@ class StrEnum(str, Enum):
         return f"<{type(self).__name__}.{self.name}>"
 
 
+def _enum_label(group: str, value: str, fallback: str) -> str:
+    """枚举的显示名：语言包里有译文就用译文，否则用这里的中文常量。
+
+    显示名放在 core 而不是各 UI 里，是因为同一个枚举会在顶栏、侧栏、
+    悬停信息卡、编辑器、战报里各画一遍——五处分叉迟早会漂。
+    键统一为 ``enum.<组>.<值>``（如 ``enum.terrain.urban``）。
+
+    语言包缺失时回退到 fallback，所以旧语言包/第三方语言包不会因此
+    显示裸键名；中文包即使没这批词条，界面也与改动前完全一致。
+    """
+    if not fallback:
+        # 无名的枚举成员（如 Facility.NONE）不该去查表——
+        # tr() 的 default 参数为空时会回退成键名，反而露出内部标识。
+        return ""
+    from .i18n import tr
+    return tr(f"enum.{group}.{value.lower()}", fallback)
+
+
 # --------------------------------------------------------------------------- #
 # 阵营
 # --------------------------------------------------------------------------- #
@@ -27,7 +45,7 @@ class Side(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"BLUE": "蓝方", "RED": "红方", "NEUTRAL": "中立"}[self.value]
+        return _enum_label("side", self.value, {"BLUE": "蓝方", "RED": "红方", "NEUTRAL": "中立"}[self.value])
 
     @property
     def foe(self) -> "Side":
@@ -47,10 +65,10 @@ class Domain(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("domain", self.value, {
             "land": "陆上", "air": "空中", "sea": "水面",
             "sub": "水下", "infra": "设施", "space": "天基",
-        }[self.value]
+        }[self.value])
 
 
 class Altitude(StrEnum):
@@ -63,7 +81,7 @@ class Altitude(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"ground": "地面", "low": "低空", "med": "中空", "high": "高空"}[self.value]
+        return _enum_label("altitude", self.value, {"ground": "地面", "low": "低空", "med": "中空", "high": "高空"}[self.value])
 
     @property
     def radar_factor(self) -> float:
@@ -112,7 +130,7 @@ class Terrain(StrEnum):
     @property
     def label(self) -> str:
         """地形的中文名。"""
-        return _TERRAIN_LABEL[self.value]
+        return _enum_label("terrain", self.value, _TERRAIN_LABEL[self.value])
 
     @property
     def move_cost(self) -> float:
@@ -152,7 +170,7 @@ class Detection(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"none": "未发现", "contact": "接触", "classified": "识别", "tracked": "跟踪"}[self.value]
+        return _enum_label("detection", self.value, {"none": "未发现", "contact": "接触", "classified": "识别", "tracked": "跟踪"}[self.value])
 
 
 # --------------------------------------------------------------------------- #
@@ -175,13 +193,13 @@ class WeaponKind(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("weapon_kind", self.value, {
             "gun": "直瞄火炮", "artillery": "间瞄火力", "mlrs": "火箭炮",
             "atgm": "反坦克导弹", "sam": "防空导弹", "aam": "空空导弹",
             "asm": "反舰导弹", "land_attack": "对地打击", "arm": "反辐射导弹",
             "torpedo": "鱼雷", "bomb": "航空炸弹", "depth_charge": "深水炸弹",
             "ciws": "近防拦截",
-        }[self.value]
+        }[self.value])
 
     @property
     def is_missile(self) -> bool:
@@ -202,12 +220,12 @@ class Guidance(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("guidance", self.value, {
             "optical": "光学", "ir": "红外", "radar_semi": "半主动雷达",
             "radar_active": "主动雷达", "gps_ins": "卫星/惯导",
             "anti_radiation": "被动雷达寻的", "passive_rf": "射频被动",
             "laser": "激光半主动", "wire": "有线制导", "sonar": "声呐",
-        }[self.value]
+        }[self.value])
 
     @property
     def vulnerable_to_ew(self) -> bool:
@@ -225,10 +243,10 @@ class SensorKind(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("sensor_kind", self.value, {
             "radar": "雷达", "esm": "电子侦察", "ir": "红外",
             "optical": "光学", "sonar": "声呐", "sat": "天基侦察",
-        }[self.value]
+        }[self.value])
 
     @property
     def is_active(self) -> bool:
@@ -267,7 +285,7 @@ class UnitClass(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("unit_class", self.value, {
             "mbt": "主战坦克", "ifv": "步战车", "infantry": "步兵",
             "arty": "自行火炮", "mlrs": "火箭炮", "sam": "防空导弹",
             "aaa": "高炮", "ew": "电子战", "radar": "雷达站", "hq": "指挥所",
@@ -277,7 +295,7 @@ class UnitClass(StrEnum):
             "satellite": "卫星", "engineer": "工兵",
             "heli": "直升机", "attack_heli": "武装直升机",
             "transport": "运输机", "amphib": "两栖支援舰",
-        }[self.value]
+        }[self.value])
 
 
 class Facility(StrEnum):
@@ -294,10 +312,10 @@ class Facility(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("facility", self.value, {
             "none": "", "airbase": "机场", "port": "港口", "radar_site": "雷达站",
             "depot": "后勤枢纽", "sam_site": "防空阵地", "hq": "指挥部", "city": "城市",
-        }[self.value]
+        }[self.value])
 
 
 # --------------------------------------------------------------------------- #
@@ -313,7 +331,7 @@ class TimeOfDay(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"dawn": "拂晓", "day": "白天", "dusk": "黄昏", "night": "夜间"}[self.value]
+        return _enum_label("time_of_day", self.value, {"dawn": "拂晓", "day": "白天", "dusk": "黄昏", "night": "夜间"}[self.value])
 
 
 class Weather(StrEnum):
@@ -326,7 +344,7 @@ class Weather(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"clear": "晴", "rain": "雨", "fog": "雾", "snow": "雪"}[self.value]
+        return _enum_label("weather", self.value, {"clear": "晴", "rain": "雨", "fog": "雾", "snow": "雪"}[self.value])
 
 
 class JamBand(StrEnum):
@@ -338,7 +356,7 @@ class JamBand(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"radar": "雷达", "comm": "通信", "nav": "导航"}[self.value]
+        return _enum_label("jam_band", self.value, {"radar": "雷达", "comm": "通信", "nav": "导航"}[self.value])
 
 
 class Echelon(StrEnum):
@@ -350,7 +368,7 @@ class Echelon(StrEnum):
 
     @property
     def label(self) -> str:
-        return {"platoon": "连级", "company": "营级", "brigade": "旅级"}[self.value]
+        return _enum_label("echelon", self.value, {"platoon": "连级", "company": "营级", "brigade": "旅级"}[self.value])
 
     @property
     def rank(self) -> int:
@@ -367,12 +385,12 @@ class OrderKind(StrEnum):
 
     @property
     def label(self) -> str:
-        return {
+        return _enum_label("order_kind", self.value, {
             "focus_fire": "集中火力",
             "priority": "优先目标",
             "hold": "固守",
             "assault": "强攻",
-        }[self.value]
+        }[self.value])
 
 
 class ObjectiveKind(StrEnum):

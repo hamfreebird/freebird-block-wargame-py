@@ -39,7 +39,7 @@ from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_c
                            load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
 from core.replay import ReplayFile
-from core.enums import Detection, Domain, Facility, Side
+from core.enums import Detection, Domain, Facility, Side, TimeOfDay, Weather
 from core.engine import GameState
 from core.env import environment_for
 from core.loader import LoadError, list_maps, load_scenario
@@ -142,6 +142,7 @@ class App:
         self.status = ""
         self.status_t = 0.0
         self.show_help = False
+        self.help_scroll = 0          # 帮助面板滚动位置（内容高于窗口时才可见）
         self.show_menu = False
         self.pending_target: Unit | None = None
         self.pending_facility: tuple[int, int] | None = None
@@ -519,6 +520,8 @@ class App:
         ok = i18n.set_language(lang)
         if ok:
             self.cfg.set_language(i18n.current_language())
+            # 顶栏按钮的文案是构建时取的译文，不重建就会停在旧语言上。
+            self._build_buttons()
         return ok
 
     def _apply_sound(self, enabled: bool) -> None:
@@ -1342,8 +1345,13 @@ class App:
         ]
         for label, cb, kind, act, width in specs:
             x -= width
-            self.buttons.append(Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
-                                       size=13, hotkey=hotkey_label(self.cfg, act)))
+            btn = Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
+                         size=13, hotkey=hotkey_label(self.cfg, act))
+            # 记住「结束回合」按钮本体：绘制时要按身份判断可用性，
+            # 拿 label 做字符串匹配的话，一换语言就认不出来。
+            if act == "end_turn":
+                self.end_turn_btn = btn
+            self.buttons.append(btn)
             x -= 8                      # 按钮间距
         # 叠加层切换
         x -= 84
@@ -1361,7 +1369,7 @@ class App:
         x -= 8
         # 系统菜单（存档/读档/返回）
         x -= 82
-        self.menu_btn = Button(pygame.Rect(x, 9, 82, 32), "菜单", self.toggle_menu,
+        self.menu_btn = Button(pygame.Rect(x, 9, 82, 32), tr("ui.hud.menu"), self.toggle_menu,
                                "ghost", size=12, hotkey=hotkey_label(self.cfg, "system_menu"))
         self.buttons.append(self.menu_btn)
 
@@ -1436,6 +1444,8 @@ class App:
 
     def toggle_help(self) -> None:
         self.show_help = not self.show_help
+        if self.show_help:
+            self.help_scroll = 0     # 每次打开都从顶部看起
 
     def cycle_overlay(self) -> None:
         if self.mapview is None:
@@ -1681,6 +1691,10 @@ class App:
             if self.log_drag and self.mapview:
                 self.mapview.pan(e.rel[0], e.rel[1])
         elif e.type == pygame.MOUSEWHEEL:
+            if self.show_help:
+                # 帮助面板是模态：滚轮只滚它，不再缩放下面的地图
+                self.help_scroll = max(0, self.help_scroll - e.y * 48)
+                return
             if self.mode == "menu":
                 # 主菜单：滚轮滚动想定列表
                 if self._import_dialog is not None:
@@ -1769,6 +1783,16 @@ class App:
                 self.show_campaign_menu = not self.show_campaign_menu
             elif k == pygame.K_o:
                 self.open_settings()
+            return
+
+        # 帮助面板是模态：先把滚动键吃掉，再走动作分发
+        if self.show_help and k in (pygame.K_UP, pygame.K_DOWN, pygame.K_PAGEUP,
+                                    pygame.K_PAGEDOWN, pygame.K_HOME, pygame.K_END):
+            self.help_scroll = max(0, self.help_scroll + {
+                pygame.K_UP: -48, pygame.K_DOWN: 48,
+                pygame.K_PAGEUP: -260, pygame.K_PAGEDOWN: 260,
+                pygame.K_HOME: -99999, pygame.K_END: 99999,
+            }[k])
             return
 
         # 绑定可配置的动作（帮助 / 存读档 / 系统菜单）
@@ -2338,8 +2362,9 @@ class App:
 
             b_save = pygame.Rect(row.right - 162, row.y + 10, 72, 30)
             b_load = pygame.Rect(row.right - 84, row.y + 10, 72, 30)
-            for b, label, act, enabled in ((b_save, "保存", "save", True),
-                                           (b_load, "读取", "load", info.get("exists", False))):
+            for b, label, act, enabled in (
+                    (b_save, tr("ui.sys.save"), "save", True),
+                    (b_load, tr("ui.sys.load"), "load", info.get("exists", False))):
                 hover = b.collidepoint(self.mouse) and enabled
                 if not enabled:
                     _fill = T.PANEL_SUNK
@@ -2356,10 +2381,10 @@ class App:
             y += row_h
 
         # 底部按钮行
-        btns = [("继续作战", "resume"), ("返回想定选择", "to_menu"),
-                ("导出战报", "export_md"), ("导出想定包", "export_pkg"),
-                ("导出回放", "export_replay"), ("设置", "settings"),
-                ("退出游戏", "quit")]
+        btns = [(tr("ui.sys.resume"), "resume"), (tr("ui.sys.to_menu"), "to_menu"),
+                (tr("ui.sys.export_md"), "export_md"), (tr("ui.sys.export_pkg"), "export_pkg"),
+                (tr("ui.sys.export_replay"), "export_replay"), (tr("ui.sys.settings"), "settings"),
+                (tr("ui.sys.quit"), "quit")]
         gap = 8
         pad = 16
         # 宽度必须把**按钮间隙**算进去，否则最后一个按钮会顶出面板
@@ -2396,9 +2421,11 @@ class App:
         T.draw_text(s, tr("ui.turn_label"), (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, f"{st.turn_count:02d}", (x, 20), 19, T.TEXT, bold=True, mono=True)
         T.draw_text(s, f"/{st.turn_limit}", (x + 30, 30), 11, T.TEXT_FAINT, mono=True)
-        phase_txt = {"player": "蓝方行动" if self.side is Side.BLUE else "红方行动",
-                     "ai": "红方行动" if self.side is Side.BLUE else "蓝方行动",
-                     "over": "作战结束"}[st.phase]
+        if st.phase == "over":
+            phase_txt = tr("ui.hud.phase_over")
+        else:
+            actor = self.side if st.phase == "player" else self.side.foe
+            phase_txt = tr("ui.hud.phase_fmt") % (actor.label,)
         col = T.CYAN if st.phase == "player" else T.AMBER
         T.draw_text(s, phase_txt, (x + 66, 22), 12, col, bold=True)
         if st.phase == "ai":
@@ -2456,10 +2483,12 @@ class App:
         # 战场环境（时段 · 天候）
         x = 758
         env = environment_for(st)
-        env_col = {"拂晓": T.AMBER, "白天": T.WHITE, "黄昏": T.AMBER,
-                   "夜间": T.BLUE}.get(env.time_of_day.label, T.TEXT)
-        wcol = {"晴": T.TEXT_DIM, "雨": T.BLUE, "雾": T.TEXT_DIM,
-                "雪": T.CYAN}.get(env.weather.label, T.TEXT_DIM)
+        env_col = {TimeOfDay.DAWN: T.AMBER, TimeOfDay.DAY: T.WHITE,
+                   TimeOfDay.DUSK: T.AMBER, TimeOfDay.NIGHT: T.BLUE}.get(
+                       env.time_of_day, T.TEXT)
+        wcol = {Weather.CLEAR: T.TEXT_DIM, Weather.RAIN: T.BLUE,
+                Weather.FOG: T.TEXT_DIM, Weather.SNOW: T.CYAN}.get(
+                    env.weather, T.TEXT_DIM)
         T.draw_text(s, tr("ui.env_label"), (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
         T.draw_text(s, env.clock, (x + 34, 22), 11, T.TEXT_DIM, mono=True)
@@ -2479,9 +2508,10 @@ class App:
         for b in self.buttons:
             b.update(self.mouse)
             if b is getattr(self, "overlay_btn", None):
-                b.label = {"none": "无覆盖", "sensors": "侦察覆盖", "threat": "防空包线"}[
-                    self.mapview.overlay]
-            elif b.label.startswith("结束回合"):
+                b.label = {"none": tr("ui.hud.overlay_none"),
+                           "sensors": tr("ui.hud.overlay_sensors"),
+                           "threat": tr("ui.hud.overlay_threat")}[self.mapview.overlay]
+            elif b is self.end_turn_btn:
                 b.enabled = st.phase == "player" and not st.over
             b.draw(s)
 
@@ -2603,7 +2633,9 @@ class App:
                     (r.right - 10, r.y + 22), 11,
                     T.AMBER if u.shots_left else T.TEXT_FAINT, anchor="topright", mono=True)
         if u.domain.value == "air":
-            ml = {"strike": "打击", "cap": "巡逻", "ferry": "转场"}[u.mission]
+            ml = {"strike": tr("ui.hud.mission_strike"),
+                  "cap": tr("ui.hud.mission_cap"),
+                  "ferry": tr("ui.hud.mission_ferry")}[u.mission]
             T.draw_text(s, tr("ui.profile_fmt") % (ml,), (r.right - 10, r.y + 35), 11,
                         T.PURPLE if u.mission != "strike" else T.TEXT_FAINT,
                         anchor="topright")
@@ -2617,29 +2649,33 @@ class App:
                     T.TEXT_FAINT, mono=True)
         state_bits = []
         if u.fired:
-            state_bits.append("已射击")
+            state_bits.append(tr("ui.hud.state_fired"))
         elif u.mp > 0.1:
-            state_bits.append("可行动")
+            state_bits.append(tr("ui.hud.state_ready"))
         else:
-            state_bits.append("待命")
+            state_bits.append(tr("ui.hud.state_waiting"))
         if u.entrench > 0:
-            state_bits.append("掩体" + ("Ⅰ" if u.entrench == 1 else "Ⅱ"))
+            # 罗马数字是等级符号，不翻译；只翻「掩体」这层壳
+            state_bits.append(tr("ui.hud.entrench_fmt") % (
+                "Ⅰ" if u.entrench == 1 else "Ⅱ",))
         _tile = self.state.map.at(u.x, u.y)
         if _tile is not None and _tile.fort > 0 and _tile.fort_owner is u.side:
-            state_bits.append(f"阵地 Lv{_tile.fort}")
+            state_bits.append(tr("ui.hud.fort_level_fmt") % (f"Lv{_tile.fort}",))
         if u.suppressed:
-            state_bits.append("被压制")
+            state_bits.append(tr("ui.hud.state_suppressed"))
         if u.domain is Domain.AIR:
-            state_bits.append(f"燃油{u.fuel * 100:.0f}%")
+            state_bits.append(tr("ui.hud.fuel_fmt") % (f"{u.fuel * 100:.0f}%",))
         if u.template.datalink:
-            state_bits.append("数据链通" if u.datalink_on else "数据链断")
+            state_bits.append(tr("ui.hud.link_up") if u.datalink_on
+                              else tr("ui.hud.link_down"))
         if u.template.command_radius > 0 and u.side is self.side:
             subs = self.state.subordinates_of(u)
-            state_bits.append(f"指挥{len(subs)}")
+            state_bits.append(tr("ui.hud.command_count_fmt") % (len(subs),))
         # 补给状态：有补给线 / 断粮
         if u.side is self.side and u.domain is not Domain.AIR:
             src = rules.supply_source_for(self.state, u)
-            state_bits.append("补给通" if src is not None else "断粮")
+            state_bits.append(tr("ui.hud.supply_up") if src is not None
+                              else tr("ui.hud.supply_cut"))
         col = T.AMBER if u.fired else T.GREEN
         if u.domain is Domain.AIR and u.fuel < 0.35:
             col = T.RED
@@ -2655,20 +2691,26 @@ class App:
         st = self.state
         y = r.y + 90
         bits: list[str] = []
+        jammed = False
         if u.template.jam_bands:
-            labels = {"radar": "雷达", "comm": "通信", "nav": "导航"}
-            bands = "、".join(labels.get(b, b) for b in u.template.jam_bands)
-            bits.append(f"可干扰：{bands}（半径 {u.template.jam_radius:.0f} 格）")
+            labels = {"radar": tr("enum.jam_band.radar"),
+                      "comm": tr("enum.jam_band.comm"),
+                      "nav": tr("enum.jam_band.nav")}
+            bands = tr("env.join").join(labels.get(b, b) for b in u.template.jam_bands)
+            bits.append(tr("ui.hud.ew_jam_fmt") % (bands, f"{u.template.jam_radius:.0f}"))
         # 敌方干扰对本单位的影响
         radar_jam = rules.jam_strength_at(st, (u.x, u.y), u.side, "radar")
         comm_jam = rules.jam_strength_at(st, (u.x, u.y), u.side, "comm")
         if radar_jam > 0.05:
-            bits.append(f"雷达受扰 {radar_jam * 100:.0f}%")
+            bits.append(tr("ui.hud.ew_radar_fmt") % (f"{radar_jam * 100:.0f}",))
+            jammed = True
         if comm_jam > 0.05:
-            bits.append(f"通信受扰 {comm_jam * 100:.0f}%")
+            bits.append(tr("ui.hud.ew_comm_fmt") % (f"{comm_jam * 100:.0f}",))
+            jammed = True
         if not bits:
             return
-        col = T.RED if any("受扰" in b for b in bits) else T.PURPLE
+        # 别用「文本里含某个词」判断颜色——那等于把中文当语法
+        col = T.RED if jammed else T.PURPLE
         T.draw_text(s, " · ".join(bits), (r.x + 64, y), 11, col)
 
     def _draw_weapons(self, s, body, u: Unit, y: int) -> int:
@@ -2702,40 +2744,51 @@ class App:
         has_radar = any(sc.kind.value == "radar" for sc in u.template.sensors)
         acts: list[tuple[str, object, bool]] = []
         if has_radar:
-            acts.append(("雷达 开" if u.radar_on else "雷达 关",
+            acts.append((tr("ui.hud.radar_on") if u.radar_on
+                         else tr("ui.hud.radar_off"),
                          lambda: self._act_radar(u), u.radar_on))
         if u.template.jam_strength > 0:
-            acts.append(("干扰 开" if u.jam_on else "干扰 关",
+            acts.append((tr("ui.hud.jam_on") if u.jam_on
+                         else tr("ui.hud.jam_off"),
                          lambda: self._act_jam(u), u.jam_on))
         if u.template.datalink and not u.is_decoy:
-            acts.append(("链 通" if u.datalink_on else "链 断",
+            acts.append((tr("ui.hud.link_toggle_on") if u.datalink_on
+                         else tr("ui.hud.link_toggle_off"),
                          lambda: self._act_datalink(u), u.datalink_on))
         if u.template.can_fortify and not u.is_decoy:
             tile = st.map.at(u.x, u.y)
             lvl = tile.fort if tile and tile.fort_owner is u.side else 0
-            acts.append((f"筑工事 {lvl}/3", lambda: self._build_fort(u), lvl >= 3))
+            acts.append((tr("ui.hud.build_fort_fmt") % (lvl,),
+                         lambda: self._build_fort(u), lvl >= 3))
         if u.decoy_left > 0:
-            for kind, label in (("radar", "雷诱"), ("ir", "红诱"), ("visual", "假目标")):
+            for kind, label in (("radar", tr("ui.hud.decoy_radar")),
+                                ("ir", tr("ui.hud.decoy_ir")),
+                                ("visual", tr("ui.hud.decoy_visual"))):
                 acts.append((f"{label}", (lambda k=kind: self.begin_decoy(u, k)), False))
         if u.domain.value == "air" and not u.is_decoy:
-            label = {"strike": "剖面:打击", "cap": "剖面:巡逻", "ferry": "剖面:转场"}[u.mission]
+            label = {"strike": tr("ui.hud.profile_strike"),
+                     "cap": tr("ui.hud.profile_cap"),
+                     "ferry": tr("ui.hud.profile_ferry")}[u.mission]
             acts.append((label, lambda: self.cycle_mission(u), u.mission == "cap"))
         if any(w.kind.value in ("artillery", "mlrs") for w in u.usable_weapons()):
-            acts.append(("烟幕", lambda: self.begin_smoke(u), False))
+            acts.append((tr("ui.hud.smoke"), lambda: self.begin_smoke(u), False))
         if u.can_prepare_fire and not u.is_decoy:
             fm = u.fire_mission
             if fm is not None and fm.active:
-                acts.append((f"射界 {fm.x},{fm.y}", lambda: self.set_status(
+                acts.append((tr("ui.hud.fire_mission_fmt") % (fm.x, fm.y),
+                             lambda: self.set_status(
                     tr("ui.st.fa_state_fmt") % (
                         fm.x, fm.y,
                         tr("ui.st.fa_prepared") if fm.prepared
                         else tr("ui.st.fa_preparing_fmt") % (fm.turns_left,))), True))
             else:
-                acts.append(("预先射击", lambda: self.begin_prepare_fire(u), False))
+                acts.append((tr("ui.hud.prepare_fire"),
+                             lambda: self.begin_prepare_fire(u), False))
         if u.template.command_radius > 0 and not u.is_decoy and u.side is self.side:
             subs = st.subordinates_of(u)
-            acts.append((f"指挥 {len(subs)}", lambda: self.begin_command(u), False))
-        acts.append(("待机", lambda: self._standby(u), False))
+            acts.append((tr("ui.hud.command_fmt") % (len(subs),),
+                         lambda: self.begin_command(u), False))
+        acts.append((tr("ui.hud.standby"), lambda: self._standby(u), False))
 
         bw = (body.width - 12) // 3
         for i, (label, cb, active) in enumerate(acts):
@@ -2778,7 +2831,9 @@ class App:
         if self.state.set_mission(u, nxt):
             self._record(CMD_PROFILE, uid=u.uid, mission=nxt)
             self._tutorial_note("profile")
-            label = {"strike": "打击", "cap": "制空巡逻", "ferry": "转场"}[nxt]
+            label = {"strike": tr("ui.hud.mission_strike"),
+                     "cap": tr("ui.hud.mission_cap_long"),
+                     "ferry": tr("ui.hud.mission_ferry")}[nxt]
             self.set_status(
                 tr("ui.st.profile_changed_fmt") % (
                     u.name, label,
@@ -3274,8 +3329,7 @@ class App:
             T.draw_text(s, tr("ui.victory_condition"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
             y += 16
             for line in T.wrap_text(
-                    f"{st.turn_limit} 回合内累计胜负点高者获胜。目标点由可占领单位控制，"
-                    f"每回合结算一次；击毁敌方单位不直接得分，但可削弱其目标点控制能力。",
+                    tr("ui.sit.victory_fmt") % (st.turn_limit,),
                     10, body.width)[:4]:
                 T.draw_text(s, line, (body.x, y), 11, T.TEXT_DIM)
                 y += 14
@@ -3302,26 +3356,21 @@ class App:
                 if st.known_level(self.side, u).level >= Detection.CLASSIFIED.level
                 and u.max_intercept_range() > 0]
         if sams:
-            names = "、".join(u.template.short for u in sams[:2])
-            tips.append(f"侦测到敌方防空系统（{names}），航空兵进入其包线前应先用反辐射导弹或"
-                        f"防区外弹药压制。")
+            names = tr("env.join").join(u.template.short for u in sams[:2])
+            tips.append(tr("ui.tip.sam_fmt") % (names,))
         if st.gps[self.side] < 0.85:
-            tips.append(f"己方卫星导航完整性降至 {st.gps[self.side] * 100:.0f}%，"
-                        f"卫星/惯导制导弹药命中率下降，可考虑改用光学或激光制导武器。")
+            tips.append(tr("ui.tip.gps_fmt") % (f"{st.gps[self.side] * 100:.0f}",))
         ew = [u for u in st.enemies_of(self.side)
               if st.known_level(self.side, u).level >= Detection.CLASSIFIED.level
               and u.template.jam_strength > 0]
         if ew:
-            tips.append("敌方电子战力量活跃，雷达探测距离与雷达制导武器效能被削弱，"
-                        "必要时切换被动侦察手段。")
+            tips.append(tr("ui.tip.ew"))
         if st.missiles:
             mine = [m for m in st.missiles if m.attacker_side is self.side]
             if mine:
-                tips.append(f"我方有 {len(mine)} 枚弹药在飞，抵达前若目标机动或情报中断，"
-                            f"命中概率将显著下降。")
+                tips.append(tr("ui.tip.inflight_fmt") % (len(mine),))
         if not tips:
-            tips.append("保持传感器网络覆盖：目标只有在被「跟踪」时才能被精确打击，"
-                        "雷达开机与关机的取舍决定生存与发现。")
+            tips.append(tr("ui.tip.default"))
         return tips[:3]
 
     # -- 底栏 -------------------------------------------------------------
@@ -3329,83 +3378,83 @@ class App:
         y = self.h - BOTTOM_H
         pygame.draw.rect(s, T.PANEL, pygame.Rect(0, y, self.w, BOTTOM_H))
         T.hline(s, 0, self.w, y, T.BORDER)
-        hint = ("左键选择/机动 · 右键机动 · 滚轮缩放 · 中键平移 · 空格结束回合 · Tab 切换单位 · "
-                "1-9 选择武器 · R 雷达 · J 干扰 · E 覆盖层 · F1 帮助")
+        hint = tr("ui.hud.hint_bar")
         T.draw_text(s, hint, (12, y + 6), 11, T.TEXT_FAINT)
 
         if self.hover_tile:
             t = self.state.map.at(*self.hover_tile)
             if t:
-                parts = [f"({t.x},{t.y})", t.terrain.label, f"海拔 {t.elevation}m"]
+                parts = [f"({t.x},{t.y})", t.terrain.label,
+                         tr("ui.hud.elevation_fmt") % (t.elevation,)]
                 if t.facility is not Facility.NONE:
                     parts.append(t.facility.label)
                 if t.objective:
                     parts.append(f"◆ {t.objective_name}")
                 if t.smoke:
-                    parts.append("烟幕")
+                    parts.append(tr("ui.hud.smoke"))
                 T.draw_text(s, " · ".join(parts), (self.w - SIDE_W - 12, y + 6), 11,
                             T.TEXT_DIM, anchor="topright")
 
     # -- 帮助 -------------------------------------------------------------
+    #: 帮助面板内容。这里只存**词条键**——正文在 data/lang/*_ui.json 里，
+    #: 社区补一种语言不必改代码。
     HELP_LEFT = [
-        ("h", "侦察—打击链"),
-        ("p", "目标须被传感器探测到「跟踪」级才能装订诸元；火炮/火箭炮可对「识别」级实施压制。"),
-        ("h", "信火一体"),
-        ("p", "友邻雷达或预警机提供跟踪诸元时，本平台即使未自身锁定也可发射；"
-              "有数据链无惩罚（A 射 B 导），老式装备命中率 ×0.78。"),
-        ("h", "电子战与诱饵"),
-        ("p", "干扰压制雷达链路并削弱卫星导航；反辐射导弹只打辐射源。"
-              "电子战单位可投放诱饵，在敌方态势图上生成假目标，攻击诱饵将浪费整次射击。"),
-        ("h", "步兵与工事"),
-        ("p", "步兵对直瞄火力减伤、对面积火力增伤，城区防御尤强。驻守不动可构筑工事，"
-              "获得额外防护并降低被发现概率；一旦机动工事尽失。"),
-        ("h", "航空兵"),
-        ("p", "战机被命中即坠毁；按挂架可在单回合内多次发射（最多 3 次）。"
-              "每回合耗油，须返回完好机场或航母补给，否则燃油耗尽坠毁。"
-              "任务剖面：巡逻（雷达/空战增益、油耗 ×1.3）、转场（油耗 ×0.5、"
-              "机动 +25%、禁止射击）。"),
-        ("h", "反卫星与设施打击"),
-        ("p", "「战役态势」页点击敌方卫星可实施反卫星打击；点击敌方机场/港口可实施结构打击，"
-              "结构完整度低于 25% 的设施将失能。"),
+        ("h", "ui.help.recon_t"),
+        ("p", "ui.help.recon_b"),
+        ("h", "ui.help.cue_t"),
+        ("p", "ui.help.cue_b"),
+        ("h", "ui.help.ew_t"),
+        ("p", "ui.help.ew_b"),
+        ("h", "ui.help.inf_t"),
+        ("p", "ui.help.inf_b"),
+        ("h", "ui.help.air_t"),
+        ("p", "ui.help.air_b"),
+        ("h", "ui.help.asat_t"),
+        ("p", "ui.help.asat_b"),
     ]
     HELP_RIGHT = [
-        ("h", "操作"),
-        ("p", "左键：选择己方单位 / 点选目标 / 机动"),
-        ("p", "右键：下达机动指令"),
-        ("p", "滚轮：缩放　　中键拖动：平移"),
-        ("p", "方向键：移动键盘光标（靠近边缘自动滚屏）"),
-        ("p", "回车：在光标处选择单位 / 机动 / 选定目标，再次回车开火"),
-        ("p", "空格：结束回合（AI 阶段可快进）"),
-        ("p", "Tab：切换单位　　1-9：选择武器"),
-        ("p", "R：雷达　J：干扰　E：覆盖层"),
-        ("p", "F5 / F9：快速保存 / 读取　　F10：系统菜单"),
-        ("h", "齐射"),
-        ("p", "交战面板可选 1-3 发齐射，多发独立判定、命中概率取并集，但成倍消耗备弹。"),
-        ("h", "存档"),
-        ("p", "系统菜单提供 5 个槽位，记录单位状态、在飞弹药、设施损毁与目标点归属。"),
-        ("h", "数据编辑"),
-        ("p", "主菜单「地图 / 武器编辑器」可编辑地形、尺寸、设施、部署、兵种属性、"
-              "武器备弹与预设挂载；部署页顶部可按预设编队（中·空 / 美·海 …）筛选。"),
+        ("h", "ui.help.ctrl_t"),
+        ("p", "ui.help.ctrl1"),
+        ("p", "ui.help.ctrl2"),
+        ("p", "ui.help.ctrl3"),
+        ("p", "ui.help.ctrl4"),
+        ("p", "ui.help.ctrl5"),
+        ("p", "ui.help.ctrl6"),
+        ("p", "ui.help.ctrl7"),
+        ("p", "ui.help.ctrl8"),
+        ("h", "ui.help.salvo_t"),
+        ("p", "ui.help.salvo_b"),
+        ("h", "ui.help.save_t"),
+        ("p", "ui.help.save_b"),
+        ("h", "ui.help.edit_t"),
+        ("p", "ui.help.edit_b"),
     ]
 
     def _layout_help_column(self, items, width: int) -> list[tuple[str, int, tuple, int]]:
         out: list[tuple[str, int, tuple, int]] = []
-        for kind, text in items:
+        for kind, key in items:
             if kind == "h":
-                out.append((text, 12, T.CYAN, 22))
+                out.append((tr(key), 12, T.CYAN, 22))
             else:
-                for line in T.wrap_text(text, 11, width):
+                for line in T.wrap_text(tr(key), 11, width):
                     out.append((line, 11, T.TEXT_DIM, 17))
                 out.append(("", 10, T.TEXT_DIM, 2))
         return out
 
     def _draw_help(self, s: pygame.Surface) -> None:
+        """规则与操作帮助。
+
+        面板高度按内容算，但**上限是窗口高度**——拉丁文比中文长得多，
+        同一段话排出来可能高出一截。超出部分靠滚轮 / 方向键 / PageUp
+        滚动查看，而不是把面板顶出屏幕。
+        """
         w = min(900, self.w - 80)
         colw = (w - 76) // 2
         left = self._layout_help_column(self.HELP_LEFT, colw)
         right = self._layout_help_column(self.HELP_RIGHT, colw)
         content_h = max(sum(i[3] for i in left), sum(i[3] for i in right))
-        h = min(self.h - 60, content_h + 104)
+        header_h, footer_h = 54, 34
+        h = min(self.h - 60, content_h + header_h + footer_h + 16)
         r = pygame.Rect((self.w - w) // 2, (self.h - h) // 2, w, h)
         surf = pygame.Surface(r.size, pygame.SRCALPHA)
         surf.fill((8, 11, 16, 248))
@@ -3414,14 +3463,34 @@ class App:
         T.draw_text(s, tr("ui.rules_and_controls"), (r.x + 24, r.y + 16), 17, T.TEXT, bold=True)
         T.hline(s, r.x + 24, r.right - 24, r.y + 44, T.BORDER)
 
+        view_h = h - header_h - footer_h
+        max_scroll = max(0, content_h + 10 - view_h)
+        self.help_scroll = max(0, min(self.help_scroll, max_scroll))
+
+        old_clip = s.get_clip()
+        s.set_clip(pygame.Rect(r.x + 12, r.y + header_h, r.width - 24, view_h))
         for items, cx in ((left, r.x + 24), (right, r.x + 52 + colw)):
-            yy = r.y + 58
+            yy = r.y + 58 - self.help_scroll
             for text, size, color, dy in items:
                 if text:
                     T.draw_text(s, text, (cx, yy), size, color, bold=size >= 12)
                 yy += dy
-        T.draw_text(s, tr("ui.press_f1_close"), (r.centerx, r.bottom - 22), 11, T.TEXT_FAINT,
-                    anchor="center")
+        s.set_clip(old_clip)
+
+        # 滚动条：只在真的装不下时出现
+        if max_scroll > 0:
+            track = pygame.Rect(r.right - 10, r.y + header_h, 3, view_h)
+            pygame.draw.rect(s, T.PANEL_SUNK, track, border_radius=2)
+            span = max(18, int(view_h * view_h / (content_h + 10)))
+            top = track.y + int((view_h - span) * self.help_scroll / max_scroll)
+            pygame.draw.rect(s, T.CYAN, pygame.Rect(track.x, top, track.w, span),
+                             border_radius=2)
+        # 页脚两段分开画：拼成一行居中会在窄面板上互相压字
+        T.draw_text(s, tr("ui.press_f1_close"), (r.centerx, r.bottom - 22), 11,
+                    T.TEXT_FAINT, anchor="center")
+        if max_scroll > 0:
+            T.draw_text(s, tr("ui.help.scroll_hint"), (r.x + 24, r.bottom - 22), 11,
+                        T.TEXT_FAINT)
 
     # -- 结算 -------------------------------------------------------------
     def _draw_over(self, s: pygame.Surface) -> None:
@@ -3437,21 +3506,24 @@ class App:
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
         win = st.winner is self.side
         if st.winner is None:
-            title, col = "战 平", T.AMBER
+            title, col = tr("ui.end.draw"), T.AMBER
         elif win:
-            title, col = "胜 利", T.GREEN
+            title, col = tr("ui.end.win"), T.GREEN
         else:
-            title, col = "失 败", T.RED
+            title, col = tr("ui.end.lose"), T.RED
         T.draw_text(s, title, (r.centerx, r.y + 34), 38, col, bold=True, anchor="center")
         for line in T.wrap_text(st.win_reason, 13, r.width - 60)[:3]:
             T.draw_text(s, line, (r.centerx, r.y + 92), 13, T.TEXT, anchor="center")
 
         y = r.y + 168
+        pair = tr("ui.end.pair_fmt")
         stats = [
-            ("回合", f"{min(st.turn_count, st.turn_limit)} / {st.turn_limit}"),
-            ("胜负点", f"蓝 {st.vp[Side.BLUE]}  :  {st.vp[Side.RED]} 红"),
-            ("战损", f"蓝 {st.casualties[Side.BLUE]}  :  {st.casualties[Side.RED]} 红"),
-            ("剩余兵力", f"蓝 {len(st.units_of(Side.BLUE))}  :  {len(st.units_of(Side.RED))} 红"),
+            (tr("ui.end.turn"), f"{min(st.turn_count, st.turn_limit)} / {st.turn_limit}"),
+            (tr("ui.end.vp"), pair % (st.vp[Side.BLUE], st.vp[Side.RED])),
+            (tr("ui.end.casualties"), pair % (st.casualties[Side.BLUE],
+                                              st.casualties[Side.RED])),
+            (tr("ui.end.forces"), pair % (len(st.units_of(Side.BLUE)),
+                                          len(st.units_of(Side.RED)))),
         ]
         for k, v in stats:
             T.draw_text(s, k, (r.x + 120, y), 13, T.TEXT_FAINT)

@@ -112,14 +112,18 @@ class Environment:
         return t[band] * w[band]
 
     def describe_effects(self) -> str:
-        """一行式说明，用于顶栏与战报。"""
+        """一行式说明，用于顶栏与战报。
+
+        分隔符与「无影响」也要吃语言包——中文用顿号，日文用中点，
+        拉丁语系用逗号，硬编码哪一个都会在别的语言里显得别扭。
+        """
+        from .i18n import tr
         parts = []
-        for name, key in (("光学", "optical"), ("红外", "thermal"), ("雷达", "radar")):
-            f = self.factor(SensorKind.OPTICAL if key == "optical"
-                            else SensorKind.IR if key == "thermal" else SensorKind.RADAR)
+        for kind in (SensorKind.OPTICAL, SensorKind.IR, SensorKind.RADAR):
+            f = self.factor(kind)
             if abs(f - 1.0) >= 0.02:
-                parts.append(f"{name}{f:.2f}")
-        return "、".join(parts) if parts else "无显著影响"
+                parts.append(tr("env.effect_fmt", "%s×%.2f") % (kind.label, f))
+        return tr("env.join", "、").join(parts) if parts else tr("env.no_effect", "无显著影响")
 
 
 def _seeded_chain(seed: int, length: int) -> list[Weather]:

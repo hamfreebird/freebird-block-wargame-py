@@ -82,7 +82,7 @@ class BriefingData:
     foe: ForceSummary
     env_label: str
     env_effects: str
-    objectives: list[tuple[str, int, str]] = field(default_factory=list)  # (名称, VP, 归属)
+    objectives: list[tuple[str, int, "Side"]] = field(default_factory=list)  # (名称, VP, 归属)
     events: list[tuple[int, str]] = field(default_factory=list)        # (回合, 描述)
     victory_hint: str = ""
 
@@ -96,7 +96,7 @@ def build_briefing(state) -> BriefingData:
     objs = []
     for t in state.objective_tiles:
         objs.append((t.objective_name or tr("ui.brief.objective_auto_fmt") % (t.x, t.y),
-                     t.victory_points, t.owner.label))
+                     t.victory_points, t.owner))
     events = []
     for e in state.events:
         if not e.fired:
@@ -243,8 +243,10 @@ def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
     T.draw_text(s, tr("brief.objective"), (ox, col_y), 12, T.CYAN, bold=True)
     yy = col_y + 22
     for name, vp, owner in d.objectives[:5]:
-        col = T.side_color(Side.RED if owner == Side.RED.label else Side.BLUE) \
-            if owner in (Side.BLUE.label, Side.RED.label) else T.TEXT_FAINT
+        # 归属存的是 Side 枚举而非中文标签——标签会随语言变，
+        # 拿它当身份比较，切一次语言就认不出自己的目标点了。
+        col = T.side_color(owner) \
+            if owner in (Side.BLUE, Side.RED) else T.TEXT_FAINT
         T.draw_text(s, name[:14], (ox, yy), 11, T.TEXT)
         T.draw_text(s, f"{vp} VP", (ox + ow, yy), 11, T.AMBER, anchor="topright", mono=True)
         yy += 19

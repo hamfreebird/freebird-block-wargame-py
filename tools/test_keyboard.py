@@ -272,6 +272,28 @@ def main() -> int:
                 scrolled_ok = False
                 print(f"        {label}越界未回到视野：{r}")
         check(scrolled_ok, "实战：光标越界自动滚屏方向正确（上下左右）")
+        # ---- 5. 帮助面板：滚动与关闭 ---------------------------------------
+        app.show_help = True
+        app.help_scroll = 9999
+        app.draw()
+        check(app.help_scroll == 0, "帮助：内容装得下时不残留滚动偏移")
+        app._on_key(key(pygame.K_F1))
+        check(not app.show_help, "帮助：F1 关闭")
+
+        # 强行把窗口改矮，制造「内容装不下」的分支
+        real_h = app.h
+        app.h = 430
+        app.show_help = True
+        app.help_scroll = 0
+        app.draw()
+        app._on_key(key(pygame.K_PAGEDOWN))
+        app.draw()
+        check(app.help_scroll > 0, "帮助：装不下时 PageDown 能滚动")
+        app._on_key(key(pygame.K_HOME))
+        check(app.help_scroll == 0, "帮助：Home 回到顶部")
+        app._on_key(key(pygame.K_ESCAPE))
+        check(not app.show_help, "帮助：Esc 关闭")
+        app.h = real_h
     finally:
         shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
 
