@@ -620,6 +620,9 @@ class App:
         self.tab = "unit"
         self.pending_target = None
         self.pending_facility = None
+        # 键盘光标不跨局保留：新关卡的选中单位与地图都换了，
+        # 沿用上一关的坐标会让首次方向键从地图另一头起跳。
+        self.cursor_visible = False
         self.show_menu = False
         self.status = ""
         self.tutorial = None
@@ -1186,6 +1189,7 @@ class App:
         self.tab = "unit"
         self.pending_target = None
         self.pending_facility = None
+        self.cursor_visible = False       # 见战役入口处的说明：光标不跨局保留
         self.show_menu = False
         self.show_settings = False
         self.ai_timer = 0.0
@@ -1271,6 +1275,7 @@ class App:
         self.show_help = False
         self.pending_target = None
         self.pending_facility = None
+        self.cursor_visible = False       # 光标不跨局保留，读档后重新落到选中单位
         self.ai_timer = 0.0
         self.tab = "unit"
         # 读档直接进入战斗——简报与回顾状态必须清掉，

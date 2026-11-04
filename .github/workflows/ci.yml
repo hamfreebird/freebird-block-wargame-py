@@ -138,6 +138,9 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_keyboard.py
 
+      - name: 存档自检（随机流往返 / 坏档不崩）
+        run: python tools/test_save.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

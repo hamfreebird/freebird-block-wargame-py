@@ -1,7 +1,16 @@
 """存档与读档。
 
 存档为纯 JSON：记录想定路径、全部单位状态、地块可变状态（归属/烟幕/设施完好度）、
-在飞弹药、胜负点与日志尾部。读档时重新从想定文件重建地形与兵种模板，再套用存档状态。
+在飞弹药、胜负点、**对局随机流状态**与日志尾部。读档时重新从想定文件重建地形
+与兵种模板，再套用存档状态。
+
+两处容易踩的坑，改动前请先读：
+
+1. **随机流必须整份存**（``rng``）。只存种子还原不了「已经消耗了 N 次随机数」
+   之后的序列——不同分布消耗的随机数个数不同。少了这一块，读档后的每一次
+   判定都换了条流，"同种子可重演"在读档边界就断了。
+2. **任何字段错误都翻译成 SaveError**。``main.py`` 的顶层只有一个大 ``except``，
+   ``ValueError`` / ``KeyError`` 冒泡上去会直接结束进程；坏档顶多该让"读档"失败。
 """
 from __future__ import annotations
 
@@ -14,7 +23,9 @@ from .enums import Altitude, Facility, Side
 from .loader import LoadError, load_scenario
 from .model import FireMission, Missile, Order, Unit, ensure_uid_above
 
-SAVE_VERSION = 5
+# v6：新增 "rng" 随机流状态。旧版程序读 v6 存档会被版本检查拦下——那是对的，
+# 它无法忠实还原读档后的随机序列，不如明确拒绝。
+SAVE_VERSION = 6
 
 
 class SaveError(Exception):
@@ -119,6 +130,8 @@ def game_to_dict(state: GameState) -> dict[str, Any]:
         "winner": state.winner.value if state.winner else None,
         "win_reason": state.win_reason,
         "salvo": state.salvo_setting,
+        # 随机流：种子 + 已消耗次数 + random 内部状态（见 core/rng.py）
+        "rng": state.rng.getstate(),
         "vp": {s.value: v for s, v in state.vp.items()},
         "gps": {s.value: round(v, 3) for s, v in state.gps.items()},
         "casualties": {s.value: v for s, v in state.casualties.items()},
@@ -154,7 +167,26 @@ def save_game(state: GameState, path: str) -> None:
         raise SaveError(f"写入存档失败：{exc}") from None
 
 
+def _seed_from_save(data: dict[str, Any]) -> int | None:
+    """从存档里取种子；取不到就返回 ``None``（由 GameRng 自行生成）。
+
+    v6 起种子在 ``rng.seed`` 里。字段脏了也不抛——真正的状态恢复由随后的
+    ``setstate`` 负责，那里失败才判定存档损坏。
+    """
+    rng_state = data.get("rng")
+    raw = rng_state.get("seed") if isinstance(rng_state, dict) else data.get("seed")
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def load_game(path: str, default_armory: str = "") -> GameState:
+    """读取存档。
+
+    所有字段级错误（缺键、类型不对、枚举越界、索引越界）在这里统一翻译成
+    :class:`SaveError`——界面只需处理一种异常，进程不会因为一个坏档退出。
+    """
     if not os.path.isfile(path):
         raise SaveError(f"存档不存在：{path}")
     try:
@@ -162,7 +194,22 @@ def load_game(path: str, default_armory: str = "") -> GameState:
             data = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise SaveError(f"读取存档失败：{exc}") from None
+    if not isinstance(data, dict):
+        raise SaveError("存档格式不正确：顶层应当是一个 JSON 对象")
 
+    try:
+        return _restore_game(data, default_armory)
+    except SaveError:
+        raise
+    except OSError as exc:
+        # 想定/武器库在读完存档后才被删掉或锁住：报清楚是哪一步失败
+        raise SaveError(f"读取存档依赖的文件失败：{exc}") from None
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError) as exc:
+        # 原始异常类型对玩家没有意义，附上字段线索更有用
+        raise SaveError(f"存档内容损坏：{type(exc).__name__}: {exc}") from None
+
+
+def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
     if int(data.get("version", 0)) > SAVE_VERSION:
         raise SaveError("存档版本高于当前程序，请升级后再读取")
 
@@ -177,9 +224,20 @@ def load_game(path: str, default_armory: str = "") -> GameState:
         raise SaveError(f"重建想定失败：{exc}") from None
 
     side = Side(data.get("player_side", "BLUE"))
-    state = GameState(scenario, side)
+    # 先用存档里的种子建流（v6 起有）；没有就取新种子——下一步 setstate
+    # 会用完整状态覆盖它，这里只是避免中间步骤跑在一条无关的流上。
+    state = GameState(scenario, side, seed=_seed_from_save(data))
     state.scenario_path = scenario_path
     state.armory_path = armory_path
+
+    # 随机流状态：接着存档那一刻的序列继续走，否则「同种子可重演」在读档处断裂
+    rng_state = data.get("rng")
+    if isinstance(rng_state, dict):
+        try:
+            state.rng.setstate(rng_state)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SaveError(f"存档的随机流状态损坏：{exc}") from None
+        state.seed = state.rng.seed
 
     # 1) 单位
     units: list[Unit] = []
