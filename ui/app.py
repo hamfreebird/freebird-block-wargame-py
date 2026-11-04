@@ -147,6 +147,10 @@ class App:
         self.command_issuer: Unit | None = None
         self.hover_unit: Unit | None = None
         self.hover_tile: tuple[int, int] | None = None
+        # 键盘地图光标：方向键移动，回车在光标处执行与鼠标左键等价的动作。
+        # 仅在使用键盘导航后才显示，鼠标玩家不会看到它。
+        self.cursor: tuple[int, int] = (0, 0)
+        self.cursor_visible: bool = False
         self.path_preview: list | None = None
         self.reachable: dict = {}
         self.buttons: list[Button] = []
@@ -1490,6 +1494,127 @@ class App:
             self._game_over()
 
     # ------------------------------------------------------------------ #
+    # 键盘地图光标（8.3 无障碍：纯键盘完成整局）
+    # ------------------------------------------------------------------ #
+    def _sync_cursor(self, grid: tuple[int, int]) -> None:
+        """鼠标操作后让键盘光标跟随，保持两套输入连续。"""
+        self.cursor = grid
+        self.cursor_visible = True
+
+    def _move_cursor(self, k: int) -> None:
+        """方向键移动键盘光标；首次使用自动落到选中单位或地图中心。"""
+        st = self.state
+        if st is None:
+            return
+        if not self.cursor_visible:
+            u = st.selected_unit()
+            if u is not None:
+                self.cursor = (u.x, u.y)
+            else:
+                self.cursor = (st.map.width // 2, st.map.height // 2)
+            self.cursor_visible = True
+        x, y = self.cursor
+        if k == pygame.K_UP:
+            y -= 1
+        elif k == pygame.K_DOWN:
+            y += 1
+        elif k == pygame.K_LEFT:
+            x -= 1
+        elif k == pygame.K_RIGHT:
+            x += 1
+        x = max(0, min(st.map.width - 1, x))
+        y = max(0, min(st.map.height - 1, y))
+        self.cursor = (x, y)
+        self._ensure_cursor_visible()
+
+    def _ensure_cursor_visible(self) -> None:
+        """光标接近地图视窗边缘时自动滚屏，始终保持在视野内。"""
+        mv = self.mapview
+        if mv is None:
+            return
+        r = mv.grid_to_rect(*self.cursor)
+        margin = mv.tile
+        view = mv.rect
+        if r.right > view.right - margin:
+            mv.pan(r.right - (view.right - margin), 0)
+        elif r.left < view.left + margin:
+            mv.pan(r.left - (view.left + margin), 0)
+        if r.bottom > view.bottom - margin:
+            mv.pan(0, r.bottom - (view.bottom - margin))
+        elif r.top < view.top + margin:
+            mv.pan(0, r.top - (view.top + margin))
+
+    def _activate_at(self, grid: tuple[int, int]) -> None:
+        """在 grid 处执行与鼠标左键等价的上下文动作。
+
+        从 _on_mouse_down 抽出，供鼠标点击与键盘光标共用，避免两套分叉逻辑。
+        注意：刻意不带回合阶段守卫——与鼠标点击行为保持一致（AI 阶段点击
+        选择单位本就是无害的）。
+        """
+        st = self.state
+        if st is None:
+            return
+        u = self._pick_unit_at(*grid)
+        if u is not None and u.side is self.side:
+            # 同格多支部队（如机场停驻的航空兵）时循环选择
+            same = [x for x in st.units_at(*grid) if x.side is self.side]
+            cur = st.selected_unit()
+            if len(same) > 1 and cur in same:
+                self.select_unit(same[(same.index(cur) + 1) % len(same)])
+            else:
+                self.select_unit(u)
+            return
+
+        sel = st.selected_unit()
+
+        # 对敌方固定设施的打击（机场/港口/后勤枢纽）
+        tile = st.map.at(*grid)
+        if (u is None and sel is not None and tile is not None
+                and tile.facility is not Facility.NONE and tile.owner is not self.side
+                and tile.owner is not Side.NEUTRAL):
+            w = sel.weapon_by_id(st.selected_weapon or "")
+            prof = rules.facility_strike_profile(st, sel, tile, w) if w else None
+            if prof is None or not prof.ok:
+                self.set_status(f"无法打击该设施：{prof.reason if prof else '无可用武器'}")
+                return
+            if self.pending_facility == grid:
+                self.confirm_fire()
+            else:
+                self.pending_target = None
+                self.pending_facility = grid
+                self.tab = "unit"
+                self.set_status(
+                    f"选定设施 {tile.facility.label}({tile.x},{tile.y})｜{w.name} "
+                    f"Pk {prof.pk * 100:.0f}%｜再次点击或回车确认打击", 5)
+            return
+
+        if u is not None and u.side is not self.side and sel is not None:
+            lvl = st.known_level(self.side, u)
+            if lvl.level < Detection.CLASSIFIED.level:
+                self.set_status("目标未识别，无法装订射击诸元")
+                return
+            if self.pending_target is u:
+                self.confirm_fire()
+            else:
+                self.pending_target = u
+                self.state.select(sel)
+                self.tab = "unit"
+                w = sel.weapon_by_id(st.selected_weapon or "")
+                if w:
+                    p = rules.shot_profile(st, sel, u, w)
+                    if p.ok:
+                        self.set_status(f"选定目标 {u.name}｜{w.name} Pk {p.pk * 100:.0f}%"
+                                        f"｜再次点击或回车确认开火", 5)
+                    else:
+                        self.set_status(f"无法射击：{p.reason}", 4)
+            return
+
+        if sel is not None:
+            self.order_move(*grid)
+        else:
+            self.select_unit(None)
+
+    # ------------------------------------------------------------------ #
     def handle_event(self, e: pygame.event.Event) -> None:
         self.mouse = pygame.mouse.get_pos()
         if self.mode == "editor" and self.editor is not None:
@@ -1703,12 +1828,19 @@ class App:
         elif action == "fit_map":
             self.mapview.fit()
         elif action == "confirm":
-            self.confirm_fire()
+            # 已有待确认的目标/设施 → 开火/打击；否则在键盘光标处执行左键等价动作
+            if self.pending_target is not None or self.pending_facility is not None:
+                self.confirm_fire()
+            elif self.cursor_visible and st.phase == "player" and not st.over:
+                self._activate_at(self.cursor)
         elif action.startswith("weapon_") and action[7:].isdigit():
             idx = int(action[7:]) - 1
             ws = st.selected_unit().usable_weapons() if st.selected_unit() else []
             if idx < len(ws):
                 st.selected_weapon = ws[idx].id
+        elif k in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+            # 方向键移动键盘地图光标（纯键盘导航，鼠标玩家不受影响）
+            self._move_cursor(k)
 
     def _on_mouse_down(self, e: pygame.event.Event) -> None:
         pos = e.pos
@@ -1839,7 +1971,6 @@ class App:
         grid = self.mapview.screen_to_grid(pos)
         if grid is None:
             return
-        u = self._pick_unit_at(*grid)
 
         if e.button == 3:
             if st.selected_unit():
@@ -1862,64 +1993,11 @@ class App:
         if e.button != 1:
             return
 
-        if u is not None and u.side is self.side:
-            # 同格多支部队（如机场停驻的航空兵）时循环选择
-            same = [x for x in st.units_at(*grid) if x.side is self.side]
-            cur = st.selected_unit()
-            if len(same) > 1 and cur in same:
-                self.select_unit(same[(same.index(cur) + 1) % len(same)])
-            else:
-                self.select_unit(u)
-            return
-
-        sel = st.selected_unit()
-
-        # 对敌方固定设施的打击（机场/港口/后勤枢纽）
-        tile = st.map.at(*grid)
-        if (u is None and sel is not None and tile is not None
-                and tile.facility is not Facility.NONE and tile.owner is not self.side
-                and tile.owner is not Side.NEUTRAL):
-            w = sel.weapon_by_id(st.selected_weapon or "")
-            prof = rules.facility_strike_profile(st, sel, tile, w) if w else None
-            if prof is None or not prof.ok:
-                self.set_status(f"无法打击该设施：{prof.reason if prof else '无可用武器'}")
-                return
-            if self.pending_facility == grid:
-                self.confirm_fire()
-            else:
-                self.pending_target = None
-                self.pending_facility = grid
-                self.tab = "unit"
-                self.set_status(
-                    f"选定设施 {tile.facility.label}({tile.x},{tile.y})｜{w.name} "
-                    f"Pk {prof.pk * 100:.0f}%｜再次点击或回车确认打击", 5)
-            return
-
-        if u is not None and u.side is not self.side and sel is not None:
-            lvl = st.known_level(self.side, u)
-            if lvl.level < Detection.CLASSIFIED.level:
-                self.set_status("目标未识别，无法装订射击诸元")
-                return
-            if self.pending_target is u:
-                self.confirm_fire()
-            else:
-                self.pending_target = u
-                self.state.select(sel)
-                self.tab = "unit"
-                w = sel.weapon_by_id(st.selected_weapon or "")
-                if w:
-                    p = rules.shot_profile(st, sel, u, w)
-                    if p.ok:
-                        self.set_status(f"选定目标 {u.name}｜{w.name} Pk {p.pk * 100:.0f}%"
-                                        f"｜再次点击或回车确认开火", 5)
-                    else:
-                        self.set_status(f"无法射击：{p.reason}", 4)
-            return
-
-        if sel is not None:
-            self.order_move(*grid)
-        else:
-            self.select_unit(None)
+        # 左键在格子上的全部上下文动作（选单位 / 选目标 / 移动 / 打击设施）
+        # 与键盘光标共用 _activate_at，避免两套分叉逻辑。
+        self._activate_at(grid)
+        self._sync_cursor(grid)
+        return
 
     def _on_sidebar_click(self, pos: tuple[int, int]) -> None:
         # 页签
@@ -2082,6 +2160,11 @@ class App:
         self._draw_topbar(s)
         self.mapview.draw(s, self.hover_tile, self.reachable, self.path_preview,
                           self.pending_target)
+        # 键盘地图光标：用琥珀色方框标出当前聚焦的格子（仅键盘导航时显示）
+        if self.cursor_visible and self.mapview is not None and self.state is not None:
+            if self.state.map.in_bounds(*self.cursor):
+                r = self.mapview.grid_to_rect(*self.cursor)
+                pygame.draw.rect(s, T.AMBER, r.inflate(-2, -2), width=2)
         if self.pending_facility is not None:
             self.mapview._draw_reticle(s, self.mapview.grid_to_rect(*self.pending_facility))
         self._draw_map_overlay_widgets(s)
@@ -3246,10 +3329,12 @@ class App:
         ("h", "操作"),
         ("p", "左键：选择己方单位 / 点选目标 / 机动"),
         ("p", "右键：下达机动指令"),
-        ("p", "滚轮：缩放　　中键拖动：平移　　方向键：平移"),
+        ("p", "滚轮：缩放　　中键拖动：平移"),
+        ("p", "方向键：移动键盘光标（靠近边缘自动滚屏）"),
+        ("p", "回车：在光标处选择单位 / 机动 / 选定目标，再次回车开火"),
         ("p", "空格：结束回合（AI 阶段可快进）"),
         ("p", "Tab：切换单位　　1-9：选择武器"),
-        ("p", "R：雷达　J：干扰　E：覆盖层　Enter：确认"),
+        ("p", "R：雷达　J：干扰　E：覆盖层"),
         ("p", "F5 / F9：快速保存 / 读取　　F10：系统菜单"),
         ("h", "齐射"),
         ("p", "交战面板可选 1-3 发齐射，多发独立判定、命中概率取并集，但成倍消耗备弹。"),

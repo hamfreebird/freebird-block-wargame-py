@@ -40,6 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
 
+from core import rules  # noqa: E402
+from core.enums import Side, Terrain  # noqa: E402
 from ui.app import App  # noqa: E402
 
 FAILS: list[str] = []
@@ -152,6 +154,84 @@ def main() -> int:
         app.show_menu = True
         app._on_key(key(pygame.K_ESCAPE))
         check(not app.show_menu, "系统菜单：Esc 关闭")
+
+        # ---- 4. 实战键盘地图光标 ------------------------------------------
+        # 起一局真实对局，验证方向键移动光标 + 回车在光标处执行左键等价动作，
+        # 这是「纯键盘可完成整局」的核心缺口（此前只能用鼠标选/动/瞄）。
+        app.mode = "menu"
+        app.show_menu = False
+        app.menu_side = Side.BLUE
+        if app.scenarios:
+            app.menu_index = 0
+            app.start_game()
+            app.show_briefing = False
+            app.tutorial_visible = False
+            st = app.state
+            mv = app.mapview
+            check(st is not None and mv is not None, "实战：已起局且地图视图存在")
+
+            blue = st.units_of(Side.BLUE)
+            if st is not None and blue:
+                u0 = blue[0]
+                app.select_unit(u0)
+                # 方向键：首次按下前光标不显示；按下后落到选中单位并变为可见
+                app.cursor_visible = False
+                app._on_key(key(pygame.K_RIGHT))
+                check(app.cursor_visible, "实战：方向键首次按下即显示键盘光标")
+                at_edge = u0.x >= st.map.width - 1 or st.map.width <= 1
+                moved = app.cursor != (u0.x, u0.y) or at_edge
+                check(moved, "实战：方向键可移动光标（或已贴右边缘被钳制）")
+
+                # 回车在自己单位格 → 选中该单位（与左键等价）
+                app.cursor = (u0.x, u0.y)
+                app.cursor_visible = True
+                app._on_key(key(pygame.K_RETURN))
+                check(st.selected_unit() is not None, "实战：回车在光标处可选中己方单位")
+
+                # 回车在空地 → 机动（用 flood_reachable 找真正可达的格子，
+                # 避免拿到舰/机等无法上陆或机动点为 0 的单位）
+                moved_any = False
+                for u in blue:
+                    if u.mp <= 0.5:
+                        continue
+                    reach = rules.flood_reachable(st, u)
+                    dest = next(((x, y) for (x, y) in reach
+                                 if (x, y) != (u.x, u.y)), None)
+                    if dest is None:
+                        continue
+                    app.select_unit(u)
+                    app.cursor = dest
+                    app.cursor_visible = True
+                    x0, y0 = u.x, u.y
+                    app._on_key(key(pygame.K_RETURN))
+                    if (u.x, u.y) != (x0, y0):
+                        moved_any = True
+                        break
+                check(moved_any, "实战：回车在光标可达空地处可下达机动指令")
+
+                # 回车在敌方单位格 → 锁定或报告未识别（与左键等价，不崩溃）
+                red = st.units_of(Side.RED)
+                if red:
+                    r0 = red[0]
+                    app.select_unit(u0)
+                    app.cursor = (r0.x, r0.y)
+                    app.cursor_visible = True
+                    app._on_key(key(pygame.K_RETURN))
+                    locked = app.pending_target is r0
+                    recognized = "识别" in app.status
+                    check(locked or recognized,
+                          "实战：回车在敌方格可锁定目标或报告未识别")
+
+                # 绘制时键盘光标方框可正常绘制（不抛异常）
+                try:
+                    app.draw()
+                    check(True, "实战：含键盘光标的帧可绘制")
+                except Exception as exc:  # noqa: BLE001
+                    check(False, f"实战：绘制抛异常 {exc!r}")
+            else:
+                check(False, "实战：未找到己方单位用于测试")
+        else:
+            check(False, "实战：无可加载的想定")
     finally:
         shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
 
