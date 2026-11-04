@@ -155,6 +155,11 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_mechanics.py
 
+      - name: 兵种相克自检（连续函数 / 有界 / 不串命中率）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_counter.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

@@ -73,6 +73,15 @@ BOTTOM_H = 26
 SIDE_W = 400
 MIN_W, MIN_H = 1180, 740
 
+#: 相克通道（core.counter 的中文键）→ 界面词条
+_COUNTER_TR = {
+    "破甲": "ui.counter.armor",
+    "爆破": "ui.counter.blast",
+    "机动": "ui.counter.mobility",
+    "高度": "ui.counter.altitude",
+    "频段": "ui.counter.band",
+}
+
 # 教学想定在主菜单中的固定入口（不依赖想定文件名）
 TUTORIAL_MAP_ID = "training_ground"
 
@@ -3082,6 +3091,14 @@ class App:
                 ic = " · 拦截风险 %.0f%%" % (prof.intercept_pk * 100) if prof.intercept_pk > 0.01 else ""
                 T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
                             T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
+                if prof.damage_factors:
+                    # 相克对毁伤的修正：这一发「为什么打得不疼」，一眼能看出来
+                    chan = next(iter(prof.damage_factors))
+                    key = _COUNTER_TR.get(chan)
+                    name = tr(key, chan) if key else chan
+                    T.draw_text(s, f"×{prof.damage_mult:.2f} {name}", (r.right - 10, yy), 11,
+                                T.GREEN if prof.damage_mult > 1.0 else T.RED,
+                                anchor="topright")
                 if prof.cue_source:
                     T.draw_text(s, tr("ui.cue_fmt") % (prof.cue_source,), (r.x + 10, yy + 12), 11,
                                 T.PURPLE)

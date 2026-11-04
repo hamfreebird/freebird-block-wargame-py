@@ -9,6 +9,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterable
 
+from . import counter as counter_rules
 from .enums import Detection, Domain, Facility, SensorKind, Side, Terrain, UnitClass, WeaponKind
 from .rng import GameRng
 from .loader import SUB_CAPACITY
@@ -707,6 +708,9 @@ class ShotProfile:
     in_range: bool = False
     has_los: bool = True
     factors: dict[str, float] = field(default_factory=dict)
+    #: 相克对**毁伤**的修正（与 factors 分开：factors 乘的是命中率）
+    damage_factors: dict[str, float] = field(default_factory=dict)
+    damage_mult: float = 1.0
     salvo: int = 1
     intercept_pk: float = 0.0
     interceptors: list[str] = field(default_factory=list)
@@ -873,15 +877,14 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
         # 火力准备：射界内预先标定的射击毁伤更高
         if prep_dmg != 1.0:
             dmg *= prep_dmg
-        # 兵种相克：面杀伤对步兵有效，直瞄火力对散兵效果差
-        if target.template.is_infantry:
-            if weapon.kind in (WeaponKind.ARTILLERY, WeaponKind.MLRS, WeaponKind.BOMB):
-                dmg *= 1.30
-            elif weapon.kind in (WeaponKind.GUN, WeaponKind.ATGM, WeaponKind.TORPEDO):
-                dmg *= 0.68
-        # 城区防御：步兵依托建筑，机械化部队反而受困
-        if tgt_tile is not None and tgt_tile.terrain is Terrain.URBAN:
-            dmg *= 0.78 if target.template.is_infantry else 1.12
+        # 兵种相克：目标特性 × 武器特性的连续函数（core/counter.py）。
+        # 城区不再单独乘一个固定系数——它作为目标的「掩蔽 / 疏散空间」
+        # 进入了目标画像，与武器通道一起决定结果。
+        counter, reasons = counter_rules.counter_multiplier(weapon, target, tgt_tile)
+        p.damage_mult = counter
+        if abs(counter - 1.0) >= 0.005:
+            dmg *= counter
+            p.damage_factors = dict(reasons)
         p.damage = dmg
     p.ok = True
 
