@@ -962,7 +962,10 @@ def main() -> int:
     _en = _i18n.tr("menu.start")
     check(_en == "Start Operation", "本地化：英文界面显示英文")
     check(_i18n.tr("no.such.key") == "no.such.key", "本地化：缺失键回退为键名")
-    check(not _i18n.set_language("fr"), "本地化：拒绝不支持的语言")
+    # v3.0 起支持 8 种语言（zh/en/ja/ko/de/fr/es/ru），
+    # 「不支持的语言」要用一个**真的不在列表里**的代码——
+    # 早期这里写的是 "fr"，法语加入后这条断言就永远失败了。
+    check(not _i18n.set_language("xx"), "本地化：拒绝不支持的语言")
     _i18n.set_language("zh")
     check(_i18n.tr("menu.start") == "开始作战", "本地化：可切回中文")
     # 两个语言包的键集合应一致

@@ -115,7 +115,7 @@ class SettingsPanel:
                 self.cfg.set_sound(not self.cfg.sound_enabled)
                 if self.on_sound:
                     self.on_sound(self.cfg.sound_enabled)
-                self.message = "音效：" + ("开启" if self.cfg.sound_enabled else "关闭")
+                self.message = tr("settings.sound") + ": " + (tr("ui.on") if self.cfg.sound_enabled else tr("ui.off"))
                 self.message_color = T.GREEN if self.cfg.sound_enabled else T.TEXT_DIM
                 return True
             # 音量调节
@@ -285,7 +285,7 @@ class SettingsPanel:
         y += 34
 
         # -- 图标包 --
-        T.draw_text(s, "单位图标包", (r.x + 22, y), 11, T.CYAN, bold=True)
+        T.draw_text(s, tr("ui.settings_icon_pack"), (r.x + 22, y), 11, T.CYAN, bold=True)
         self._icon_buttons = []
         ix = r.x + 100
         cur = str(self.cfg.pref("icon_pack", "") or "")
@@ -316,7 +316,7 @@ class SettingsPanel:
         pygame.draw.rect(s, fill, self._sound_btn, border_radius=3)
         pygame.draw.rect(s, T.GREEN if on else (T.BORDER_HI if hover else T.BORDER),
                          self._sound_btn, 1, border_radius=3)
-        T.draw_text(s, ("开启" if on else "关闭") if i18n.current_language() == "zh"
+        T.draw_text(s, (tr("ui.on") if on else tr("ui.off")) if i18n.current_language() == "zh"
                         else ("On" if on else "Off"), self._sound_btn.center, 11,
                     T.TEXT, anchor="center")
         # 音量

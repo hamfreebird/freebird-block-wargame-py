@@ -1,4 +1,4 @@
-"""本地化框架：字符串抽离到语言文件，支持中/英切换。
+"""本地化框架：字符串抽离到语言文件，支持 8 种语言即时切换。
 
 设计要点
 --------
@@ -7,7 +7,9 @@
    绝不会因为漏翻译而崩溃或显示空白；
 3. **可热切换**：切换语言后立即生效，无需重启；
 4. **社区可扩展**：把新的语言包放进 `data/lang/<code>.json` 即可被发现，
-   不需要改代码。
+   不需要改代码。界面文案单独放在 `<code>_ui.json` 分层包里，改译文
+   不会覆盖基础词条；查表时自动装载安装目录的语言包，UI 层无需关心
+   初始化顺序。
 
 用法::
 
@@ -22,11 +24,18 @@ import os
 from typing import Any
 
 DEFAULT_LANGUAGE = "zh"
-SUPPORTED_LANGUAGES: list[str] = ["zh", "en"]
+#: v3.0：从 2 种扩到 8 种。新增的语言包在 ``data/lang/<code>.json``。
+SUPPORTED_LANGUAGES: list[str] = ["zh", "en", "ja", "ko", "de", "fr", "es", "ru"]
 
 LANGUAGE_NAMES: dict[str, str] = {
     "zh": "简体中文",
     "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "de": "Deutsch",
+    "fr": "Français",
+    "es": "Español",
+    "ru": "Русский",
 }
 
 # 内置英文词条（缺省语言包；磁盘上的 data/lang/<code>.json 可覆盖）
@@ -298,6 +307,8 @@ _BUILTIN_ZH: dict[str, str] = {
 _current_lang = DEFAULT_LANGUAGE
 _tables: dict[str, dict[str, str]] = {}
 _loaded_dirs: list[str] = []
+#: 安装目录语言包是否已懒加载过（见 _ensure_default_packs）
+_default_packs_loaded = False
 
 
 def _builtin_table(lang: str) -> dict[str, str]:
@@ -312,6 +323,14 @@ def load_language_dir(directory: str) -> int:
     """从目录加载语言包（`*.json` → 语言代码）。返回加载的文件数。
 
     磁盘上的词条会覆盖内置词条，便于社区补充或修正翻译。
+
+    **分层语言包**（v3.0）：文件名可以是 ``<code>.json``（整包）
+    或 ``<code>_<层>.json``（分层，如 ``ja_ui.json``）。分层包的
+    词条会合并进同一种语言——这样「基础词条」与「界面词条」可以
+    分别维护而不互相覆盖：改 UI 译文时不会丢掉手改过的菜单文案。
+
+    层名只允许字母数字与下划线，避免把怪名字当成新的语言代码
+    注册进 ``_tables``（那会让设置界面多出一堆看不懂的选项）。
     """
     if not directory or not os.path.isdir(directory):
         return 0
@@ -319,7 +338,18 @@ def load_language_dir(directory: str) -> int:
     for fn in os.listdir(directory):
         if not fn.endswith(".json"):
             continue
-        code = fn[:-5].strip().lower()
+        stem = fn[:-5].strip().lower()
+        if not stem:
+            continue
+        # 拆出「语言代码」与可选的「层名」
+        if "_" in stem:
+            head, _, tail = stem.partition("_")
+            if head and tail and all(c.isalnum() or c == "_" for c in tail):
+                code = head
+            else:
+                code = stem
+        else:
+            code = stem
         if not code:
             continue
         path = os.path.join(directory, fn)
@@ -336,6 +366,31 @@ def load_language_dir(directory: str) -> int:
     if directory not in _loaded_dirs:
         _loaded_dirs.append(directory)
     return count
+
+
+def _ensure_default_packs() -> None:
+    """首次查表时自动装载安装目录的语言包。
+
+    **为什么只靠 ui/app.py 启动时加载不够**：v3.0 把界面文案抽进了
+    ``data/lang/*_ui.json``，但历史上只有主程序启动时会调用
+    ``load_language_dir``。专项自检、模组预览工具等若单独使用 ``ui``
+    模块，没走那条初始化路径就会让 ``tr()`` 回退成裸键名；而裸键名
+    再被 ``% (...)`` 格式化会直接抛 TypeError。把加载下沉到查表层，
+    UI 层就不再依赖初始化顺序。
+
+    只加载**安装目录**；用户目录仍由主程序随后加载，保持「用户覆盖」
+    的优先级。目录不存在或不可读时静默跳过——内置词条足以兜底，
+    查表不该因为一个可选的资源目录而崩。
+    """
+    global _default_packs_loaded
+    if _default_packs_loaded:
+        return
+    _default_packs_loaded = True
+    try:
+        from .paths import lang_dir
+        load_language_dir(lang_dir())
+    except Exception:
+        pass
 
 
 def available_languages() -> list[str]:
@@ -372,11 +427,20 @@ def tr(key: str, default: str = "") -> str:
     """查表取译文。
 
     查找顺序：当前语言的磁盘包 → 当前语言的内置表 → 另一语言的内置表
-    → 传入的 default → 键本身。
+    → **中文磁盘包** → 传入的 default → 键本身。
 
     磁盘上的语言包（`data/lang/<code>.json`、用户目录 `lang/<code>.json`）
     优先于内置表，因此社区可以覆盖或补充任何一条译文。
+
+    **为什么要多一层「中文磁盘包」**：v3.0 把 166 条界面文案抽进了
+    分层语言包，但翻译是逐步补齐的。某个键在德语包里还没有译文时，
+    如果直接返回键本身，玩家会看到 ``ui.editor_fort_level`` 这种
+    内部标识；回退到中文原文至少是**可读的中文**，
+    比暴露内部键名好得多。
+
+    社区补完译文后，这条回退自然就不再触发。
     """
+    _ensure_default_packs()
     if not key:
         return default
     table = _tables.get(_current_lang)
@@ -392,6 +456,13 @@ def tr(key: str, default: str = "") -> str:
     v = _builtin_table(other).get(key)
     if v:
         return v
+    # 回退到中文磁盘包（未翻译的键显示中文原文而非内部键名）
+    if _current_lang != DEFAULT_LANGUAGE:
+        zh_table = _tables.get(DEFAULT_LANGUAGE)
+        if zh_table:
+            v = zh_table.get(key)
+            if v:
+                return v
     if default:
         return default
     return key
@@ -419,12 +490,6 @@ def register_mod_entry(lang: str, key: str, value: str) -> bool:
         return False
     table[key] = str(value)
     return True
-    table = _tables.setdefault(code, {})
-    if key in table:
-        return False
-    table[key] = str(value)
-    return True
-
 
 
 def table_size(lang: str = "") -> int:

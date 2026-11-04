@@ -23,6 +23,7 @@ import pygame
 from core.campaign import (CARRYOVER_ALL, CARRYOVER_LABELS, CARRYOVER_NONE,
                            CARRYOVER_VETERANS, DIFFICULTY_LABELS, CampaignDef,
                            CampaignError, CampaignStep, load_campaign)
+from core.i18n import tr
 from core import paths as _paths
 
 from . import theme as T
@@ -449,8 +450,8 @@ class CampaignEditor:
         pygame.draw.rect(s, T.PANEL, r)
         T.vline(s, r.right, r.y, r.bottom, T.BORDER)
 
-        T.draw_text(s, "关卡", (14, r.y + 12), 11, T.TEXT_FAINT, bold=True)
-        T.draw_text(s, f"{len(self.camp.steps)} 关", (self.LIST_W - 14, r.y + 12),
+        T.draw_text(s, tr("ui.camp_editor_levels"), (14, r.y + 12), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.camp_editor_levels_count_fmt") % (len(self.camp.steps),), (self.LIST_W - 14, r.y + 12),
                     11, T.TEXT_DIM, anchor="topright")
 
         # 操作按钮行
@@ -472,7 +473,7 @@ class CampaignEditor:
         hover = ob.collidepoint(pygame.mouse.get_pos())
         pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL_SUNK, ob, border_radius=3)
         pygame.draw.rect(s, T.BORDER, ob, 1, border_radius=3)
-        T.draw_text(s, "打开已有战役 ▾", ob.center, 11,
+        T.draw_text(s, tr("ui.camp_editor_open"), ob.center, 11,
                     T.TEXT if hover else T.TEXT_DIM, anchor="center")
         self._row_buttons.append((ob, "camp_open_menu", None))
 
@@ -491,7 +492,7 @@ class CampaignEditor:
                 pygame.draw.rect(s, T.PANEL_SUNK, row_r, border_radius=3)
             T.draw_text(s, f"{i + 1}.", (row_r.x + 8, row_r.centery), 11,
                         T.CYAN if active else T.TEXT_FAINT, anchor="midleft")
-            T.draw_text(s, st.title or "（未命名）", (row_r.x + 28, row_r.centery), 11,
+            T.draw_text(s, st.title or tr("ui.camp_editor_unnamed"), (row_r.x + 28, row_r.centery), 11,
                         T.TEXT if active else T.TEXT_DIM, anchor="midleft")
             # 难度徽标
             badge = st.difficulty_label
@@ -499,7 +500,7 @@ class CampaignEditor:
             T.draw_text(s, badge, (row_r.right - 8, row_r.centery), 10, col, anchor="midright")
 
         if not self.camp.steps:
-            T.draw_text(s, "还没有关卡——点 + 添加第一关", (self.LIST_W // 2, ly + 20),
+            T.draw_text(s, tr("ui.camp_editor_no_levels"), (self.LIST_W // 2, ly + 20),
                         11, T.TEXT_FAINT, anchor="center")
 
     def _draw_form(self, s: pygame.Surface) -> None:
@@ -507,7 +508,7 @@ class CampaignEditor:
         px = self.LIST_W + 24
         y = self.HEADER_H
 
-        T.draw_text(s, "战役属性", (px, y + 14), 12, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.camp_editor_props"), (px, y + 14), 12, T.TEXT, bold=True)
         # 属性输入框
         for key, label in (("camp_name", "名称"), ("camp_desc", "简介"),
                            ("camp_author", "作者")):
@@ -516,7 +517,7 @@ class CampaignEditor:
             self.inputs[key].draw(s, pygame.mouse.get_pos())
 
         st = self.current()
-        T.draw_text(s, f"第 {self.step_index + 1} 关配置", (px, y + 108), 12, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.camp_editor_step_fmt") % (self.step_index + 1,), (px, y + 108), 12, T.TEXT, bold=True)
         for key, label in (("title", "标题"), ("brief", "简报"),
                            ("objective", "任务")):
             T.draw_text(s, label, (px, self.inputs[key].rect.centery), 11,
@@ -524,18 +525,18 @@ class CampaignEditor:
             self.inputs[key].draw(s, pygame.mouse.get_pos())
 
         # 地图选择
-        T.draw_text(s, "地图", (px, y + 214), 11, T.TEXT_DIM, anchor="midleft")
+        T.draw_text(s, tr("ui.camp_editor_map"), (px, y + 214), 11, T.TEXT_DIM, anchor="midleft")
         mr = pygame.Rect(px + 84, y + 202, 240, 24)
         hover = mr.collidepoint(pygame.mouse.get_pos())
         pygame.draw.rect(s, T.PANEL_SUNK, mr, border_radius=3)
         pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, mr, 1, border_radius=3)
         map_label = st.map_id or "（未选择）" if st else "（未选择）"
         T.draw_text(s, map_label, (mr.x + 8, mr.centery), 11, T.TEXT, anchor="midleft")
-        T.draw_text(s, "选择 ▾", (mr.right - 8, mr.centery), 11, T.CYAN, anchor="midright")
+        T.draw_text(s, tr("ui.camp_editor_select"), (mr.right - 8, mr.centery), 11, T.CYAN, anchor="midright")
         self._row_buttons.append((mr, "map_pick", None))
 
         # 难度
-        T.draw_text(s, "难度", (px, y + 250), 11, T.TEXT_DIM, anchor="midleft")
+        T.draw_text(s, tr("ui.camp_editor_difficulty"), (px, y + 250), 11, T.TEXT_DIM, anchor="midleft")
         dr = pygame.Rect(px + 84, y + 238, 240, 24)
         pygame.draw.rect(s, T.PANEL_SUNK, dr, border_radius=3)
         pygame.draw.rect(s, T.BORDER, dr, 1, border_radius=3)
@@ -550,7 +551,7 @@ class CampaignEditor:
             self._row_buttons.append((br, "diff", 1 if d > (st.difficulty if st else 2) else -1))
 
         # 继承策略
-        T.draw_text(s, "继承", (px, y + 282), 11, T.TEXT_DIM, anchor="midleft")
+        T.draw_text(s, tr("ui.camp_editor_inherit"), (px, y + 282), 11, T.TEXT_DIM, anchor="midleft")
         cr = pygame.Rect(px + 84, y + 270, 240, 24)
         pygame.draw.rect(s, T.PANEL_SUNK, cr, border_radius=3)
         pygame.draw.rect(s, T.BORDER, cr, 1, border_radius=3)
@@ -561,7 +562,7 @@ class CampaignEditor:
             br = pygame.Rect(cr.right - 84 + i * 27, cr.y + 4, 25, 16)
             hit = br.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, T.PANEL_HI if hit else T.PANEL, br, border_radius=2)
-            T.draw_text(s, {CARRYOVER_ALL: "全", CARRYOVER_VETERANS: "精",
+            T.draw_text(s, {CARRYOVER_ALL: tr("ui.camp_editor_all"), CARRYOVER_VETERANS: tr("ui.camp_editor_veterans"),
                             CARRYOVER_NONE: "无"}[pol],
                         br.center, 10, T.TEXT_DIM if hit else T.TEXT_FAINT, anchor="center")
             self._row_buttons.append((br, "carry", pol))
@@ -588,7 +589,7 @@ class CampaignEditor:
         r = pygame.Rect(px, self.HEADER_H + 312, w, 74)
         pygame.draw.rect(s, T.PANEL_SUNK, r, border_radius=3)
         pygame.draw.rect(s, T.BORDER, r, 1, border_radius=3)
-        T.draw_text(s, "难度曲线", (r.x + 8, r.y + 5), 10, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.camp_editor_curve"), (r.x + 8, r.y + 5), 10, T.TEXT_FAINT)
 
         n = len(steps)
         inner_x = r.x + 12
@@ -614,7 +615,7 @@ class CampaignEditor:
         s.blit(dim, (0, 0))
         r = self._picker_rect()
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=5)
-        T.draw_text(s, "选择地图", (r.x + 14, r.y + 10), 12, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.camp_editor_pick_map"), (r.x + 14, r.y + 10), 12, T.TEXT, bold=True)
         T.hline(s, r.x, r.right, r.y + 32, T.BORDER)
 
         n = len(self.map_choices)
@@ -643,12 +644,12 @@ class CampaignEditor:
         s.blit(dim, (0, 0))
         r = self._camp_picker_rect()
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=5)
-        T.draw_text(s, "打开战役", (r.x + 14, r.y + 10), 12, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.camp_editor_open_campaign"), (r.x + 14, r.y + 10), 12, T.TEXT, bold=True)
         T.hline(s, r.x, r.right, r.y + 32, T.BORDER)
 
         n = len(self.camp_choices)
         if n == 0:
-            T.draw_text(s, "还没有战役——先在编辑器里做一个", (r.centerx, r.y + 56),
+            T.draw_text(s, tr("ui.camp_editor_no_campaigns"), (r.centerx, r.y + 56),
                         11, T.TEXT_FAINT, anchor="center")
             return
         shown = min(10, n)

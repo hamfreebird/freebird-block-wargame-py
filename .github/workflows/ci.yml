@@ -125,6 +125,14 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_sdk.py
 
+      - name: 语言包校验（覆盖率 / 占位符 / 译文残留）
+        run: python tools/lang_check.py
+
+      - name: 本地化运行时自检（分层包 / 回退链 / 格式化）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_i18n.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy

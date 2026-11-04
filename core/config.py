@@ -231,7 +231,21 @@ class UserConfig:
 
 
 def label_for(action: str) -> str:
-    """动作 ID → 中文显示名。"""
+    """动作 ID → 显示名（跟随界面语言）。
+
+    **v3.0 起走语言包**：词条键是 ``key.<动作 id>``（如
+    ``key.end_turn``）。找不到译文时回退到内置的中文标签，
+    再回退到动作 id 本身。
+
+    之前这个函数直接返回中文常量，导致设置面板里的键位列表
+    在日语/德语界面下**全是中文**——而键位是玩家最需要看懂的部分。
+    """
+    from .i18n import tr
+
+    key = f"key.{action}"
+    localized = tr(key)
+    if localized and localized != key:
+        return localized
     return ACTION_LABELS.get(action) or SLOT_LABELS.get(action) or action
 
 

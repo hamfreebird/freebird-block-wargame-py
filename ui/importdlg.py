@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from core.i18n import tr
 from core import pkg as _pkg
 
 from . import theme as T
@@ -179,8 +180,8 @@ class ImportDialog:
         s.blit(dim, (0, 0))
 
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
-        T.draw_text(s, "导入想定包", (r.x + 22, r.y + 16), 16, T.TEXT, bold=True)
-        T.draw_text(s, "从社区包目录选择要导入的 .bwscn 文件",
+        T.draw_text(s, tr("ui.import_pkg_title"), (r.x + 22, r.y + 16), 16, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.import_pkg_desc"),
                     (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
         T.draw_text(s, self.directory, (r.right - 22, r.y + 20), 11, T.TEXT_FAINT,
                     anchor="topright")
@@ -191,9 +192,9 @@ class ImportDialog:
                            r.width - 32, r.height - self.HEADER_H - self.FOOTER_H)
         self.rows = []
         if not self.items:
-            T.draw_text(s, "目录中没有 .bwscn 文件", body.center, 13, T.TEXT_DIM,
+            T.draw_text(s, tr("ui.import_pkg_empty"), body.center, 13, T.TEXT_DIM,
                         anchor="center")
-            T.draw_text(s, "把社区想定包放进上面的目录，然后重新打开本窗口",
+            T.draw_text(s, tr("ui.import_pkg_hint"),
                         (body.centerx, body.centery + 22), 11, T.TEXT_FAINT, anchor="center")
         else:
             vis = max(1, body.height // self.ROW_H)
@@ -241,7 +242,7 @@ class ImportDialog:
         if self.message:
             T.draw_text(s, self.message, (r.x + 128, by + 9), 11, self.message_color)
         elif len(self.items) > 1:
-            T.draw_text(s, "↑↓ 选择 · Enter 导入 · 悬停点击亦可",
+            T.draw_text(s, tr("ui.import_pkg_nav"),
                         (r.x + 128, by + 9), 11, T.TEXT_FAINT)
 
 

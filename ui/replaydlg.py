@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from core.i18n import tr
 from core.replay import ReplayFile
 
 from . import theme as T
@@ -156,8 +157,8 @@ class ReplayDialog:
         s.blit(dim, (0, 0))
 
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
-        T.draw_text(s, "导入回放", (r.x + 22, r.y + 16), 16, T.TEXT, bold=True)
-        T.draw_text(s, "选择一份回放，重演那一局", (r.x + 22, r.y + 40),
+        T.draw_text(s, tr("ui.import_replay_title"), (r.x + 22, r.y + 16), 16, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.import_replay_desc"), (r.x + 22, r.y + 40),
                     11, T.TEXT_FAINT)
         T.draw_text(s, self.directory, (r.right - 22, r.y + 20), 11, T.TEXT_FAINT,
                     anchor="topright")
@@ -167,9 +168,9 @@ class ReplayDialog:
                            r.width - 32, r.height - self.HEADER_H - self.FOOTER_H)
         self.rows = []
         if not self.items:
-            T.draw_text(s, "目录中没有 .bwrep 回放文件", body.center, 13, T.TEXT_DIM,
+            T.draw_text(s, tr("ui.import_replay_empty"), body.center, 13, T.TEXT_DIM,
                         anchor="center")
-            T.draw_text(s, "在对局中按 F10 →「导出回放」即可生成",
+            T.draw_text(s, tr("ui.import_replay_hint"),
                         (body.centerx, body.centery + 22), 11, T.TEXT_FAINT,
                         anchor="center")
         else:
@@ -220,7 +221,7 @@ class ReplayDialog:
         if self.message:
             T.draw_text(s, self.message, (r.x + 128, by + 9), 11, self.message_color)
         elif len(self.items) > 1:
-            T.draw_text(s, "↑↓ 选择 · Enter 播放 · 悬停点击亦可",
+            T.draw_text(s, tr("ui.import_replay_nav"),
                         (r.x + 128, by + 9), 11, T.TEXT_FAINT)
 
 

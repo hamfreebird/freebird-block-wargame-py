@@ -125,7 +125,7 @@ data/
   units/armory.json     武器库（兵种 / 武器 / 传感器）
   campaigns/*.json      战役定义（多关卡串联）
   icon_packs/*/         单位图标包（pack.json + 各兵种 PNG）
-  lang/*.json           语言包（zh / en，可被用户数据目录覆盖）
+  lang/*.json           语言包（8 种语言 + <代码>_ui.json 界面分层包，可被用户数据目录覆盖）
 ```
 
 **想自己造战役？** 两种方式：
@@ -161,11 +161,14 @@ python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动
 python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
 python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
 python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）
+python tools/test_sdk.py         # 模组 SDK 自检（manifest / 版本 / 依赖 / 注入）
+python tools/lang_check.py       # 语言包校验（覆盖率 / 占位符 / 译文残留）
+python tools/test_i18n.py        # 本地化运行时自检（分层包 / 回退链 / 格式化）
 python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 
-CI 在 Python 3.9–3.13 × Ubuntu/Windows 矩阵上跑完整校验；布局自检与冒烟测试
+CI 在 Python 3.10–3.13 × Ubuntu/Windows 矩阵上跑完整校验；布局自检与冒烟测试
 会在回归发生时直接让流水线失败。
 
 自检脚本会把用户数据目录重定向到临时目录，**不会污染你的设置与存档**。

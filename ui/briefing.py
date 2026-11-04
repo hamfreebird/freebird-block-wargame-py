@@ -224,7 +224,7 @@ def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
     if d.subtitle:
         for i, line in enumerate(T.wrap_text(d.subtitle, 12, w - 52)[:2]):
             T.draw_text(s, line, (r.x + 26, r.y + 72 + i * 17), 12, T.TEXT_DIM)
-    T.draw_text(s, f"{d.map_size} · {d.tile_km:.0f} km/格 · 限 {d.turn_limit} 回合",
+    T.draw_text(s, tr("ui.brief_map_fmt") % (d.map_size, d.tile_km, d.turn_limit,),
                 (r.right - 26, r.y + 44), 12, T.TEXT_FAINT, anchor="topright")
     T.hline(s, r.x + 24, r.right - 24, r.y + 108, T.BORDER)
 
@@ -248,7 +248,7 @@ def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
         T.draw_text(s, f"{vp} VP", (ox + ow, yy), 11, T.AMBER, anchor="topright", mono=True)
         yy += 19
     if not d.objectives:
-        T.draw_text(s, "无目标点——以歼灭战取胜", (ox, yy), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.brief_no_objectives"), (ox, yy), 11, T.TEXT_FAINT)
         yy += 19
     yy += 6
     for line in T.wrap_text(d.victory_hint, 11, ow)[:3]:
@@ -284,20 +284,20 @@ def _draw_force_column(s: pygame.Surface, r: pygame.Rect, f: ForceSummary,
     T.draw_text(s, title, (r.x, r.y), 12, T.RED if hostile else T.BLUE, bold=True)
     y = r.y + 22
     col = T.side_color(f.side)
-    T.draw_text(s, f"{f.total} 个单位", (r.x, y), 13, T.TEXT, bold=True)
-    T.draw_text(s, f"造价 {f.cost}", (r.right, y), 11, T.TEXT_FAINT, anchor="topright")
+    T.draw_text(s, tr("ui.brief_total_units") % (f.total,), (r.x, y), 13, T.TEXT, bold=True)
+    T.draw_text(s, tr("ui.brief_cost_fmt") % (f.cost,), (r.right, y), 11, T.TEXT_FAINT, anchor="topright")
     y += 22
     # 兵种分布
-    T.draw_text(s, f"空 {f.air} · 海 {f.sea} · 陆 {f.land}", (r.x, y), 11, T.TEXT_DIM)
+    T.draw_text(s, tr("ui.brief_domain_fmt") % (f.air, f.sea, f.land,), (r.x, y), 11, T.TEXT_DIM)
     y += 17
-    T.draw_text(s, f"平均耐久 {f.avg_hp:.0f} · 备弹 {f.total_ammo}", (r.x, y), 11, T.TEXT_DIM)
+    T.draw_text(s, tr("ui.brief_avg_hp_fmt") % (f.avg_hp, f.total_ammo,), (r.x, y), 11, T.TEXT_DIM)
     y += 17
     if f.interceptors:
-        T.draw_text(s, f"防空通道 {f.interceptors}", (r.x, y), 11,
+        T.draw_text(s, tr("ui.brief_interceptors_fmt") % (f.interceptors,), (r.x, y), 11,
                     T.mix(T.CYAN, T.TEXT, 0.3))
         y += 17
     # 主要单位
-    T.draw_text(s, "主要单位", (r.x, y), 11, T.TEXT_FAINT)
+    T.draw_text(s, tr("ui.brief_main_units"), (r.x, y), 11, T.TEXT_FAINT)
     y += 16
     for name, cls in f.top_units[:5]:
         short = name[:12]

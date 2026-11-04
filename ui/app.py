@@ -23,6 +23,7 @@ import traceback
 
 import pygame
 
+from core.i18n import tr
 from core import mods as _mods
 from core import rules
 from core import icons
@@ -715,14 +716,14 @@ class App:
         dim.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 200))
         s.blit(dim, (0, 0))
         T.panel(s, r, T.mix(T.PANEL, T.PURPLE, 0.15), T.PURPLE, radius=6)
-        T.draw_text(s, "战役模式", (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
-        T.draw_text(s, "连续多张想定共享部队与胜负点——上一关的幸存者会随你进入下一关",
+        T.draw_text(s, tr("ui.campaign_title"), (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.campaign_desc"),
                     (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
         T.hline(s, r.x + 20, r.right - 20, r.y + 62, T.BORDER)
 
         self._campaign_rows: list[tuple[pygame.Rect, CampaignDef]] = []
         if not camps:
-            T.draw_text(s, "没有可用战役（data/campaigns/*.json）", (r.x + 22, r.y + 84),
+            T.draw_text(s, tr("ui.campaign_empty"), (r.x + 22, r.y + 84),
                         12, T.TEXT_DIM)
         y = r.y + 74
         for c in camps:
@@ -733,18 +734,18 @@ class App:
             pygame.draw.rect(s, T.PURPLE if hover else T.BORDER, row, 1, border_radius=4)
             T.draw_text(s, c.name, (row.x + 12, row.y + 8), 15, T.TEXT, bold=True)
             if c.author:
-                T.draw_text(s, f"作者 {c.author}", (row.right - 12, row.y + 11), 11,
+                T.draw_text(s, tr("ui.author_of") % (c.author,), (row.right - 12, row.y + 11), 11,
                             T.TEXT_FAINT, anchor="topright")
-            T.draw_text(s, f"{c.total_steps} 关｜{c.description[:52]}", (row.x + 12, row.y + 30),
+            T.draw_text(s, tr("ui.campaign_step_desc") % (c.total_steps, c.description[:52],),
                         11, T.TEXT_DIM)
             if prog is not None:
                 done = prog.step_index
-                T.draw_text(s, f"进度 {done}/{c.total_steps} 关｜累计 {prog.blue_vp}:{prog.red_vp}",
+                T.draw_text(s, tr("ui.campaign_progress") % (done, c.total_steps, prog.blue_vp, prog.red_vp,),
                             (row.x + 12, row.y + 50), 11, T.CYAN)
-                T.draw_text(s, "点击继续", (row.right - 12, row.y + 50), 11, T.CYAN,
+                T.draw_text(s, tr("ui.click_continue"), (row.right - 12, row.y + 50), 11, T.CYAN,
                             anchor="topright")
             else:
-                T.draw_text(s, "点击开始", (row.right - 12, row.y + 50), 11, T.TEXT_FAINT,
+                T.draw_text(s, tr("ui.click_start"), (row.right - 12, row.y + 50), 11, T.TEXT_FAINT,
                             anchor="topright")
             self._campaign_rows.append((row, c))
             y += 86
@@ -902,7 +903,7 @@ class App:
 
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
-        T.draw_text(s, "机制速览", (r.x + 16, r.y + 14), 13, T.CYAN, bold=True)
+        T.draw_text(s, tr("ui.mechanics_brief"), (r.x + 16, r.y + 14), 13, T.CYAN, bold=True)
         T.hline(s, r.x + 16, r.right - 16, r.y + 36, T.BORDER)
         items = [
             ("侦察—打击链", "目标须被传感器跟踪至「跟踪」级才能装订诸元；"
@@ -934,9 +935,9 @@ class App:
             pygame.draw.line(s, T.GRID, (x, 0), (x, self.h))
         for y in range(0, self.h, 48):
             pygame.draw.line(s, T.GRID, (0, y), (self.w, y))
-        T.draw_text(s, "方块兵棋", (60, 54), 40, T.TEXT, bold=True)
-        T.draw_text(s, "BLOCK WARGAME · 现代联合作战推演", (62, 104), 15, T.CYAN)
-        T.draw_text(s, "n×n 方块战场 · 回合制 · 侦察-打击链 · 电子战 · 防区外打击", (62, 128), 12, T.TEXT_DIM)
+        T.draw_text(s, tr("ui.game_title"), (60, 54), 40, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.game_subtitle"), (62, 104), 15, T.CYAN)
+        T.draw_text(s, tr("ui.game_tagline"), (62, 128), 12, T.TEXT_DIM)
         T.hline(s, 60, self.w - 60, 158, T.BORDER)
 
         T.draw_text(s, i18n.tr("menu.select_scenario"), (60, 176), 13, T.TEXT_DIM, bold=True)
@@ -994,7 +995,7 @@ class App:
                             T.mix(T.GREEN, T.WHITE, 0.4), anchor="center")
             T.draw_text(s, sc["name"], (r.x + 16, head_y + (20 if is_tut else 0)), 16,
                         T.TEXT, bold=True)
-            T.draw_text(s, f"{sc['size'][0]}×{sc['size'][1]} 格 · {sc['tile_km']} km/格 · "
+            T.draw_text(s, tr("ui.map_size_fmt") % (sc['size'][0], sc['size'][1], sc['tile_km'],) +
                             f"限 {sc['turns']} 回合 · 蓝{sc['blue']}/红{sc['red']}",
                         (r.x + 16, head_y + 38), 11, T.TEXT_FAINT)
             # 元数据：难度标签 + 作者 + 事件数（同一行内横向排布）
@@ -1015,9 +1016,9 @@ class App:
                 T.draw_text(s, label, chip.center, 11, col_c, anchor="center")
                 bx += bw + 6
             if meta.get("author"):
-                T.draw_text(s, f"作者 {meta['author']}", (bx, meta_y + 2), 11, T.TEXT_FAINT)
+                T.draw_text(s, tr("ui.author_fmt") % (meta['author'],), (bx, meta_y + 2), 11, T.TEXT_FAINT)
             if sc.get("events"):
-                T.draw_text(s, f"脚本事件 {sc['events']} 条", (r.right - 16, meta_y + 2), 11,
+                T.draw_text(s, tr("ui.events_count_fmt") % (sc['events'],), (r.right - 16, meta_y + 2), 11,
                             T.PURPLE, anchor="topright")
             # 标签行（单独一行，不与难度标签重叠）
             # 注意：循环变量不能用 i——外层 i 是想定索引，被覆盖会导致悬停高亮错位
@@ -1059,7 +1060,7 @@ class App:
         # 阵营选择（放在右侧面板下方）
         side_x = px
         side_w = pw if pw >= 220 else 280
-        T.draw_text(s, "选择阵营", (side_x, 426), T.FS_LABEL, T.TEXT_DIM, bold=True)
+        T.draw_text(s, tr("ui.select_side"), (side_x, 426), T.FS_LABEL, T.TEXT_DIM, bold=True)
         for j, (side, label, desc) in enumerate([
             (Side.BLUE, "蓝方", "联合部队：体系化侦察与防区外精确打击"),
             (Side.RED, "红方", "区域拒止：远程防空与饱和反舰突击"),
@@ -1123,7 +1124,7 @@ class App:
         hover = camp_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.PURPLE, hover), camp_r, border_radius=4)
         pygame.draw.rect(s, T.PURPLE if hover else T.BORDER_HI, camp_r, 1, border_radius=4)
-        T.draw_text(s, "战役模式", camp_r.center, 13,
+        T.draw_text(s, tr("ui.campaign_title"), camp_r.center, 13,
                     T.button_text(T.PURPLE, hover), anchor="center")
 
         # 设置入口
@@ -1136,7 +1137,7 @@ class App:
 
 
         if first_run:
-            T.draw_text(s, "首次使用？点「快速上手」用 3 分钟学会核心操作",
+            T.draw_text(s, tr("ui.first_run_hint"),
                         (60, y + 190), 12, T.GREEN)
 
         tips = [
@@ -2091,7 +2092,7 @@ class App:
         if bar.width > 0:
             done = pygame.Rect(bar.x, bar.y, int(bar.width * p.progress), bar.height)
             pygame.draw.rect(s, T.CYAN, done, border_radius=4)
-        T.draw_text(s, f"回放  {p.index}/{p.total}", (r.x + 16, r.y + 8),
+        T.draw_text(s, tr("ui.replay_progress_fmt") % (p.index, p.total,), (r.x + 16, r.y + 8),
                     T.FS_SMALL, T.TEXT_DIM, mono=True)
         T.draw_text(s, p.current_label(), (r.x + 150, r.y + 8), T.FS_SMALL, T.TEXT)
         # 右侧：播放状态与倍速
@@ -2126,7 +2127,7 @@ class App:
         T.draw_text(s, self.tutorial.progress_text, (r.right - 12, r.y + 8), 11,
                     T.TEXT_FAINT, anchor="topright")
         if step.goal:
-            T.draw_text(s, "目标：" + step.goal, (r.right - 12 - T.text_width(
+            T.draw_text(s, tr("ui.objective_label") + step.goal, (r.right - 12 - T.text_width(
                 self.tutorial.progress_text, 11) - 14, r.y + 8), 11, T.AMBER,
                 anchor="topright")
         yy = r.y + 26
@@ -2140,7 +2141,7 @@ class App:
         pygame.draw.rect(s, T.mix(T.PANEL, T.GREEN, 0.22) if hover else T.PANEL,
                          b, border_radius=3)
         pygame.draw.rect(s, T.BORDER_HI if hover else T.BORDER, b, 1, border_radius=3)
-        T.draw_text(s, "跳过教学", b.center, 11, T.TEXT_DIM, anchor="center")
+        T.draw_text(s, tr("ui.skip_tutorial"), b.center, 11, T.TEXT_DIM, anchor="center")
         self._tutorial_skip_btn = b
 
     # -- 系统菜单（存档/读档） --------------------------------------------
@@ -2158,8 +2159,8 @@ class App:
         # 暴露面板矩形——布局自检脚本据此验证底部按钮没有顶出面板
         self.menu_panel_rect = r
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
-        T.draw_text(s, "系统菜单", (r.x + 22, r.y + 16), T.FS_TITLE + 1, T.TEXT, bold=True)
-        T.draw_text(s, "F5 快速保存 · F9 快速读取", (r.right - 22, r.y + 20), T.FS_SMALL,
+        T.draw_text(s, tr("ui.system_menu"), (r.x + 22, r.y + 16), T.FS_TITLE + 1, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.quick_save_hint"), (r.right - 22, r.y + 20), T.FS_SMALL,
                     T.TEXT_FAINT, anchor="topright")
         T.hline(s, r.x + 20, r.right - 20, r.y + 48, T.BORDER)
 
@@ -2169,16 +2170,16 @@ class App:
             row = pygame.Rect(r.x + 16, y, w - 32, row_h - 8)
             pygame.draw.rect(s, T.PANEL_SUNK, row, border_radius=3)
             pygame.draw.rect(s, T.BORDER, row, 1, border_radius=3)
-            T.draw_text(s, f"槽位 {info['slot']}", (row.x + 12, row.y + 8), T.FS_LABEL,
+            T.draw_text(s, tr("ui.slot_fmt") % (info['slot'],), (row.x + 12, row.y + 8), T.FS_LABEL,
                         T.TEXT, bold=True)
             if info.get("exists"):
                 ts = time.strftime("%m-%d %H:%M", time.localtime(info.get("mtime", 0)))
                 sc_name = os.path.splitext(info.get("scenario", ""))[0]
-                T.draw_text(s, f"第 {info.get('turn', 0)} 回合 · {sc_name} · "
+                T.draw_text(s, tr("ui.turn_line_fmt") % (info.get('turn', 0), sc_name,) +
                                 f"{'蓝方' if info.get('player') == 'BLUE' else '红方'} · {ts}",
                             (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
             else:
-                T.draw_text(s, "空槽位", (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
+                T.draw_text(s, tr("ui.slot_empty"), (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
 
             b_save = pygame.Rect(row.right - 162, row.y + 10, 72, 30)
             b_load = pygame.Rect(row.right - 84, row.y + 10, 72, 30)
@@ -2225,13 +2226,13 @@ class App:
         pygame.draw.rect(s, T.PANEL, pygame.Rect(0, 0, self.w, TOP_H))
         T.hline(s, 0, self.w, TOP_H - 1, T.BORDER)
 
-        T.draw_text(s, "方块兵棋", (14, 7), 15, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.game_title"), (14, 7), 15, T.TEXT, bold=True)
         T.draw_text(s, st.map.name, (14, 28), 11, T.TEXT_FAINT)
         T.vline(s, 156, 10, TOP_H - 10, T.BORDER)
 
         # 回合
         x = 172
-        T.draw_text(s, "回合", (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.turn_label"), (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, f"{st.turn_count:02d}", (x, 20), 19, T.TEXT, bold=True, mono=True)
         T.draw_text(s, f"/{st.turn_limit}", (x + 30, 30), 11, T.TEXT_FAINT, mono=True)
         phase_txt = {"player": "蓝方行动" if self.side is Side.BLUE else "红方行动",
@@ -2240,19 +2241,19 @@ class App:
         col = T.CYAN if st.phase == "player" else T.AMBER
         T.draw_text(s, phase_txt, (x + 66, 22), 12, col, bold=True)
         if st.phase == "ai":
-            T.draw_text(s, "推演中", (x + 66, 8), 11, T.AMBER)
+            T.draw_text(s, tr("ui.simulating"), (x + 66, 8), 11, T.AMBER)
         if self.mode == "replay":
             # 回放模式：顶栏明确标注，别让人以为是在操作对局
             _badge = pygame.Rect(x + 132, 9, 66, 20)
             pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.22), _badge, border_radius=3)
             pygame.draw.rect(s, T.CYAN, _badge, 1, border_radius=3)
-            T.draw_text(s, "▶ 回放", _badge.center, 11, T.CYAN, anchor="center")
+            T.draw_text(s, tr("ui.replay_marker"), _badge.center, 11, T.CYAN, anchor="center")
         T.vline(s, 318, 10, TOP_H - 10, T.BORDER)
 
         # 胜负点
         x = 334
-        T.draw_text(s, "胜负点", (x, 7), 11, T.TEXT_FAINT)
-        T.draw_text(s, "蓝", (x, 25), 11, T.side_color(Side.BLUE))
+        T.draw_text(s, tr("ui.vp_label"), (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.side_blue_short"), (x, 25), 11, T.side_color(Side.BLUE))
         T.draw_text(s, str(st.vp[Side.BLUE]), (x + 16, 20), 15,
                     T.side_color(Side.BLUE), bold=True, mono=True)
         bar_r = pygame.Rect(x + 46, 28, 92, 6)
@@ -2270,7 +2271,7 @@ class App:
 
         # 兵力
         x = 528
-        T.draw_text(s, "在编兵力", (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.forces_label"), (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, str(len(st.units_of(Side.BLUE))), (x, 21), 14,
                     T.side_color(Side.BLUE), bold=True, mono=True)
         T.draw_text(s, ":", (x + 20, 24), 11, T.TEXT_FAINT)
@@ -2280,11 +2281,11 @@ class App:
 
         # 卫星导航
         x = 616
-        T.draw_text(s, "卫星导航完整性", (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.sat_nav_label"), (x, 7), 11, T.TEXT_FAINT)
         for i, side in enumerate((Side.BLUE, Side.RED)):
             yy = 24 + i * 12
             v = st.gps[side]
-            T.draw_text(s, "蓝" if side is Side.BLUE else "红", (x, yy - 2), 11, T.side_color(side))
+            T.draw_text(s, tr("ui.side_blue_short") if side is Side.BLUE else "红", (x, yy - 2), 11, T.side_color(side))
             T.bar(s, pygame.Rect(x + 14, yy, 50, 5), v, T.hp_color(v))
             T.draw_text(s, f"{v * 100:.0f}%", (x + 70, yy - 4), 11, T.TEXT_DIM, mono=True)
         T.vline(s, 742, 10, TOP_H - 10, T.BORDER)
@@ -2296,7 +2297,7 @@ class App:
                    "夜间": T.BLUE}.get(env.time_of_day.label, T.TEXT)
         wcol = {"晴": T.TEXT_DIM, "雨": T.BLUE, "雾": T.TEXT_DIM,
                 "雪": T.CYAN}.get(env.weather.label, T.TEXT_DIM)
-        T.draw_text(s, "战场环境", (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.env_label"), (x, 7), 11, T.TEXT_FAINT)
         T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
         T.draw_text(s, env.clock, (x + 34, 22), 11, T.TEXT_DIM, mono=True)
         T.draw_text(s, env.weather.label, (x + 68, 22), 11, wcol)
@@ -2305,12 +2306,12 @@ class App:
 
         # 在飞弹药
         x = 900
-        T.draw_text(s, "在飞弹药", (x, 7), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.inflight_ammo"), (x, 7), 11, T.TEXT_FAINT)
         nmiss = str(len(st.missiles))
         T.draw_text(s, nmiss, (x, 21), 14,
                     T.AMBER if st.missiles else T.TEXT_DIM, bold=True, mono=True)
         if st.missiles:
-            T.draw_text(s, "枚", (x + T.text_width(nmiss, 14, mono=True) + 4, 27), 11, T.TEXT_FAINT)
+            T.draw_text(s, tr("ui.rounds_unit"), (x + T.text_width(nmiss, 14, mono=True) + 4, 27), 11, T.TEXT_FAINT)
 
         for b in self.buttons:
             b.update(self.mouse)
@@ -2331,7 +2332,7 @@ class App:
                          mm_size, mm_size)
         T.panel(s, mm.inflate(10, 10), T.PANEL_SUNK, T.BORDER, radius=4)
         mv.draw_minimap(s, mm)
-        T.draw_text(s, "战场态势", (mm.x, mm.y - 15), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.battlefield_situation"), (mm.x, mm.y - 15), 11, T.TEXT_FAINT)
 
         # 事件滚动条
         recent = st.log[-3:]
@@ -2402,9 +2403,9 @@ class App:
 
         if u is None:
             T.panel(s, pygame.Rect(body.x, y, body.width, 92), T.PANEL_SUNK, T.BORDER)
-            T.draw_text(s, "未选中单位", (body.x + 16, y + 22), 14, T.TEXT_DIM)
-            T.draw_text(s, "左键点击己方单位进行选择", (body.x + 16, y + 46), 11, T.TEXT_FAINT)
-            T.draw_text(s, "Tab 循环切换可行动单位", (body.x + 16, y + 64), 11, T.TEXT_FAINT)
+            T.draw_text(s, tr("ui.no_unit_selected"), (body.x + 16, y + 22), 14, T.TEXT_DIM)
+            T.draw_text(s, tr("ui.hint_select_unit"), (body.x + 16, y + 46), 11, T.TEXT_FAINT)
+            T.draw_text(s, tr("ui.hint_tab_cycle"), (body.x + 16, y + 64), 11, T.TEXT_FAINT)
             y += 104
         else:
             y = self._draw_unit_card(s, body, u, y)
@@ -2433,14 +2434,14 @@ class App:
         self.mapview.draw_class_icon(s, icon_r.inflate(-8, -8), u.template.unit_class,
                                      T.side_color(u.side, "text"))
         T.draw_text(s, u.name, (r.x + 64, r.y + 7), 14, T.TEXT, bold=True)
-        T.draw_text(s, f"机动 {u.mp:.1f}/{u.template.mp:.1f}", (r.right - 10, r.y + 9), 11,
+        T.draw_text(s, tr("ui.mp_fmt") % (u.mp, u.template.mp,), (r.right - 10, r.y + 9), 11,
                     T.CYAN if u.mp > 0.1 else T.TEXT_FAINT, anchor="topright", mono=True)
-        T.draw_text(s, f"发射 {u.shots_left}/{u.template.sortie_shots}",
+        T.draw_text(s, tr("ui.sortie_fmt") % (u.shots_left, u.template.sortie_shots,),
                     (r.right - 10, r.y + 22), 11,
                     T.AMBER if u.shots_left else T.TEXT_FAINT, anchor="topright", mono=True)
         if u.domain.value == "air":
             ml = {"strike": "打击", "cap": "巡逻", "ferry": "转场"}[u.mission]
-            T.draw_text(s, f"剖面 {ml}", (r.right - 10, r.y + 35), 11,
+            T.draw_text(s, tr("ui.profile_fmt") % (ml,), (r.right - 10, r.y + 35), 11,
                         T.PURPLE if u.mission != "strike" else T.TEXT_FAINT,
                         anchor="topright")
         T.draw_text(s, f"{u.template.unit_class.label} · {u.domain.label} · {u.side.label}",
@@ -2449,7 +2450,7 @@ class App:
               T.hp_color(u.hp_ratio))
         T.draw_text(s, f"{u.hp:.0f} / {u.template.hp:.0f}", (r.x + 64, r.y + 58), 11,
                     T.TEXT_DIM, mono=True)
-        T.draw_text(s, f"坐标 ({u.x:02d},{u.y:02d})", (r.x + 64, r.y + 76), 11,
+        T.draw_text(s, tr("ui.coord_fmt") % (u.x, u.y,), (r.x + 64, r.y + 76), 11,
                     T.TEXT_FAINT, mono=True)
         state_bits = []
         if u.fired:
@@ -2509,10 +2510,10 @@ class App:
 
     def _draw_weapons(self, s, body, u: Unit, y: int) -> int:
         st = self.state
-        T.draw_text(s, "武器系统", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.weapon_system"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
         y += 18
         if not u.template.weapons:
-            T.draw_text(s, "无武装 · 支援平台", (body.x + 4, y), 12, T.TEXT_DIM)
+            T.draw_text(s, tr("ui.unarmed_support"), (body.x + 4, y), 12, T.TEXT_DIM)
             return y + 26
         for w in u.template.weapons:
             ammo = u.ammo.get(w.id, 0)
@@ -2783,9 +2784,9 @@ class App:
         self.salvo_rects = []
         opts = self._salvo_options(u, w)
         if len(opts) <= 1:
-            T.draw_text(s, f"备弹 {u.ammo.get(w.id, 0)} 发 · 齐射 1 发", (r.x + 10, y), 11, T.TEXT_FAINT)
+            T.draw_text(s, tr("ui.ammo_salvo_fmt") % (u.ammo.get(w.id, 0),), (r.x + 10, y), 11, T.TEXT_FAINT)
             return y + 18
-        T.draw_text(s, "齐射", (r.x + 10, y + 2), 11, T.TEXT_FAINT)
+        T.draw_text(s, tr("ui.salvo"), (r.x + 10, y + 2), 11, T.TEXT_FAINT)
         x = r.x + 40
         cur = max(opts[0], min(self.state.salvo_setting, opts[-1]))
         self.state.salvo_setting = cur
@@ -2802,9 +2803,9 @@ class App:
             self.salvo_rects.append((rr, n))
             x += 38
         comb = 1.0 - (1.0 - base_pk) ** cur
-        T.draw_text(s, f"×{cur} 发 · 综合命中 {comb * 100:.0f}%", (x + 4, y + 2), 11,
+        T.draw_text(s, tr("ui.salvo_stats_fmt") % (cur, comb * 100,), (x + 4, y + 2), 11,
                     T.AMBER if cur > 1 else T.TEXT_FAINT)
-        T.draw_text(s, f"备弹 {u.ammo.get(w.id, 0)}", (r.right - 10, y + 2), 11,
+        T.draw_text(s, tr("ui.ammo_fmt") % (u.ammo.get(w.id, 0),), (r.right - 10, y + 2), 11,
                     T.TEXT_FAINT, anchor="topright", mono=True)
         return y + 22
 
@@ -2824,7 +2825,7 @@ class App:
         h = (190 if ok else 92) + th_h
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.button_fill(T.RED), T.mix(T.BORDER, T.RED, 0.55), radius=4)
-        T.draw_text(s, "交战目标", (r.x + 10, r.y + 8), 11, T.RED, bold=True)
+        T.draw_text(s, tr("ui.engage_target"), (r.x + 10, r.y + 8), 11, T.RED, bold=True)
         T.draw_text(s, t.name, (r.x + 10, r.y + 24), 13, T.TEXT, bold=True)
         T.draw_text(s, f"{t.template.unit_class.label} · {lvl.label} · "
                         f"距离 {prof.distance if prof else rules.dist_units(u, t):.1f} 格",
@@ -2845,10 +2846,10 @@ class App:
                 T.draw_text(s, " ".join(parts)[:52] or "无修正", (r.x + 10, yy), 11, T.TEXT_FAINT)
                 yy += 14
                 ic = " · 拦截风险 %.0f%%" % (prof.intercept_pk * 100) if prof.intercept_pk > 0.01 else ""
-                T.draw_text(s, f"伤害 {prof.damage:.0f}{ic}", (r.x + 10, yy), 11,
+                T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
                             T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
                 if prof.cue_source:
-                    T.draw_text(s, f"信火一体：{prof.cue_source}", (r.x + 10, yy + 12), 11,
+                    T.draw_text(s, tr("ui.cue_fmt") % (prof.cue_source,), (r.x + 10, yy + 12), 11,
                                 T.PURPLE)
                 yy += 26
                 yy = self._draw_salvo_row(s, r, u, w, yy, prof.pk)
@@ -2860,7 +2861,7 @@ class App:
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, T.button_fill(T.RED, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.RED, btn, 1, border_radius=3)
-            T.draw_text(s, "确认开火  [Enter]", btn.center, 12, T.mix(T.RED, T.WHITE, 0.6),
+            T.draw_text(s, tr("ui.confirm_fire"), btn.center, 12, T.mix(T.RED, T.WHITE, 0.6),
                         bold=True, anchor="center")
             self._fire_btn = btn
 
@@ -2916,9 +2917,9 @@ class App:
         r = pygame.Rect(panel.x, panel.bottom - th_h, panel.width, th_h)
         pygame.draw.rect(s, T.PANEL_SUNK, r, border_radius=3)
         pygame.draw.rect(s, T.BORDER_HI, r, 1, border_radius=3)
-        T.draw_text(s, "对手视角", (r.x + 10, r.y + 6), 11,
+        T.draw_text(s, tr("ui.counter_view_title"), (r.x + 10, r.y + 6), 11,
                         T.mix(T.BLUE, T.CYAN, 0.4), bold=True)
-        T.draw_text(s, "这发子弹会遇到什么", (r.right - 10, r.y + 7), 11, T.TEXT_FAINT,
+        T.draw_text(s, tr("ui.counter_view_sub"), (r.right - 10, r.y + 7), 11, T.TEXT_FAINT,
                     anchor="topright")
 
         yy = r.y + 22
@@ -2941,12 +2942,12 @@ class App:
         h = 176 if ok else 92
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.button_fill(T.AMBER), T.mix(T.BORDER, T.AMBER, 0.55), radius=4)
-        T.draw_text(s, "设施打击", (r.x + 10, r.y + 8), 11, T.AMBER, bold=True)
+        T.draw_text(s, tr("ui.facility_strike"), (r.x + 10, r.y + 8), 11, T.AMBER, bold=True)
         if tile is None:
             return r.bottom + 8
         T.draw_text(s, f"{tile.facility.label} ({tile.x},{tile.y})", (r.x + 10, r.y + 24), 13,
                     T.TEXT, bold=True)
-        T.draw_text(s, f"结构完整度 {tile.facility_hp_ratio * 100:.0f}% · "
+        T.draw_text(s, tr("ui.structure_fmt") % (tile.facility_hp_ratio * 100,) +
                         f"{'运作中' if tile.operational else '已失能'}",
                     (r.x + 10, r.y + 42), 11,
                     T.hp_color(tile.facility_hp_ratio))
@@ -2964,7 +2965,7 @@ class App:
             T.draw_text(s, " ".join(parts)[:52] or "无修正", (r.x + 10, yy), 11, T.TEXT_FAINT)
             yy += 14
             ic = f" · 拦截风险 {prof.intercept_pk * 100:.0f}%" if prof.intercept_pk > 0.01 else ""
-            T.draw_text(s, f"结构伤害 {prof.damage:.0f}{ic}", (r.x + 10, yy), 11,
+            T.draw_text(s, tr("ui.structure_damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
                         T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
             yy += 16
             self._draw_salvo_row(s, r, u, w, yy, prof.pk)
@@ -2976,7 +2977,7 @@ class App:
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, T.button_fill(T.AMBER, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.AMBER, btn, 1, border_radius=3)
-            T.draw_text(s, "确认打击  [Enter]", btn.center, 12, T.mix(T.AMBER, T.WHITE, 0.5),
+            T.draw_text(s, tr("ui.confirm_strike"), btn.center, 12, T.mix(T.AMBER, T.WHITE, 0.5),
                         bold=True, anchor="center")
             self._fire_btn = btn
         return r.bottom + 8
@@ -3001,7 +3002,7 @@ class App:
             return
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.PANEL_SUNK, T.BORDER, radius=4)
-        T.draw_text(s, "平台资料", (r.x + 10, r.y + 8), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.platform_info"), (r.x + 10, r.y + 8), 11, T.TEXT_FAINT, bold=True)
         yy = r.y + 24
         for k, v in rows:
             T.draw_text(s, k, (r.x + 10, yy), 11, T.TEXT_FAINT)
@@ -3018,7 +3019,7 @@ class App:
         st = self.state
         y = body.y
         # 目标点
-        T.draw_text(s, "争夺目标", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.contest_objective"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
         y += 18
         for t in st.map.objectives:
             r = pygame.Rect(body.x, y, body.width, 26)
@@ -3030,13 +3031,13 @@ class App:
             T.draw_text(s, f"({t.x},{t.y})", (r.x + 10 + T.text_width(t.name, 12) + 6, r.y + 7),
                         11, T.TEXT_FAINT, mono=True)
             owner_txt = own.label if own is not Side.NEUTRAL else "争夺中"
-            T.draw_text(s, f"{owner_txt} +{t.value}/回合", (r.right, r.y + 5), 11,
+            T.draw_text(s, tr("ui.objective_value_fmt") % (owner_txt, t.value,), (r.right, r.y + 5), 11,
                         col, anchor="topright")
             y += 27
         y += 8
 
         # 兵力对比
-        T.draw_text(s, "兵力构成", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.force_composition"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
         y += 18
         doms = [Domain.LAND, Domain.AIR, Domain.SEA, Domain.SUB, Domain.INFRA, Domain.SPACE]
         for d in doms:
@@ -3054,19 +3055,19 @@ class App:
 
         # 在飞弹药
         if st.missiles:
-            T.draw_text(s, "在飞弹药", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+            T.draw_text(s, tr("ui.inflight_ammo"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
             y += 18
             for m in st.missiles[:6]:
                 col = T.side_color(m.attacker_side)
                 T.draw_text(s, f"{m.label}", (body.x, y), 11, col)
-                T.draw_text(s, f"{m.eta} 回合", (body.right, y), 11, T.AMBER,
+                T.draw_text(s, tr("ui.eta_turns") % (m.eta,), (body.right, y), 11, T.AMBER,
                             anchor="topright", mono=True)
                 y += 16
             y += 8
 
         # 卫星与电子战
         self._sat_rects = []
-        T.draw_text(s, "天基资产与电子战", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+        T.draw_text(s, tr("ui.space_ew"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
         y += 18
         for side in (Side.BLUE, Side.RED):
             sats = st.satellites(side)
@@ -3074,11 +3075,11 @@ class App:
             ew = [u for u in st.units_of(side) if u.template.jam_strength > 0 and u.jam_on]
             asat = st.asat_capable(side)
             T.draw_text(s, side.label, (body.x, y), 11, T.side_color(side), bold=True)
-            T.draw_text(s, f"卫导 {st.gps[side] * 100:.0f}% · 干扰机 {len(ew)} · "
+            T.draw_text(s, tr("ui.gps_jammer_fmt") % (st.gps[side] * 100, len(ew),) +
                             f"反卫星 {len(asat)}", (body.x + 44, y), 11, T.TEXT_DIM)
             y += 16
             if not alive:
-                T.draw_text(s, "  无在轨侦察资产：过顶侦察中断", (body.x + 8, y), 11, T.RED)
+                T.draw_text(s, tr("ui.no_sat_asset"), (body.x + 8, y), 11, T.RED)
                 y += 14
             for sat in alive:
                 row = pygame.Rect(body.x, y - 1, body.width, 15)
@@ -3095,17 +3096,17 @@ class App:
                       T.hp_color(sat.hp_ratio))
                 T.draw_text(s, f"{sat.hp:.0f}", (body.x + 246, y - 1), 11, T.TEXT_FAINT, mono=True)
                 if st.satellite_overhead(sat):
-                    T.draw_text(s, "过顶中", (body.x + 280, y), 11, T.GREEN, bold=True)
+                    T.draw_text(s, tr("ui.overhead_now"), (body.x + 280, y), 11, T.GREEN, bold=True)
                 else:
-                    T.draw_text(s, "轨道外", (body.x + 280, y), 11, T.TEXT_FAINT)
+                    T.draw_text(s, tr("ui.off_orbit"), (body.x + 280, y), 11, T.TEXT_FAINT)
                 y += 15
-        T.draw_text(s, "点击敌方卫星 → 反卫星打击｜过顶中 = 星下点 9 格区域侦察", (body.x + 8, y), 11, T.CYAN)
+        T.draw_text(s, tr("ui.sat_hint"), (body.x + 8, y), 11, T.CYAN)
         y += 16
 
         # 胜利条件
         y += 6
         if y < body.bottom - 60:
-            T.draw_text(s, "胜利条件", (body.x, y), 11, T.TEXT_FAINT, bold=True)
+            T.draw_text(s, tr("ui.victory_condition"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
             y += 16
             for line in T.wrap_text(
                     f"{st.turn_limit} 回合内累计胜负点高者获胜。目标点由可占领单位控制，"
@@ -3118,7 +3119,7 @@ class App:
         tips = self._tactical_tips()
         if tips and y < body.bottom - 50:
             y += 8
-            T.draw_text(s, "态势研判", (body.x, y), 11, T.CYAN, bold=True)
+            T.draw_text(s, tr("ui.situation_analysis"), (body.x, y), 11, T.CYAN, bold=True)
             y += 18
             for tip in tips:
                 if y > body.bottom - 16:
@@ -3243,7 +3244,7 @@ class App:
         surf.fill((8, 11, 16, 248))
         s.blit(surf, r.topleft)
         pygame.draw.rect(s, T.BORDER_HI, r, 1, border_radius=4)
-        T.draw_text(s, "作战规则与操作", (r.x + 24, r.y + 16), 17, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.rules_and_controls"), (r.x + 24, r.y + 16), 17, T.TEXT, bold=True)
         T.hline(s, r.x + 24, r.right - 24, r.y + 44, T.BORDER)
 
         for items, cx in ((left, r.x + 24), (right, r.x + 52 + colw)):
@@ -3252,7 +3253,7 @@ class App:
                 if text:
                     T.draw_text(s, text, (cx, yy), size, color, bold=size >= 12)
                 yy += dy
-        T.draw_text(s, "按 F1 或 Esc 关闭", (r.centerx, r.bottom - 22), 11, T.TEXT_FAINT,
+        T.draw_text(s, tr("ui.press_f1_close"), (r.centerx, r.bottom - 22), 11, T.TEXT_FAINT,
                     anchor="center")
 
     # -- 结算 -------------------------------------------------------------
@@ -3294,10 +3295,10 @@ class App:
         prog = self.campaign_progress
         if prog is not None and self.campaign is not None:
             camp = self.campaign
-            T.draw_text(s, f"战役「{camp.name}」· 第 {min(prog.step_index, camp.total_steps)}"
+            T.draw_text(s, tr("ui.campaign_step_fmt") % (camp.name, min(prog.step_index, camp.total_steps),) +
                            f"/{camp.total_steps} 关",
                         (r.centerx, y + 4), 12, T.PURPLE, anchor="center")
-            T.draw_text(s, f"累计胜负点 蓝 {prog.blue_vp} : {prog.red_vp} 红",
+            T.draw_text(s, tr("ui.vp_total_fmt") % (prog.blue_vp, prog.red_vp,),
                         (r.centerx, y + 24), 12, T.TEXT, anchor="center")
             y += 44
 
@@ -3306,10 +3307,10 @@ class App:
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), btn, border_radius=4)
         pygame.draw.rect(s, T.CYAN, btn, 1, border_radius=4)
         if self.campaign_pending:
-            T.draw_text(s, "进入下一阶段  [Enter]", btn.center, 14, T.WHITE, bold=True,
+            T.draw_text(s, tr("ui.next_stage"), btn.center, 14, T.WHITE, bold=True,
                         anchor="center")
         else:
-            T.draw_text(s, "返回想定选择  [Enter]", btn.center, 14, T.WHITE, bold=True,
+            T.draw_text(s, tr("ui.back_to_scenarios"), btn.center, 14, T.WHITE, bold=True,
                         anchor="center")
 
     # ================================================================== #
