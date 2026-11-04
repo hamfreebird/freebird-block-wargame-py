@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.0.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.0.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -111,6 +111,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v2.2.1** | 体验修复 | 普通想定不再误触发教学、**浅色主题下按钮不再显示为深色** |
 | **v2.2** | 深度与智能 | **AI 战术库**（可达性判断 / 斩首 / 撤退）、**大地图寻路优化**、**JSON 规则钩子**、**平衡体检** |
 | **v3.0.0** | 形态 | **官方模组 SDK**（稳定插件 API + 文档 + 示例）、**多语言扩展**（8 种语言 + 分层语言包 + 社区协作校验）、**无障碍（键盘全操作）**（设置面板 / 主菜单 / 系统菜单 / 实战地图光标均可纯键盘完成整局） |
+| **v3.0.1** | 缺陷修复 | 修复键盘光标自动滚屏方向写反、**读档未还原随机流**（重跑不再等价）、坏档异常直接结束进程；Python 版本承诺收紧到 3.10+ |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
