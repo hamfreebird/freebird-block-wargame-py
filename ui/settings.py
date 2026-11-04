@@ -36,6 +36,10 @@ class SettingsPanel:
         self.scroll = 0
         self.message = ""
         self.message_color = T.TEXT_DIM
+        # v3.0 无障碍：键盘焦点。此前非捕获态只认 Esc，整个面板纯鼠标。
+        self.focus_index = 0
+        # 显式初始化——以前只在事件里赋值，调用方不得不用 getattr 兜底
+        self.close_requested = False
         self.rect = pygame.Rect(0, 0, 640, 560)
         self.rows: list[tuple[pygame.Rect, str, str]] = []
         self._btn_reset = pygame.Rect(0, 0, 0, 0)
@@ -76,75 +80,58 @@ class SettingsPanel:
                     self.message = f"{label_for(action)} → {hotkey_label(self.cfg, action)}"
                     self.message_color = T.GREEN
                 return True
+            # -- 纯键盘导航（v3.0 无障碍）--------------------------------
+            # ↑↓ / Tab 在焦点项之间移动，←→ 调整当前项的值，Enter 触发按钮，
+            # Esc 关闭。焦点项顺序与视觉从上到下一致，见 _focus_items()。
             if e.key == pygame.K_ESCAPE:
                 self.close_requested = True
                 return True
+            if e.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
+                step = -1 if e.key == pygame.K_UP else 1
+                n = len(self._focus_items())
+                self.focus_index = (self.focus_index + step) % n
+                return True
+            if e.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                self._focus_adjust(-1 if e.key == pygame.K_LEFT else 1)
+                return True
+            if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                self._focus_activate()
+                return True
+            # 其余键一律吞掉：设置面板是模态，不能漏给底下的地图
             return True
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            # 主题切换
+            # 鼠标与键盘共用下面那组操作方法，避免两处逻辑慢慢分叉
             for rect, tid in self._theme_buttons:
                 if rect.collidepoint(e.pos):
-                    if self.cfg.set_theme(tid):
-                        if self.on_theme:
-                            self.on_theme(tid)
-                        self.message = f"界面主题：{T.theme_name(tid)}"
-                        self.message_color = T.GREEN
+                    self._select_theme(tid)
                     return True
-            # 语言切换
             for rect, code in self._lang_buttons:
                 if rect.collidepoint(e.pos):
-                    if self.cfg.set_language(code):
-                        if self.on_language:
-                            self.on_language(code)
-                        self.message = f"界面语言：{language_name(code)}"
-                        self.message_color = T.GREEN
+                    self._select_language(code)
                     return True
-            # 图标包切换
             for rect, pid in self._icon_buttons:
                 if rect.collidepoint(e.pos):
-                    self.cfg.set_pref("icon_pack", "" if pid == "__none__" else pid)
-                    if self.on_icons:
-                        self.on_icons(self.cfg.pref("icon_pack", ""))
-                    name = "内置矢量图形" if pid == "__none__" else pid
-                    self.message = f"单位图标包：{name}"
-                    self.message_color = T.GREEN
+                    self._select_icons(pid)
                     return True
-            # 音效开关
             if self._sound_btn.collidepoint(e.pos):
-                self.cfg.set_sound(not self.cfg.sound_enabled)
-                if self.on_sound:
-                    self.on_sound(self.cfg.sound_enabled)
-                self.message = tr("settings.sound") + ": " + (tr("ui.on") if self.cfg.sound_enabled else tr("ui.off"))
-                self.message_color = T.GREEN if self.cfg.sound_enabled else T.TEXT_DIM
+                self._toggle_sound()
                 return True
-            # 音量调节
             if self._vol_left.collidepoint(e.pos):
-                self.cfg.set_volume(self.cfg.volume - 0.1)
-                if self.on_sound:
-                    self.on_sound(self.cfg.sound_enabled)
+                self._change_volume(-0.1)
                 return True
             if self._vol_right.collidepoint(e.pos):
-                self.cfg.set_volume(self.cfg.volume + 0.1)
-                if self.on_sound:
-                    self.on_sound(self.cfg.sound_enabled)
+                self._change_volume(0.1)
                 return True
             if self._vol_bar.collidepoint(e.pos):
                 self._set_volume_from_pos(e.pos[0])
                 return True
-            # 键位列表
             for rect, action, _ in self.rows:
                 if rect.collidepoint(e.pos):
-                    if self.cfg.key_for(action) == DEFAULT_BINDINGS.get(action):
-                        self.message = ""
-                    self.capturing = action
-                    self.message_color = T.AMBER
-                    self.message = f"请按下新的按键（当前：{label_for(action)}）"
+                    self._begin_capture(action)
                     return True
             if self._btn_reset.collidepoint(e.pos):
-                self.cfg.reset_keys()
-                self.message = "已恢复默认键位"
-                self.message_color = T.GREEN
+                self._reset_keys()
                 return True
             if self._btn_close.collidepoint(e.pos):
                 self.close_requested = True
@@ -166,6 +153,116 @@ class SettingsPanel:
             self.on_sound(self.cfg.sound_enabled)
 
     # ------------------------------------------------------------------ #
+    # 共享操作：鼠标与键盘都走这里，避免两处逻辑分叉
+    # ------------------------------------------------------------------ #
+    def _select_theme(self, tid: str) -> None:
+        if self.cfg.set_theme(tid):
+            if self.on_theme:
+                self.on_theme(tid)
+            self.message = f"界面主题：{T.theme_name(tid)}"
+            self.message_color = T.GREEN
+
+    def _select_language(self, code: str) -> None:
+        if self.cfg.set_language(code):
+            if self.on_language:
+                self.on_language(code)
+            self.message = f"界面语言：{language_name(code)}"
+            self.message_color = T.GREEN
+
+    def _select_icons(self, pid: str) -> None:
+        self.cfg.set_pref("icon_pack", "" if pid == "__none__" else pid)
+        if self.on_icons:
+            self.on_icons(self.cfg.pref("icon_pack", ""))
+        name = "内置矢量图形" if pid == "__none__" else pid
+        self.message = f"单位图标包：{name}"
+        self.message_color = T.GREEN
+
+    def _toggle_sound(self) -> None:
+        self.cfg.set_sound(not self.cfg.sound_enabled)
+        if self.on_sound:
+            self.on_sound(self.cfg.sound_enabled)
+        self.message = (tr("settings.sound") + ": "
+                        + (tr("ui.on") if self.cfg.sound_enabled else tr("ui.off")))
+        self.message_color = T.GREEN if self.cfg.sound_enabled else T.TEXT_DIM
+
+    def _change_volume(self, delta: float) -> None:
+        self.cfg.set_volume(self.cfg.volume + delta)
+        if self.on_sound:
+            self.on_sound(self.cfg.sound_enabled)
+
+    def _begin_capture(self, action: str) -> None:
+        if self.cfg.key_for(action) == DEFAULT_BINDINGS.get(action):
+            self.message = ""
+        self.capturing = action
+        self.message_color = T.AMBER
+        self.message = f"请按下新的按键（当前：{label_for(action)}）"
+
+    def _reset_keys(self) -> None:
+        self.cfg.reset_keys()
+        self.message = "已恢复默认键位"
+        self.message_color = T.GREEN
+
+    # ------------------------------------------------------------------ #
+    # 键盘焦点
+    # ------------------------------------------------------------------ #
+    def _focus_items(self) -> list[tuple[str, str]]:
+        """按视觉从上到下列出所有可操作项。
+
+        ``(种类, 参数)``：参数只对 ``key`` 有意义（动作 ID）。
+        顶部 5 行各算一项，值用 ←→ 调；键位列表每项算一项，Enter 进入重绑定。
+        """
+        items = [("theme", ""), ("icons", ""), ("sound", ""),
+                 ("volume", ""), ("language", "")]
+        # 与 draw() 里的分栏顺序一致：左栏常规操作，右栏武器槽
+        for a in ALL_ACTIONS:
+            if a not in SLOT_ACTIONS:
+                items.append(("key", a))
+        for a in SLOT_ACTIONS:
+            items.append(("key", a))
+        items.append(("reset", ""))
+        items.append(("done", ""))
+        return items
+
+    def _focus(self) -> tuple[str, str]:
+        items = self._focus_items()
+        self.focus_index = max(0, min(self.focus_index, len(items) - 1))
+        return items[self.focus_index]
+
+    def _focus_adjust(self, delta: int) -> None:
+        """←→ 调整当前焦点项的值。"""
+        kind, _ = self._focus()
+        if kind == "theme":
+            ids = T.theme_ids()
+            cur = ids.index(T.current_theme().id) if T.current_theme().id in ids else 0
+            self._select_theme(ids[(cur + delta) % len(ids)])
+        elif kind == "icons":
+            entries = ["__none__"] + [p.id for p in self._icon_packs]
+            cur = str(self.cfg.pref("icon_pack", "") or "") or "__none__"
+            idx = entries.index(cur) if cur in entries else 0
+            self._select_icons(entries[(idx + delta) % len(entries)])
+        elif kind == "sound":
+            self._toggle_sound()
+        elif kind == "volume":
+            self._change_volume(0.1 * delta)
+        elif kind == "language":
+            codes = available_languages()
+            cur = codes.index(self.cfg.language) if self.cfg.language in codes else 0
+            self._select_language(codes[(cur + delta) % len(codes)])
+
+    def _focus_activate(self) -> None:
+        """Enter / Space 触发当前焦点项。"""
+        kind, arg = self._focus()
+        if kind == "key":
+            self._begin_capture(arg)
+        elif kind == "sound":
+            self._toggle_sound()
+        elif kind == "reset":
+            self._reset_keys()
+        elif kind == "done":
+            self.close_requested = True
+        # theme/icons/language/volume 用 ←→ 调整，Enter 不重复触发
+
+    # ------------------------------------------------------------------ #
     # 绘制
     # ------------------------------------------------------------------ #
     def draw(self, s: pygame.Surface) -> None:
@@ -184,6 +281,9 @@ class SettingsPanel:
         T.draw_text(s, tr("settings.keys") + " · " + tr("settings.theme") + " · "
                     + tr("settings.sound") + " · " + tr("settings.language"),
                     (r.x + 78, r.y + 21), 11, T.TEXT_FAINT)
+        # 键盘提示单独占一行，避免与上面那行在长译文下挤到一起
+        T.draw_text(s, tr("ui.settings_kbd_hint"), (r.x + 22, r.y + 40), 10,
+                    T.TEXT_FAINT)
         T.hline(s, r.x + 20, r.right - 20, r.y + 62, T.BORDER)
 
         self._draw_options(s, r)
@@ -258,6 +358,8 @@ class SettingsPanel:
             T.draw_text(s, msg, (r.x + 176, by + 9), 11, T.AMBER)
         elif self.message:
             T.draw_text(s, self.message, (r.x + 176, by + 9), 11, self.message_color)
+
+        self._draw_focus(s)
 
     # ------------------------------------------------------------------ #
     def _draw_options(self, s: pygame.Surface, r: pygame.Rect) -> None:
@@ -359,6 +461,50 @@ class SettingsPanel:
 
         T.hline(s, r.x + 20, r.right - 20, r.y + self.HEADER_H + self.OPTIONS_H - 26,
                 T.BORDER)
+
+    def _draw_focus(self, s: pygame.Surface) -> None:
+        """给当前键盘焦点画一圈琥珀色框。
+
+        用琥珀色而不是青色：青色已经表示「当前值」，焦点要与之区分，
+        否则玩家分不清哪个是选中项、哪个是键盘停在哪。
+        找不到矩形（首帧还没 draw）时静默跳过，不影响交互。
+        """
+        kind, arg = self._focus()
+        rect = None
+        if kind == "theme":
+            for b, tid in self._theme_buttons:
+                if tid == T.current_theme().id:
+                    rect = b
+                    break
+        elif kind == "icons":
+            cur = str(self.cfg.pref("icon_pack", "") or "") or "__none__"
+            for b, pid in self._icon_buttons:
+                if pid == cur:
+                    rect = b
+                    break
+        elif kind == "sound":
+            rect = self._sound_btn
+        elif kind == "volume":
+            rect = pygame.Rect(self._vol_left.left, self._vol_left.top,
+                               self._vol_right.right - self._vol_left.left,
+                               self._vol_left.height)
+        elif kind == "language":
+            for b, code in self._lang_buttons:
+                if code == self.cfg.language:
+                    rect = b
+                    break
+        elif kind == "key":
+            for row, action, _ in self.rows:
+                if action == arg:
+                    rect = row
+                    break
+        elif kind == "reset":
+            rect = self._btn_reset
+        elif kind == "done":
+            rect = self._btn_close
+        if rect is None or rect.width <= 0:
+            return
+        pygame.draw.rect(s, T.AMBER, rect.inflate(4, 4), 2, border_radius=4)
 
 
 __all__ = ["SettingsPanel"]

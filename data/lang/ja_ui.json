@@ -164,5 +164,6 @@
  "ui.victory_condition": "勝利条件",
  "ui.vp_label": "勝点",
  "ui.vp_total_fmt": "累計勝点 青 %s : %s 赤",
- "ui.weapon_system": "兵装システム"
+ "ui.weapon_system": "兵装システム",
+ "ui.settings_kbd_hint": "↑↓ 選択 · ←→ 調整 · Enter 確定 · Esc 閉じる"
 }

@@ -164,6 +164,7 @@ python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学
 python tools/test_sdk.py         # 模组 SDK 自检（manifest / 版本 / 依赖 / 注入）
 python tools/lang_check.py       # 语言包校验（覆盖率 / 占位符 / 译文残留）
 python tools/test_i18n.py        # 本地化运行时自检（分层包 / 回退链 / 格式化）
+python tools/test_keyboard.py    # 键盘导航自检（设置 / 主菜单 / 系统菜单）
 python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```

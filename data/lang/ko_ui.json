@@ -164,5 +164,6 @@
  "ui.victory_condition": "승리 조건",
  "ui.vp_label": "승점",
  "ui.vp_total_fmt": "누적 승점 청 %s : %s 홍",
- "ui.weapon_system": "무장 시스템"
+ "ui.weapon_system": "무장 시스템",
+ "ui.settings_kbd_hint": "↑↓ 선택 · ←→ 조정 · Enter 확인 · Esc 닫기"
 }

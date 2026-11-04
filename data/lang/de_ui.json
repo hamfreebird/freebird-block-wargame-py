@@ -164,5 +164,6 @@
  "ui.victory_condition": "Siegbedingung",
  "ui.vp_label": "VP",
  "ui.vp_total_fmt": "Gesamt-VP Blau %s : %s Rot",
- "ui.weapon_system": "Waffensysteme"
+ "ui.weapon_system": "Waffensysteme",
+ "ui.settings_kbd_hint": "↑↓ Auswahl · ←→ Anpassen · Enter Bestätigen · Esc Schließen"
 }

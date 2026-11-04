@@ -164,5 +164,6 @@
  "ui.victory_condition": "Victory Condition",
  "ui.vp_label": "VP",
  "ui.vp_total_fmt": "Total VP — Blue %s : %s Red",
- "ui.weapon_system": "Weapon Systems"
+ "ui.weapon_system": "Weapon Systems",
+ "ui.settings_kbd_hint": "↑↓ Select · ←→ Adjust · Enter Confirm · Esc Close"
 }

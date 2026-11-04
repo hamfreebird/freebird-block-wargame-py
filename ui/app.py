@@ -155,6 +155,8 @@ class App:
         self.salvo_rects: list[tuple[pygame.Rect, int]] = []
         self._sat_rects: list[tuple[pygame.Rect, object]] = []
         self.menu_rects: list[tuple[pygame.Rect, str, object]] = []
+        # v3.0 无障碍：系统菜单的键盘焦点（此前 menu_rects 只能鼠标点）
+        self.sys_menu_index = 0
         self.logview: LogView | None = None
         self.scenarios: list[dict] = []
         self.menu_index = 0
@@ -1103,7 +1105,7 @@ class App:
         hover = edit_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), edit_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, edit_r, 1, border_radius=4)
-        T.draw_text(s, i18n.tr("menu.editor"), edit_r.center, 13,
+        T.draw_text(s, i18n.tr("menu.editor") + "  [E]", edit_r.center, 13,
                     T.button_text(T.CYAN, hover), anchor="center")
 
         # 快速上手：直接进入教学想定（首次运行时高亮）
@@ -1124,7 +1126,7 @@ class App:
         hover = camp_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.PURPLE, hover), camp_r, border_radius=4)
         pygame.draw.rect(s, T.PURPLE if hover else T.BORDER_HI, camp_r, 1, border_radius=4)
-        T.draw_text(s, tr("ui.campaign_title"), camp_r.center, 13,
+        T.draw_text(s, tr("ui.campaign_title") + "  [C]", camp_r.center, 13,
                     T.button_text(T.PURPLE, hover), anchor="center")
 
         # 设置入口
@@ -1132,7 +1134,7 @@ class App:
         hover = set_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), set_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, set_r, 1, border_radius=4)
-        T.draw_text(s, i18n.tr("menu.settings"), set_r.center, 13,
+        T.draw_text(s, i18n.tr("menu.settings") + "  [O]", set_r.center, 13,
                     T.button_text(T.CYAN, hover), anchor="center")
 
 
@@ -1207,7 +1209,36 @@ class App:
     def toggle_menu(self) -> None:
         self.show_menu = not self.show_menu
         if self.show_menu:
+            self.sys_menu_index = 0
             self._refresh_slots()
+
+    def _sys_menu_activate(self, action: str, arg: object) -> None:
+        """执行系统菜单条目——鼠标点击与键盘 Enter 共用这一处。
+
+        **为什么抽出来**：以前这段逻辑只写在 ``_on_mouse_down`` 里，
+        加键盘支持时若复制一份，日后新增菜单项必然只改一处。
+        """
+        if action == "resume":
+            self.show_menu = False
+        elif action == "save":
+            self.save_slot(int(arg))
+        elif action == "load":
+            self.load_slot(int(arg))
+        elif action == "to_menu":
+            self.show_menu = False
+            self.mode = "menu"
+            self._scan_scenarios()
+        elif action == "export_md":
+            self.export_report("md")
+        elif action == "export_pkg":
+            self.export_scenario_package()
+        elif action == "export_replay":
+            self.export_replay()
+        elif action == "settings":
+            self.show_menu = False
+            self.open_settings()
+        elif action == "quit":
+            self.running = False
 
     def _refresh_slots(self) -> None:
         self.slot_info = list_slots(ROOT)
@@ -1567,6 +1598,14 @@ class App:
                 self.menu_side = Side.RED if self.menu_side is Side.BLUE else Side.BLUE
             elif k == pygame.K_t:
                 self.start_tutorial()
+            # v3.0 无障碍：底部三个入口此前只能鼠标点，补上字母快捷键。
+            # 不用 s/a/d/w——它们已被想定网格的移动占用。
+            elif k == pygame.K_e:
+                self.open_editor()
+            elif k == pygame.K_c:
+                self.show_campaign_menu = not self.show_campaign_menu
+            elif k == pygame.K_o:
+                self.open_settings()
             return
 
         # 绑定可配置的动作（帮助 / 存读档 / 系统菜单）
@@ -1590,6 +1629,20 @@ class App:
         if self.show_menu:
             if action == "cancel":
                 self.show_menu = False
+                return
+            # 纯键盘导航：↑↓ 在菜单项之间移动，Enter/Space 触发当前项
+            if k in (pygame.K_UP, pygame.K_DOWN):
+                n = len(self.menu_rects)
+                if n:
+                    step = -1 if k == pygame.K_UP else 1
+                    self.sys_menu_index = (self.sys_menu_index + step) % n
+                return
+            if k in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                if self.menu_rects:
+                    i = min(self.sys_menu_index, len(self.menu_rects) - 1)
+                    _rect, act, arg = self.menu_rects[i]
+                    self._sys_menu_activate(act, arg)
+                return
             return
 
         if self.mode == "over":
@@ -1754,27 +1807,7 @@ class App:
             if e.button == 1:
                 for rect, action, arg in self.menu_rects:
                     if rect.collidepoint(pos):
-                        if action == "resume":
-                            self.show_menu = False
-                        elif action == "save":
-                            self.save_slot(int(arg))
-                        elif action == "load":
-                            self.load_slot(int(arg))
-                        elif action == "to_menu":
-                            self.show_menu = False
-                            self.mode = "menu"
-                            self._scan_scenarios()
-                        elif action == "export_md":
-                            self.export_report("md")
-                        elif action == "export_pkg":
-                            self.export_scenario_package()
-                        elif action == "export_replay":
-                            self.export_replay()
-                        elif action == "settings":
-                            self.show_menu = False
-                            self.open_settings()
-                        elif action == "quit":
-                            self.running = False
+                        self._sys_menu_activate(action, arg)
                         return
             return
         if e.button == 2:
@@ -2219,6 +2252,12 @@ class App:
             T.draw_text(s, label, b.center, T.FS_BODY, T.TEXT if hover else T.TEXT_DIM,
                         anchor="center")
             self.menu_rects.append((b, act, None))
+
+        # 键盘焦点框：与 hover 的细边框区分，用更粗的琥珀色
+        if self.menu_rects:
+            _fi = min(self.sys_menu_index, len(self.menu_rects) - 1)
+            pygame.draw.rect(s, T.AMBER, self.menu_rects[_fi][0].inflate(4, 4),
+                             2, border_radius=4)
 
     # -- 顶栏 -------------------------------------------------------------
     def _draw_topbar(self, s: pygame.Surface) -> None:

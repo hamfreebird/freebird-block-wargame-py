@@ -133,6 +133,7 @@
    - [`python tools/test_sdk.py`](#python-toolstestsdkpy)
    - [`python tools/lang_check.py`](#python-toolslangcheckpy)
    - [`python tools/test_i18n.py`](#python-toolstesti18npy)
+   - [`python tools/test_keyboard.py`](#python-toolstestkeyboardpy)
    - [`python tools/check_docs.py`](#python-toolscheckdocspy)
    - [`python tools/make_big_map.py`](#python-toolsmakebigmappy)
    - [`python tools/extend_armory.py`](#python-toolsextendarmorypy)
@@ -1792,11 +1793,25 @@ tile=60 时需要一张 15360×15360 的表面（约 900MB）——不可行。�
 
 ### 12.1 打开方式
 
-- 主菜单点「**设置**」；
-- 或游戏中按 `F10` → 「设置」。
+- 主菜单点「**设置**」，或按 `O`；
+- 游戏中按 `F10` 打开系统菜单，用 `↑↓` 选中「设置」后按 `Enter`；
+- 主菜单另有 `E`（地图 / 武器编辑器）、`C`（战役模式）两个键盘入口。
 
 设置面板分为五个区块：**主题 → 图标包 → 音效 → 语言 → 键位**。
 前四项即时生效（无需重启、无需重开对局），键位改动在关闭面板时保存。
+
+**纯键盘操作设置面板**（v3.0）：
+
+| 按键 | 作用 |
+|---|---|
+| `↑` / `↓` / `Tab` | 在焦点项之间移动（琥珀色方框标出当前焦点） |
+| `←` / `→` | 调整当前项：切换主题 / 图标包 / 语言，增减音量，开关音效 |
+| `Enter` / `空格` | 触发按钮：进入键位重绑定、恢复默认键位、完成 |
+| `Esc` | 关闭面板；重绑定过程中按 `Esc` 则取消本次修改 |
+
+系统菜单（`F10`）同样支持 `↑↓` 选择、`Enter` 确认、`Esc` 关闭。
+想定选择主菜单用 `←→↑↓`（或 `A` / `D` / `W` / `S`）选卡片、`Enter` 开局、
+`T` 进教学、`Tab` 切换阵营——**不开鼠标也能完成整局**。
 
 ### 12.2 主题 / 图标包 / 音效 / 语言
 
@@ -2269,6 +2284,14 @@ tile=60 时需要一张 15360×15360 的表面（约 900MB）——不可行。�
 分层包自动加载、缺失键回退链、`%` 格式化不抛异常，以及模组词条不能
 覆盖本体键。脚本刻意**不**调用 `load_language_dir`，以此守住
 「界面模块不依赖主程序初始化顺序」这条性质。
+
+### `python tools/test_keyboard.py`
+
+**键盘导航自检**（v3.0）。按序模拟 KEYDOWN，验证三条此前只能靠鼠标的
+链路：设置面板（↑↓ 移动焦点、←→ 调整值、Enter 触发、Esc 关闭、
+捕获态重绑定）、主菜单底部入口（`E` / `C` / `O`）、F10 系统菜单
+（↑↓ 选择、Enter 确认、Esc 关闭）。测试把用户数据目录隔离到临时目录，
+不会污染真实设置。
 
 ### `python tools/check_docs.py`
 

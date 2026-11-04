@@ -164,5 +164,6 @@
  "ui.victory_condition": "胜利条件",
  "ui.vp_label": "胜负点",
  "ui.vp_total_fmt": "累计胜负点 蓝 %s : %s 红",
- "ui.weapon_system": "武器系统"
+ "ui.weapon_system": "武器系统",
+ "ui.settings_kbd_hint": "↑↓ 选择 · ←→ 调整 · Enter 确认 · Esc 关闭"
 }

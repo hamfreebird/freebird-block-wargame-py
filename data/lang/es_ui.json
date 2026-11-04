@@ -164,5 +164,6 @@
  "ui.victory_condition": "Condición de victoria",
  "ui.vp_label": "VP",
  "ui.vp_total_fmt": "VP acumulados — Azul %s : %s Rojo",
- "ui.weapon_system": "Sistemas de armamento"
+ "ui.weapon_system": "Sistemas de armamento",
+ "ui.settings_kbd_hint": "↑↓ Seleccionar · ←→ Ajustar · Enter Confirmar · Esc Cerrar"
 }
