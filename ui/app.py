@@ -2688,6 +2688,11 @@ class App:
         col = T.AMBER if u.fired else T.GREEN
         if u.domain is Domain.AIR and u.fuel < 0.35:
             col = T.RED
+        # 状态行是单行右对齐的：塞不下就从头丢起（越靠后越次要），
+        # 否则德语/法语的长标签会顶到单位图标上，比少显示一条更难看
+        while len(state_bits) > 1 and \
+                T.text_width(" · ".join(state_bits), 11) > r.width - 24:
+            state_bits.pop()
         T.draw_text(s, " · ".join(state_bits), (r.right - 10, r.y + 76), 11,
                     col, anchor="topright")
         # 电子战频段与受扰提示
