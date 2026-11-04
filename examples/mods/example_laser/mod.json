@@ -1,0 +1,9 @@
+{
+  "id": "example_laser",
+  "name": "示例模组 · 机载激光",
+  "version": "1.0.0",
+  "author": "方块兵棋",
+  "description": "演示官方 SDK 怎么用：注册武器、兵种、传感器、挂载、本地化与钩子",
+  "api": ">=1.0.0",
+  "entry": "main.py"
+}

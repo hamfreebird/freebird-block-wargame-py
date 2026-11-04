@@ -397,6 +397,36 @@ def tr(key: str, default: str = "") -> str:
     return key
 
 
+def register_mod_entry(lang: str, key: str, value: str) -> bool:
+    """注册一条模组词条。返回是否成功。
+
+    **模组不能覆盖游戏本体的键**——键已存在于任一内置语言表时
+    会被拒绝。否则一个社区模组就能把「开始作战」翻译成任意内容。
+
+    模组词条放在独立的命名空间里（键形如 ``my_mod.unit_desc``），
+    与本体键互不干扰。
+    """
+    code = (lang or "").strip().lower()
+    if not code or not key:
+        return False
+    # 本体键保护：内置表里已有的键不允许被模组覆盖
+    for builtin in (_BUILTIN_ZH, _BUILTIN_EN):
+        if key in builtin:
+            return False
+    # 同一语言包里已有的键不允许覆盖（那是别的模组或用户的贡献）
+    table = _tables.setdefault(code, {})
+    if key in table:
+        return False
+    table[key] = str(value)
+    return True
+    table = _tables.setdefault(code, {})
+    if key in table:
+        return False
+    table[key] = str(value)
+    return True
+
+
+
 def table_size(lang: str = "") -> int:
     """某个语言的词条数量（用于自检）。"""
     code = lang or _current_lang
@@ -407,4 +437,5 @@ __all__ = [
     "DEFAULT_LANGUAGE", "SUPPORTED_LANGUAGES", "LANGUAGE_NAMES",
     "tr", "set_language", "current_language", "language_name",
     "available_languages", "load_language_dir", "table_size",
+    "register_mod_entry",
 ]

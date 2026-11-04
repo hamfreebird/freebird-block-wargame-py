@@ -181,6 +181,13 @@ class App:
 
         # -- v2.0：模组加载（用户目录优先，安装目录其次）--
         self.mods = _mods.load_all()
+        # -- v3.0：模组词条注入（必须在本地化初始化之前）--
+        try:
+            _n = _mods.apply_localization(self.mods)
+            if _n:
+                self.cfg.set_pref("last_mods", f"已注入 {_n} 条模组词条")
+        except Exception as exc:
+            self.cfg.set_pref("last_mods", f"模组词条注入失败：{exc}")
         for _m in self.mods.mods:
             if _m.ok:
                 self.cfg.set_pref("last_mods", self.mods.summary())
