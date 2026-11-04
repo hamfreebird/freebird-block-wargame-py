@@ -106,9 +106,16 @@ def _meta_of(raw: dict) -> dict:
 DIFFICULTY_ACCENTS = {
     "easy": "green", "normal": "cyan", "hard": "amber", "extreme": "red",
 }
-DIFFICULTY_LABELS = {
-    "easy": "入门", "normal": "标准", "hard": "困难", "extreme": "专家",
+DIFFICULTY_KEYS = {
+    "easy": "ui.diff.easy", "normal": "ui.diff.normal",
+    "hard": "ui.diff.hard", "extreme": "ui.diff.extreme",
 }
+
+
+def difficulty_label(code: str) -> str:
+    """难度代码 → 本地化显示名；未知代码原样返回。"""
+    key = DIFFICULTY_KEYS.get(code)
+    return tr(key) if key else code
 
 
 class App:
@@ -289,7 +296,7 @@ class App:
                     "events": len(raw.get("events", []) or []),
                 })
         if not self.scenarios:
-            self.error = f"未在 {MAP_DIR} 找到可用地图"
+            self.error = tr("ui.menu.no_maps_fmt") % (MAP_DIR,)
         # 教学想定排在最前，便于新玩家第一眼看到
         self.scenarios.sort(key=lambda s: (not s.get("tutorial"), s["name"]))
         # 选中项可能因新增/删除想定而越界
@@ -349,19 +356,24 @@ class App:
                 return i
         return -1
 
-    def _menu_side_at(self, pos: tuple[int, int]) -> Side | None:
-        """鼠标位置落在哪个阵营卡片上；没有则返回 None。
+    #: 阵营卡片几何（绘制与命中共用，避免「点得到却选不中」）
+    SIDE_CARD_Y = 432
+    SIDE_CARD_STEP = 50
+    SIDE_CARD_H = 48
 
-        与绘制共用几何——阵营卡片的位置依赖右侧面板宽度，
-        这里复用同一套计算，避免「点得到却选不中」。
-        """
+    def _menu_side_rects(self) -> list[tuple[Side, pygame.Rect]]:
+        """两个阵营卡片的矩形。宽度依赖右侧面板，窄窗口下保底 280。"""
         area = self._menu_cards_area()
         px = area.right + 18
         pw = self.w - px - 48
-        side_x = px
-        side_w = pw if pw >= 220 else 280
-        for j, side in enumerate((Side.BLUE, Side.RED)):
-            r = pygame.Rect(side_x, 446 + j * 46, min(side_w, 320), 42)
+        side_w = min(pw if pw >= 220 else 280, 320)
+        return [(side, pygame.Rect(px, self.SIDE_CARD_Y + j * self.SIDE_CARD_STEP,
+                                   side_w, self.SIDE_CARD_H))
+                for j, side in enumerate((Side.BLUE, Side.RED))]
+
+    def _menu_side_at(self, pos: tuple[int, int]) -> Side | None:
+        """鼠标位置落在哪个阵营卡片上；没有则返回 None。"""
+        for side, r in self._menu_side_rects():
             if r.collidepoint(pos):
                 return side
         return None
@@ -469,9 +481,10 @@ class App:
         if self.tutorial.index != before:
             step = self.tutorial.current
             if step is not None:
-                self.state.log_message(None, f"教学：{step.title}", "tutorial")
+                self.state.log_message(None, tr("ui.log.tutorial_step_fmt") % (step.title,),
+                                       "tutorial")
             elif self.tutorial.finished:
-                self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
+                self.state.log_message(None, tr("ui.log.tutorial_done"), "tutorial")
                 self.tutorial_visible = False
                 self.set_status(tr("ui.st.tutorial_done"), 4)
 
@@ -484,9 +497,10 @@ class App:
         if self.tutorial.index != before:
             step = self.tutorial.current
             if step is not None:
-                self.state.log_message(None, f"教学：{step.title}", "tutorial")
+                self.state.log_message(None, tr("ui.log.tutorial_step_fmt") % (step.title,),
+                                       "tutorial")
             elif self.tutorial.finished:
-                self.state.log_message(None, "教学完成——接下来就看你的了", "tutorial")
+                self.state.log_message(None, tr("ui.log.tutorial_done"), "tutorial")
                 self.tutorial_visible = False
                 self.set_status(tr("ui.st.tutorial_done"), 4)
 
@@ -638,7 +652,8 @@ class App:
         if carried:
             self.state.log_message(
                 self.menu_side,
-                f"战役继承：{len(carried)} 支部队随你先遣队抵达（{camp.name} · {step.title}）",
+                tr("ui.log.campaign_carryover_fmt") % (
+                    len(carried), camp.name, step.title),
                 "system")
         # 累计上一关的胜负点
         if prog.vp:
@@ -650,12 +665,13 @@ class App:
         if diff_bonus:
             self.state.vp[Side.RED] += max(0, diff_bonus)
             self.state.vp[Side.BLUE] += max(0, -diff_bonus)
-        self.state.log_message(None, f"战役「{camp.name}」· {step.title}", "system")
+        self.state.log_message(None, tr("ui.log.campaign_step_fmt") % (camp.name, step.title),
+                               "system")
         if step.brief:
             self.state.log_message(None, step.brief, "system")
         self.state.log_message(
-            None, f"本关难度：{step.difficulty_label}"
-                  + ("（红方起始占优）" if diff_bonus > 0 else ""), "system")
+            None, tr("ui.log.difficulty_fmt") % (step.difficulty_label,)
+                  + (tr("ui.log.difficulty_red_edge") if diff_bonus > 0 else ""), "system")
         self._layout_game()
         self._select_first_unit()
         self.set_status(f"{camp.name} · {step.title}", 6)
@@ -677,8 +693,8 @@ class App:
         prog.carryover = apply_carryover_policy(
             collect_survivors(self.state, self.menu_side), step.carryover)
         prog.step_index += 1
-        prog.log.append(f"完成 {step.title}：累计 "
-                        f"{prog.blue_vp}:{prog.red_vp}，幸存 {len(prog.carryover)} 类部队")
+        prog.log.append(tr("ui.log.step_progress_fmt") % (
+            step.title, prog.blue_vp, prog.red_vp, len(prog.carryover)))
         save_progress(self._campaign_root(), prog)
         if prog.step_index >= camp.total_steps:
             self._finish_campaign()
@@ -700,8 +716,10 @@ class App:
                 tr("ui.st.victory") if won else tr("ui.st.defeat")), 10)
         self.state.log_message(
             None,
-            f"战役「{camp.name}」结束：累计胜负点 {prog.blue_vp}:{prog.red_vp}，"
-            + ("蓝方获胜" if won else "红方获胜"), "victory")
+            tr("ui.log.campaign_end_fmt") % (
+                camp.name, prog.blue_vp, prog.red_vp,
+                tr("ui.log.side_blue_wins") if won else tr("ui.log.side_red_wins")),
+            "victory")
         self.mode = "over"
 
     def _campaign_next_step(self) -> None:
@@ -816,7 +834,7 @@ class App:
             res = _pkg.import_package(path, _paths.user_maps_dir(), ARMORY,
                                        merge_armory=True)
             self._scan_scenarios()
-            extra = (f"，新增 {len(res.added_templates)} 个兵种"
+            extra = (tr("ui.st.package_extra_templates_fmt") % (len(res.added_templates),)
                      if res.added_templates else "")
             self.set_status(
                 tr("ui.st.package_imported_fmt") % (
@@ -918,14 +936,11 @@ class App:
         T.draw_text(s, tr("ui.mechanics_brief"), (r.x + 16, r.y + 14), 13, T.CYAN, bold=True)
         T.hline(s, r.x + 16, r.right - 16, r.y + 36, T.BORDER)
         items = [
-            ("侦察—打击链", "目标须被传感器跟踪至「跟踪」级才能装订诸元；"
-                            "情报中断则先进弹药也无用武之地。"),
-            ("电子战", "干扰压制雷达与制导链路，并削弱卫星导航；"
-                       "反辐射导弹专打开机雷达。"),
-            ("防空拦截", "多层防空对来袭弹药独立拦截取并集；"
-                         "高超音速与隐身弹药可大幅突防。"),
-            ("防区外打击", "远程弹药有飞行时间，途中目标机动或情报中断都会导致脱靶。"),
-            ("天基支持", "卫星每 3 回合过顶侦察；卫导完整性直接决定精确制导弹药精度。"),
+            (tr("ui.menu.feat_recon_title"), tr("ui.menu.feat_recon_desc")),
+            (tr("ui.menu.feat_ew_title"), tr("ui.menu.feat_ew_desc")),
+            (tr("ui.menu.feat_aa_title"), tr("ui.menu.feat_aa_desc")),
+            (tr("ui.menu.feat_standoff_title"), tr("ui.menu.feat_standoff_desc")),
+            (tr("ui.menu.feat_space_title"), tr("ui.menu.feat_space_desc")),
         ]
         yy = r.y + 48
         for title, desc in items:
@@ -934,7 +949,10 @@ class App:
             pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x + 16, yy + 3, 2, 10))
             T.draw_text(s, title, (r.x + 24, yy), 12, T.TEXT, bold=True)
             yy += 17
-            for line in T.wrap_text(desc, 10, r.width - 40):
+            # 换行宽度必须按**绘制字号**算：按 10 号排、用 11 号画，
+            # 拉丁字母会宽出一成，右侧被切掉。
+            room = max(0, (r.bottom - 12 - yy) // 14)
+            for line in T.wrap_text(desc, 11, r.width - 40)[:room]:
                 T.draw_text(s, line, (r.x + 24, yy), 11, T.TEXT_DIM)
                 yy += 14
             yy += 6
@@ -1018,7 +1036,7 @@ class App:
             if diff:
                 accent = DIFFICULTY_ACCENTS.get(diff, "")
                 col_c = getattr(T, accent.upper()) if accent else T.CYAN
-                label = DIFFICULTY_LABELS.get(diff, diff)
+                label = difficulty_label(diff)
                 bw = T.text_width(label, 11) + 14
                 chip = pygame.Rect(bx, meta_y, bw, 16)
                 # 芯片底色由主题派生，浅色主题下不会变成深色块
@@ -1067,17 +1085,16 @@ class App:
         px = area.right + 18
         pw = self.w - px - 48
         if pw >= 220:
-            self._draw_menu_features(s, pygame.Rect(px, 200, pw, 214))
+            self._draw_menu_features(s, pygame.Rect(px, 200, pw, 210))
 
         # 阵营选择（放在右侧面板下方）
         side_x = px
-        side_w = pw if pw >= 220 else 280
-        T.draw_text(s, tr("ui.select_side"), (side_x, 426), T.FS_LABEL, T.TEXT_DIM, bold=True)
-        for j, (side, label, desc) in enumerate([
-            (Side.BLUE, "蓝方", "联合部队：体系化侦察与防区外精确打击"),
-            (Side.RED, "红方", "区域拒止：远程防空与饱和反舰突击"),
-        ]):
-            r = pygame.Rect(side_x, 446 + j * 46, min(side_w, 320), 42)
+        T.draw_text(s, tr("ui.select_side"), (side_x, self.SIDE_CARD_Y - 18),
+                    T.FS_LABEL, T.TEXT_DIM, bold=True)
+        for (side, label, desc), (_sd, r) in zip([
+            (Side.BLUE, tr("ui.menu.side_blue_name"), tr("ui.menu.side_blue_desc")),
+            (Side.RED, tr("ui.menu.side_red_name"), tr("ui.menu.side_red_desc")),
+        ], self._menu_side_rects()):
             active = self.menu_side is side
             hovered = r.collidepoint(self.mouse)
             # 与想定卡片一致：悬停只做视觉提示，选中必须点击
@@ -1088,12 +1105,16 @@ class App:
             else:
                 T.panel(s, r, T.PANEL, T.BORDER, radius=4)
             pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + 10, r.y + 9, 4, 24))
-            T.draw_text(s, label, (r.x + 22, r.y + 7), 15, T.TEXT, bold=True)
-            # 描述自动换行——右栏可能只有 240px 宽，硬截断会把末字切掉
+            T.draw_text(s, label, (r.x + 22, r.y + 2), 14, T.TEXT, bold=True)
+            # 描述自动换行——右栏可能只有 240px 宽，硬截断会把末字切掉。
+            # 只留两行且字号降到 FS_SMALL-1：德语/俄语比中文长得多，
+            # 11 号两行会顶出卡片下沿。
             for k, line in enumerate(T.wrap_text(desc, T.FS_SMALL, r.width - 32)[:2]):
-                T.draw_text(s, line, (r.x + 22, r.y + 24 + k * 15), T.FS_SMALL, T.TEXT_DIM)
+                T.draw_text(s, line, (r.x + 22, r.y + 22 + k * 11), T.FS_SMALL - 1,
+                            T.TEXT_DIM)
             # 提示：已选 / 可点击
-            tip = "已选中" if active else ("点击选择" if hovered else "")
+            tip = tr("ui.menu.picked") if active else (
+                tr("ui.menu.click_pick") if hovered else "")
             if tip:
                 T.draw_text(s, tip, (r.right - 12, r.y + 6), 10,
                             T.CYAN if active else T.mix(T.CYAN, T.TEXT_DIM, 0.4),

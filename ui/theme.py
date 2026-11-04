@@ -513,21 +513,53 @@ def draw_text_center_x(surface: pygame.Surface, s: str, cx: int, y: int,
 
 
 def wrap_text(s: str, size: int, max_width: int, bold: bool = False) -> list[str]:
-    """按像素宽度换行（支持中英文混排）。"""
+    """按像素宽度换行。
+
+    **拉丁文按词断行、中日文按字断行**：一直按字符切会把德语、俄语
+    的长单词劈成两半（``Muniti`` / ``on``），读起来像排版事故；而中文
+    没有空格，按词切等于整段不换行。所以含空格的段先试按词排，
+    某个词本身超宽时才退回按字符硬拆。
+    """
     font = fonts().get(size, bold, False)
     lines: list[str] = []
     for para in s.split("\n"):
         if not para:
             lines.append("")
             continue
+
+        def _split_by_char(text: str) -> list[str]:
+            out: list[str] = []
+            cur = ""
+            for ch in text:
+                test = cur + ch
+                if font.size(test)[0] > max_width and cur:
+                    out.append(cur)
+                    cur = ch
+                else:
+                    cur = test
+            if cur:
+                out.append(cur)
+            return out
+
+        if " " not in para:
+            lines.extend(_split_by_char(para))
+            continue
+
         cur = ""
-        for ch in para:
-            test = cur + ch
-            if font.size(test)[0] > max_width and cur:
+        for word in para.split(" "):
+            candidate = word if not cur else cur + " " + word
+            if font.size(candidate)[0] <= max_width:
+                cur = candidate
+                continue
+            if cur:
                 lines.append(cur)
-                cur = ch
-            else:
-                cur = test
+                cur = ""
+            if font.size(word)[0] <= max_width:
+                cur = word
+                continue
+            pieces = _split_by_char(word)
+            lines.extend(pieces[:-1])
+            cur = pieces[-1] if pieces else ""
         if cur:
             lines.append(cur)
     return lines

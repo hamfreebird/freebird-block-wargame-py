@@ -95,7 +95,7 @@ def build_briefing(state) -> BriefingData:
     raw = getattr(state, "raw", {}) or {}
     objs = []
     for t in state.objective_tiles:
-        objs.append((t.objective_name or f"目标点 ({t.x},{t.y})",
+        objs.append((t.objective_name or tr("ui.brief.objective_auto_fmt") % (t.x, t.y),
                      t.victory_points, t.owner.label))
     events = []
     for e in state.events:
@@ -105,15 +105,14 @@ def build_briefing(state) -> BriefingData:
 
     # 胜利条件提示
     total_vp = sum(o[1] for o in objs)
-    hint = (f"控制目标点积累胜负点；{state.turn_limit} 回合结束时胜负点高者获胜"
-            f"（当前目标点合计 {total_vp} VP/回合）")
+    hint = tr("ui.brief.victory_hint_fmt") % (state.turn_limit, total_vp)
     if any(e.type == "reinforce" for e in state.events):
-        hint += "。注意：敌方有增援计划"
+        hint += tr("ui.brief.victory_reinforce")
 
     return BriefingData(
         title=md.name,
         subtitle=raw.get("description", "") or "",
-        map_size=f"{md.width}×{md.height} 格",
+        map_size=tr("ui.brief.map_size_fmt") % (md.width, md.height),
         turn_limit=state.turn_limit,
         tile_km=md.tile_km,
         own=summarize_force(state, side),
@@ -167,15 +166,17 @@ def build_debrief(state) -> DebriefData:
         if shots >= 4:
             acc = st.get("hits", 0) / max(1, shots)
             if acc >= 0.65:
-                hl.append(f"{side.label}命中率 {acc * 100:.0f}%，火力运用精准")
+                hl.append(tr("ui.over.hl_accuracy_fmt") % (
+                    side.label, f"{acc * 100:.0f}"))
             elif acc <= 0.25:
-                hl.append(f"{side.label}命中率仅 {acc * 100:.0f}%，情报或射界准备不足")
+                hl.append(tr("ui.over.hl_accuracy_low_fmt") % (
+                    side.label, f"{acc * 100:.0f}"))
         if st.get("intercepted", 0) >= 3:
-            hl.append(f"{side.label}有 {st['intercepted']} 发弹药被拦截——防空网发挥作用")
+            hl.append(tr("ui.over.hl_intercepted_fmt") % (side.label, st["intercepted"]))
         if st.get("kills", 0) >= 3:
-            hl.append(f"{side.label}击毁 {st['kills']} 个敌方单位")
+            hl.append(tr("ui.over.hl_kills_fmt") % (side.label, st["kills"]))
     if not hl:
-        hl.append("交战规模较小，未产生显著战果")
+        hl.append(tr("ui.over.hl_quiet"))
 
     return DebriefData(
         title=state.map.name,
@@ -242,8 +243,8 @@ def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
     T.draw_text(s, tr("brief.objective"), (ox, col_y), 12, T.CYAN, bold=True)
     yy = col_y + 22
     for name, vp, owner in d.objectives[:5]:
-        col = T.side_color(Side.RED if owner == "红方" else Side.BLUE) \
-            if owner in ("蓝方", "红方") else T.TEXT_FAINT
+        col = T.side_color(Side.RED if owner == Side.RED.label else Side.BLUE) \
+            if owner in (Side.BLUE.label, Side.RED.label) else T.TEXT_FAINT
         T.draw_text(s, name[:14], (ox, yy), 11, T.TEXT)
         T.draw_text(s, f"{vp} VP", (ox + ow, yy), 11, T.AMBER, anchor="topright", mono=True)
         yy += 19
@@ -325,11 +326,11 @@ def draw_debrief(s: pygame.Surface, d: DebriefData, mouse: tuple[int, int],
     T.draw_text(s, tr("over.stats"), (r.x + 26, r.y + 18), 12, T.CYAN, bold=True)
     T.draw_text(s, d.title, (r.x + 26, r.y + 38), 22, T.TEXT, bold=True)
     if d.win is True:
-        title, col = "胜 利", T.GREEN
+        title, col = tr("ui.over.result_win"), T.GREEN
     elif d.win is False:
-        title, col = "失 败", T.RED
+        title, col = tr("ui.over.result_lose"), T.RED
     else:
-        title, col = "战 平", T.AMBER
+        title, col = tr("ui.over.result_draw"), T.AMBER
     T.draw_text(s, title, (r.right - 26, r.y + 36), 26, col, bold=True, anchor="topright")
     for i, line in enumerate(T.wrap_text(d.reason, 11, w - 52)[:2]):
         T.draw_text(s, line, (r.x + 26, r.y + 70 + i * 16), 11, T.TEXT_DIM)

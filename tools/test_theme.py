@@ -209,11 +209,38 @@ def test_button_fill_derives_from_theme() -> None:
           f"深色主题的按钮底色仍是暗色（{fills['tactical']}）")
 
 
+def test_wrap_text_word_break() -> None:
+    """换行策略：拉丁文按词断、中日文按字断。
+
+    纯按字符切会把德语长词劈成两半（"Muniti" / "on"）——
+    在多语言界面上看起来像排版事故，而中文没有空格可依。
+    """
+    print("文本换行：")
+    width = 120
+    latin = "Ein Ziel muss von Sensoren verfolgt werden"
+    lines = T.wrap_text(latin, 11, width)
+    check(all(T.text_width(ln, 11) <= width for ln in lines),
+          "每行都不超过给定宽度")
+    # 按词断行：任意两行拼回去必须能还原原文（空格不多不少）
+    check(" ".join(lines) == latin, "按词断行，拼回原文一字不差")
+    check(not any(ln.endswith(" ") for ln in lines), "行尾没有残留空格")
+
+    cjk = "目标须被传感器跟踪至跟踪级才能装订诸元"
+    clines = T.wrap_text(cjk, 11, 60)
+    check(len(clines) > 1 and "".join(clines) == cjk, "无空格的中文按字断行且可拼回")
+
+    long_word = "Donaudampfschifffahrtsgesellschaftskapitaen"
+    wl = T.wrap_text(long_word, 11, 60)
+    check(all(T.text_width(ln, 11) <= 60 for ln in wl) and "".join(wl) == long_word,
+          "超长单词退回按字符硬拆")
+
+
 def main() -> int:
     pygame.init()
     pygame.display.set_mode((1500, 920), pygame.RESIZABLE)
     print("=== 主题与教学自检 ===")
     test_tutorial_scope()
+    test_wrap_text_word_break()
     test_button_fill_derives_from_theme()
     test_theme_text_legible()
     test_theme_brightness()
