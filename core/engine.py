@@ -427,6 +427,11 @@ class GameState:
         unit.x, unit.y = path[-1]
         self.invalidate_pos_index()
         unit.mp -= cost
+        # 机动烧油：按实际走过的格数算，远距离迂回比直线突进更费油。
+        # 油量从此是库存而不是时间条——跑得越远越接近空箱。
+        if unit.domain in (Domain.LAND, Domain.SEA, Domain.SUB):
+            burn = len(path[1:]) * self.FUEL_PER_TILE.get(unit.domain, 0.006)
+            unit.fuel = max(0.0, unit.fuel - burn)
         unit.moved = True
         unit.entrench = 0
         self.add_fx("move", start, (unit.x, unit.y), ttl=0.6, color=(120, 210, 255))
@@ -543,9 +548,10 @@ class GameState:
         if not prof.ok:
             return FireResult(False, prof.reason)
 
-        # 齐射发数：受武器上限、备弹与玩家设置共同约束
+        # 齐射发数：受武器上限、备弹、补给状态与玩家设置共同约束
         ammo_left = attacker.ammo.get(weapon.id, 0)
-        n = max(1, min(int(salvo or self.salvo_setting), weapon.max_salvo, ammo_left))
+        n = max(1, min(int(salvo or self.salvo_setting),
+                       rules.salvo_limit(attacker, weapon), ammo_left))
         attacker.ammo[weapon.id] = ammo_left - n
         attacker.consume_shot()
         attacker.revealed_until = self.turn_count + 1
@@ -856,7 +862,8 @@ class GameState:
             return FireResult(False, prof.reason)
 
         ammo_left = attacker.ammo.get(weapon.id, 0)
-        n = max(1, min(int(salvo or self.salvo_setting), weapon.max_salvo, ammo_left))
+        n = max(1, min(int(salvo or self.salvo_setting),
+                       rules.salvo_limit(attacker, weapon), ammo_left))
         attacker.ammo[weapon.id] = ammo_left - n
         attacker.consume_shot()
         attacker.revealed_until = self.turn_count + 1
@@ -1216,29 +1223,40 @@ class GameState:
                 f"射界命中（{fm.x},{fm.y}）")
 
     def _resupply_by_line(self, u: Unit) -> None:
-        """通过补给线补充弹药与维修（地面/水面部队）。
+        """通过补给线补充油料、弹药、备件与维修（地面/水面部队）。
 
-        补给源被打瘫、承载力耗尽或距离过远时，补给线中断，
-        单位既不能补充弹药也不能修复战损——这正是「深入敌后」的真实代价。
+        补给源被打瘫、承载力耗尽或距离过远时，补给线中断：
+        油、弹、备件全部只出不进。断一天还能撑，断三天就真的打不动了
+        （`Unit.supply_dry` 累计到 3 时齐射上限与命中率都会掉）。
         """
         src = rules.supply_source_for(self, u)
         if src is None:
-            # 记录一次断粮，供日志与 UI 提示（避免每回合刷屏）
-            if getattr(u, "_supply_cut_logged", 0) != self.turn_count:
-                u._supply_cut_logged = self.turn_count
-                has_ammo = any(u.ammo.get(w.id, 0) > 0 for w in u.template.weapons)
-                if has_ammo:
-                    self.log_message(u.side,
-                                     f"{u.name} 补给线中断——弹药无法补充", "ew")
+            u.supply_dry += 1
+            # 只在「刚断」和「彻底枯竭」两个节点提示，避免每回合刷屏
+            if u.supply_dry == 1:
+                self.log_message(u.side,
+                                 f"{u.name} 补给线中断——油弹备件停止补充", "ew")
+            elif u.supply_dry == 3:
+                self.log_message(u.side,
+                                 f"{u.name} 补给枯竭——齐射受限、射击精度下降", "ew")
             return
+        if u.supply_dry:
+            if u.supply_dry >= 3:
+                self.log_message(u.side, f"{u.name} 恢复补给", "info")
+            u.supply_dry = 0
+
         rate = 2 if u.domain in (Domain.SEA, Domain.SUB) else 1
         for w in u.template.weapons:
             cur = u.ammo.get(w.id, 0)
             if cur < w.ammo:
                 u.ammo[w.id] = min(w.ammo, cur + rate)
-        if u.hp < u.template.hp:
-            heal = u.template.hp * 0.07
+        u.fuel = min(1.0, u.fuel + self.FUEL_RESUPPLY)
+        u.spares = min(u.template.hp * 0.5, u.spares + self.SPARES_RESUPPLY)
+        # 维修要实打实消耗备件：没有备件就修不动，不是凭空回血
+        if u.hp < u.template.hp and u.spares > 0:
+            heal = min(u.template.hp * 0.07, u.spares)
             u.hp = min(u.template.hp, u.hp + heal)
+            u.spares -= heal
 
     def _tick_fire_missions(self) -> None:
         """回合推进：准备进度 +1，射界到期失效。"""
@@ -1282,14 +1300,22 @@ class GameState:
 
     # -- 后勤与基地勤务 ---------------------------------------------------
     FUEL_DRAIN = 0.15          # 空中平台每回合燃油消耗
+    #: 每走一格烧掉的油（0..1 库存）。陆上单位满油约能跑 100 格，
+    #: 但补给线一断就只出不进——这才是「深入敌后」的真实代价。
+    FUEL_PER_TILE = {Domain.LAND: 0.010, Domain.SEA: 0.004, Domain.SUB: 0.005}
+    FUEL_RESUPPLY = 0.25       # 补给线每回合回油
+    SPARES_RESUPPLY = 6.0      # 补给线每回合补的备件
 
     SAM_RELOAD = 2        # 防空弹每回合自动补充数量
     CIWS_RELOAD = 1       # 近防炮每回合自动补充数量
 
     def _reload_interceptors(self) -> None:
-        """防空系统补充拦截弹：垂发单元装填极快，不依赖返回基地。"""
+        """防空系统补充拦截弹：垂发单元装填极快，不依赖返回基地。
+
+        但装填弹也是弹药——补给线断了就没有新弹可装。
+        """
         for u in self.units:
-            if not u.alive or u.is_decoy:
+            if not u.alive or u.is_decoy or u.supply_dry > 0:
                 continue
             for w in u.template.weapons:
                 if w.midcourse:
@@ -1340,10 +1366,14 @@ class GameState:
                     cur = u.ammo.get(w.id, 0)
                     if cur < w.ammo:
                         u.ammo[w.id] = min(w.ammo, cur + (w.ammo if u.domain is Domain.AIR else rate))
-                # 战损修复
+                # 战损修复：机库/船坞的备件也要有来源，但比野战充足
                 if u.hp < u.template.hp:
-                    heal = u.template.hp * (0.12 if u.domain is Domain.AIR else 0.07)
+                    if u.spares <= 0:
+                        u.spares = u.template.hp * 0.25
+                    heal = min(u.template.hp * (0.12 if u.domain is Domain.AIR else 0.07),
+                               u.spares)
                     u.hp = min(u.template.hp, u.hp + heal)
+                    u.spares -= heal
             elif u.domain is Domain.AIR:
                 u.fuel -= self.FUEL_DRAIN * u.fuel_factor
                 u.on_station += 1

@@ -238,7 +238,9 @@ class Unit:
     moved: bool = False
     destroyed: bool = False
     suppressed: int = 0              # 压制回合数：降低命中率
-    fuel: float = 1.0                # 0..1，空中平台续航
+    fuel: float = 1.0                # 0..1：油料库存（地面机动也会烧，不再是抽象续航）
+    spares: float = 0.0              # 备件库存：修战损要实打实消耗，断了就修不动
+    supply_dry: int = 0              # 连续断补给的回合数（0 = 补给正常）
     name: str = ""
     revealed_until: int = 0          # 主动暴露（开火/雷达）持续到该回合
     last_hit_by: str = ""
@@ -282,6 +284,8 @@ class Unit:
         if not self.is_decoy:
             self.shots_left = max(1, self.template.sortie_shots)
             self.decoy_left = max(0, self.template.decoy_charges)
+            # 备件按「半条命」配发：够修五次大损，打完就得靠补给线
+            self.spares = self.template.hp * 0.5
 
     # -- 便捷属性 ---------------------------------------------------------
     @property
@@ -358,15 +362,28 @@ class Unit:
 
     def reset_turn(self, turn: int) -> None:
         self.mp = self.template.mp * self.mp_factor
+        # 油料见底：发动机还在转，但不敢全速——机动点减半
+        if self.domain is not Domain.AIR and self.fuel <= 0.05:
+            self.mp *= 0.5
         self.fired = False
         self.moved = False
         self.shots_left = max(1, self.template.sortie_shots) if not self.is_decoy else 0
         self.intercepts_used = 0
         if self.suppressed > 0:
             self.suppressed -= 1
-        # 航空兵停在地面才补油；空中平台补给见 engine._tick_logistics
-        if self.domain is not Domain.AIR:
-            self.fuel = min(1.0, self.fuel + 0.25)
+        # 油料只在补给线覆盖下才会回——不再每回合白送 25%，
+        # 否则「油料库存」就退化成了一个永远满的装饰字段。
+        # 航空兵的油料见 engine._tick_logistics（返场才加满）。
+
+    @property
+    def supply_state(self) -> int:
+        """补给状态：0 充裕 / 1 紧张 / 2 枯竭。
+
+        分档而不是布尔：断一天还能撑，断三天就真的打不动了。
+        """
+        if self.supply_dry >= 3:
+            return 2
+        return 1 if self.supply_dry >= 1 else 0
 
     @property
     def can_shoot(self) -> bool:

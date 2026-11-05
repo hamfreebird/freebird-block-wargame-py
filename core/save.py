@@ -53,6 +53,8 @@ def _unit_dict(u: Unit) -> dict[str, Any]:
         "destroyed": u.destroyed,
         "suppressed": u.suppressed,
         "fuel": round(u.fuel, 3),
+        "spares": round(u.spares, 1),
+        "supply_dry": u.supply_dry,
         "name": u.name,
         "revealed_until": u.revealed_until,
         "home_base": list(u.home_base) if u.home_base else None,
@@ -265,6 +267,8 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
         u.destroyed = bool(d.get("destroyed", False))
         u.suppressed = int(d.get("suppressed", 0))
         u.fuel = float(d.get("fuel", 1.0))
+        u.spares = float(d.get("spares", tpl.hp * 0.5))
+        u.supply_dry = int(d.get("supply_dry", 0))
         u.name = d.get("name") or tpl.name
         u.revealed_until = int(d.get("revealed_until", 0))
         hb = d.get("home_base")

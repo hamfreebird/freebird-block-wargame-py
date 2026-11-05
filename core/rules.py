@@ -719,6 +719,17 @@ class ShotProfile:
     notes: list[str] = field(default_factory=list)
 
 
+def salvo_limit(unit: Unit, weapon: Weapon) -> int:
+    """可选的齐射发数上限。
+
+    补给紧张时只能单发点射——多发齐射要开箱、要装填、要驳运，
+    断粮的部队打不出这个节奏。这是「断补给就真的打不出该有火力」的第一层。
+    """
+    if unit.supply_state >= 1:
+        return 1
+    return max(1, weapon.max_salvo)
+
+
 def _fire_mission_bonus(state: "GameState", attacker: Unit, target: Unit) -> tuple[float, float, str]:
     """火力准备加成：(命中倍率, 毁伤倍率, 说明)。
 
@@ -737,7 +748,8 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
     `origin` 用于在飞弹药：射程应自发射点而非载机当前位置起算。
     """
     ax, ay = origin if origin else (attacker.x, attacker.y)
-    p = ShotProfile(distance=dist((ax, ay), (target.x, target.y)), salvo=weapon.salvo)
+    p = ShotProfile(distance=dist((ax, ay), (target.x, target.y)),
+                    salvo=min(weapon.salvo, salvo_limit(attacker, weapon)))
     is_space = target.domain is Domain.SPACE
     if is_space:
         p.distance = ORBITAL_ENGAGEMENT_DISTANCE
@@ -846,6 +858,10 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
 
     # 战损对射击的影响
     f["战损影响"] = 0.75 + 0.25 * attacker.hp_ratio
+
+    # 补给枯竭：缺备件意味着观瞄失校、发射机构带病工作，散布变大
+    if attacker.supply_state >= 2:
+        f["补给枯竭"] = 0.88
 
     if p.cue_penalty < 1.0:
         f["外部引导"] = p.cue_penalty
@@ -983,7 +999,7 @@ class AirDefenseNetwork:
                         if pk > 0.01:
                             net.nodes.append(ADNNode(
                                 unit=d, weapon=sam, pk=min(0.95, pk),
-                                channels=d.template.interceptors - d.intercepts_used,
+                                channels=_channels_of(d),
                                 ammo=d.ammo.get(sam.id, 0),
                                 role=_adn_role(sam, own),
                             ))
@@ -1044,6 +1060,18 @@ class AirDefenseNetwork:
         for n in self.nodes:
             out[n.role] = out.get(n.role, 0) + 1
         return out
+
+
+def _channels_of(d: Unit) -> int:
+    """该防空节点本回合还能开几条火控通道。
+
+    补给枯竭时减半：通道本身是硬件，但再装填跟不上，
+    打完一轮就接不上第二波——比直接禁用更接近真实。
+    """
+    ch = max(0, d.template.interceptors - d.intercepts_used)
+    if d.supply_state >= 2:
+        ch //= 2
+    return ch
 
 
 def _adn_role(sam: Weapon, own: bool) -> str:
@@ -1971,7 +1999,7 @@ __all__ = [
     "ADNNode", "AirDefenseNetwork", "adn_summary_for",
     "DetectionResult", "evaluate_detection", "detection_level", "build_detection_map",
     "ShotProfile", "shot_profile", "interception_estimate",
-    "CounterThreat", "counter_threat_profile",
+    "CounterThreat", "counter_threat_profile", "salvo_limit",
     "FacilityStrike", "facility_strike_profile", "service_tile", "facility_service_ok",
     "FACILITY_SIZE", "ORBITAL_ENGAGEMENT_DISTANCE", "AIRBASE_CAPACITY",
     "tile_move_cost", "find_path", "reachable_tiles", "flood_reachable", "path_cost",

@@ -41,9 +41,12 @@ def build_rows(unit: Unit, viewer_side: Side, known: Detection,
         rows.append((tr("ui.card.hp"), f"{unit.hp:.0f} / {unit.template.hp:.0f}",
                      T.hp_color(unit.hp_ratio)))
         rows.append((tr("ui.card.mp"), f"{unit.mp:.1f} / {unit.template.mp:.1f}", T.TEXT_DIM))
-        if unit.domain is Domain.AIR:
-            rows.append((tr("ui.card.fuel"), f"{unit.fuel * 100:.0f}%",
-                         T.RED if unit.fuel < 0.35 else T.TEXT_DIM))
+        # 油料对所有兵种都有意义了：地面机动同样烧油，跑空了就走不动
+        low_fuel = 0.35 if unit.domain is Domain.AIR else 0.15
+        rows.append((tr("ui.card.fuel"), f"{unit.fuel * 100:.0f}%",
+                     T.RED if unit.fuel < low_fuel else T.TEXT_DIM))
+        rows.append((tr("ui.card.spares"), f"{unit.spares:.0f}",
+                     T.RED if unit.spares <= 0 else T.TEXT_DIM))
         if unit.ammo:
             ammo_parts = []
             for w in unit.template.weapons:

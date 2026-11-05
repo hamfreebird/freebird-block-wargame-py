@@ -2689,13 +2689,18 @@ class App:
         if u.template.command_radius > 0 and u.side is self.side:
             subs = self.state.subordinates_of(u)
             state_bits.append(tr("ui.hud.command_count_fmt") % (len(subs),))
-        # 补给状态：有补给线 / 断粮
+        # 补给状态：充裕 / 紧张 / 枯竭（三档，不再是「有/无」两态）
         if u.side is self.side and u.domain is not Domain.AIR:
-            src = rules.supply_source_for(self.state, u)
-            state_bits.append(tr("ui.hud.supply_up") if src is not None
-                              else tr("ui.hud.supply_cut"))
+            if u.supply_dry >= 3:
+                state_bits.append(tr("ui.hud.supply_dry"))
+            elif u.supply_dry >= 1:
+                state_bits.append(tr("ui.hud.supply_low"))
+            else:
+                state_bits.append(tr("ui.hud.supply_up"))
         col = T.AMBER if u.fired else T.GREEN
-        if u.domain is Domain.AIR and u.fuel < 0.35:
+        if u.supply_dry >= 3:
+            col = T.RED
+        elif u.domain is Domain.AIR and u.fuel < 0.35:
             col = T.RED
         # 状态行是单行右对齐的：塞不下就从头丢起（越靠后越次要），
         # 否则德语/法语的长标签会顶到单位图标上，比少显示一条更难看
