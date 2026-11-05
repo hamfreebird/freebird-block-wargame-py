@@ -17,7 +17,7 @@ from typing import Any
 
 from .enums import Domain, Facility, Side, Terrain, UnitClass
 from .loader import SUB_CAPACITY
-from .rules import AIRBASE_CAPACITY
+from .rules import AIRBASE_CAPACITY, dist
 
 
 @dataclass
@@ -138,6 +138,7 @@ def validate_scenario(source) -> ValidationReport:
     _check_units(rep, scenario)
     _check_objectives(rep, scenario)
     _check_connectivity(rep, scenario)
+    _check_tactics(rep, scenario)
     _check_balance(rep, scenario)
     _check_events(rep, scenario)
     _check_meta(rep, scenario)
@@ -289,6 +290,174 @@ def _check_connectivity(rep: ValidationReport, scenario) -> None:
     if blue_reach and red_reach and not (blue_reach & red_reach):
         rep.add("warn", "no-contact",
                 "双方兵力之间没有连通的陆地——将无法发生任何地面交战")
+
+
+# --------------------------------------------------------------------------- #
+# 战术合理性（v3.1 9.4）
+#
+# 连通性回答「能不能走过去」，这一节回答「打不打得着、看不看得见、防不防得住」。
+# 想定阶段没有态势，所以只按射程与目标域判定，不套探测等级——
+# 否则会把「能不能打」和「现在知不知道」混为一谈。
+# --------------------------------------------------------------------------- #
+#: 陆上/海上目标点各自对应哪些作战域
+_GROUND_TARGETS = {Domain.LAND, Domain.INFRA}
+_SEA_TARGETS = {Domain.SEA, Domain.SUB}
+
+
+def _target_domains(tile) -> set[Domain]:
+    return _SEA_TARGETS if tile.terrain is Terrain.WATER else _GROUND_TARGETS
+
+
+def _covers_point(unit, tile, pos: tuple[int, int]) -> bool:
+    """该单位是否有武器能覆盖这个位置（含最小射程约束）。"""
+    doms = _target_domains(tile)
+    d = dist((unit.x, unit.y), pos)
+    for w in unit.template.weapons:
+        if not (set(w.targets) & doms):
+            continue
+        if w.range_min - 0.5 <= d <= w.range_max + 0.5:
+            return True
+    return False
+
+
+def _check_fire_cover(rep: ValidationReport, scenario) -> None:
+    """目标点的火力覆盖：是否有一方根本够不着。"""
+    units = [u for u in scenario.units if not u.is_decoy]
+    for o in scenario.map.objectives:
+        t = scenario.map.at(o.x, o.y)
+        if t is None:
+            continue
+        pos = (o.x, o.y)
+        n = {Side.BLUE: 0, Side.RED: 0}
+        for u in units:
+            if u.side in n and _covers_point(u, t, pos):
+                n[u.side] += 1
+        if n[Side.BLUE] == 0 and n[Side.RED] == 0:
+            # 「初始部署够不着」与「根本没有能力打击这类目标」是两回事：
+            # 前者只是需要机动接近，后者才是想定缺了整条打击链。
+            doms = _target_domains(t)
+            capable = sum(1 for u in units
+                          if any(set(w.targets) & doms for w in u.template.weapons))
+            if capable == 0:
+                rep.add("error", "objective-no-cover",
+                        f"目标点「{o.name}」双方都没有能打击该域的武器"
+                        f"——这个点谁也打不到", o.x, o.y)
+            else:
+                rep.add("info", "objective-cover-far",
+                        f"目标点「{o.name}」初始部署下双方都够不着，需要机动接近",
+                        o.x, o.y)
+        elif n[Side.BLUE] == 0:
+            rep.add("warn", "objective-cover-one-sided",
+                    f"目标点「{o.name}」只有红方能火力覆盖（蓝方 0 个单位够得着）",
+                    o.x, o.y)
+        elif n[Side.RED] == 0:
+            rep.add("warn", "objective-cover-one-sided",
+                    f"目标点「{o.name}」只有蓝方能火力覆盖（红方 0 个单位够得着）",
+                    o.x, o.y)
+
+
+def _check_high_ground(rep: ValidationReport, scenario) -> None:
+    """制高点分布：是否一边倒地掌握了观察优势。"""
+    md = scenario.map
+    highs = [t for t in md.iter_tiles() if t.terrain in (Terrain.HILLS, Terrain.MOUNTAIN)]
+    if not highs:
+        rep.add("info", "no-high-ground", "地图上没有丘陵或山地——没有制高点可争")
+        return
+    # 只算陆上单位：两栖登陆的一方开局可能全在海上，
+    # 把它们算进来会得出「制高点 100% 归防守方」这种没有意义的结论。
+    units = [u for u in scenario.units
+             if not u.is_decoy and u.domain in (Domain.LAND, Domain.INFRA)]
+    if not units:
+        return
+    if not any(u.side is Side.BLUE for u in units) or \
+            not any(u.side is Side.RED for u in units):
+        rep.add("info", "high-ground-one-sided",
+                "只有一方有陆上单位——制高点分布无法比较")
+        return
+    own = {Side.BLUE: 0, Side.RED: 0}
+    contested = 0
+    for t in highs:
+        best = {Side.BLUE: 1e9, Side.RED: 1e9}
+        for u in units:
+            d = dist((u.x, u.y), (t.x, t.y))
+            if d < best[u.side]:
+                best[u.side] = d
+        if abs(best[Side.BLUE] - best[Side.RED]) < 1.5:
+            contested += 1
+        elif best[Side.BLUE] < best[Side.RED]:
+            own[Side.BLUE] += 1
+        else:
+            own[Side.RED] += 1
+
+    total = len(highs)
+    if total >= 8:
+        share = own[Side.BLUE] / total
+        if share > 0.72:
+            rep.add("warn", "high-ground-blue",
+                    f"制高点蓝方占 {own[Side.BLUE]}/{total}（{share * 100:.0f}%）"
+                    f"——红方几乎没有观察优势可依托")
+        elif share < 0.28:
+            rep.add("warn", "high-ground-red",
+                    f"制高点红方占 {own[Side.RED]}/{total}（{(1 - share) * 100:.0f}%）"
+                    f"——蓝方几乎没有观察优势可依托")
+    rep.add("info", "high-ground-share",
+            f"制高点 {total} 处：蓝 {own[Side.BLUE]} / 红 {own[Side.RED]} / 争夺 {contested}")
+
+
+def _check_air_defense(rep: ValidationReport, scenario) -> None:
+    """防空覆盖：目标点是否落在己方防空伞之外。"""
+    sams: dict[Side, list[tuple[Any, float]]] = {Side.BLUE: [], Side.RED: []}
+    for u in scenario.units:
+        if u.is_decoy or u.side not in sams:
+            continue
+        r = u.max_intercept_range()
+        if r > 0:
+            sams[u.side].append((u, r))          # type: ignore[arg-type]
+    if not sams[Side.BLUE] and not sams[Side.RED]:
+        rep.add("info", "no-air-defense", "双方都没有防空单位——空中力量将不受制约")
+        return
+
+    for side in (Side.BLUE, Side.RED):
+        if not sams[side]:
+            rep.add("warn", "air-defense-missing",
+                    f"{side.label}没有任何防空单位——对手的航空兵可以自由出入")
+            continue
+        bare = [o.name for o in scenario.map.objectives
+                if not any(dist((u.x, u.y), (o.x, o.y)) <= r
+                           for u, r in sams[side])]
+        if not bare:
+            continue
+        if len(bare) == len(scenario.map.objectives):
+            rep.add("warn", "air-defense-none",
+                    f"{side.label}的防空伞完全没盖住任何目标点：{'、'.join(bare[:4])}")
+        else:
+            rep.add("info", "air-defense-gap",
+                    f"{side.label}有 {len(bare)} 个目标点不在防空伞内："
+                    f"{'、'.join(bare[:4])}")
+
+
+def _check_opening_gap(rep: ValidationReport, scenario) -> None:
+    """开局间距：太近会被先手放大，太远则前半局无事可做。"""
+    blues = [u for u in scenario.units if u.side is Side.BLUE]
+    reds = [u for u in scenario.units if u.side is Side.RED]
+    if not blues or not reds:
+        return
+    best = min(dist((b.x, b.y), (r.x, r.y)) for b in blues for r in reds)
+    span = max(scenario.map.width, scenario.map.height)
+    if best < 2.0:
+        rep.add("warn", "opening-contact",
+                f"双方最近单位相距 {best:.1f} 格——开局即接触，先手优势会被放大")
+    elif best > span * 0.75:
+        rep.add("info", "opening-far",
+                f"双方最近单位相距 {best:.1f} 格——接敌前有若干回合的展开时间")
+
+
+def _check_tactics(rep: ValidationReport, scenario) -> None:
+    """战术合理性总入口。"""
+    _check_fire_cover(rep, scenario)
+    _check_high_ground(rep, scenario)
+    _check_air_defense(rep, scenario)
+    _check_opening_gap(rep, scenario)
 
 
 def _check_balance(rep: ValidationReport, scenario) -> None:

@@ -165,6 +165,11 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_logistics.py
 
+      - name: 想定战术校验自检（谁也打不到 / 制高点 / 防空伞）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_validate.py
+
       - name: 无界面 UI 冒烟测试
         env:
           SDL_VIDEODRIVER: dummy
