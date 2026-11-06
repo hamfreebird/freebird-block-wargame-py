@@ -138,6 +138,14 @@ class GameState:
 
         self._ai_queue: list = []
         self._ai_planner = None
+        # AI 的作战决心：{阵营: {uid: 目标点}} / {阵营: {uid: 定下决心的回合}}。
+        # **跨回合保留**——规划器每回合重建，若决心也跟着清空，AI 就成了
+        # 「每回合重新拍一次脑袋」，谈不上优先级、也谈不上转移。
+        # 存在对局状态上而不是模块级：两局并行会互相污染（同种子重跑失效）。
+        self.ai_assign: dict[Side, dict[int, tuple[int, int] | None]] = {
+            Side.BLUE: {}, Side.RED: {}}
+        self.ai_assign_turn: dict[Side, dict[int, int]] = {
+            Side.BLUE: {}, Side.RED: {}}
         self.selected_uid: int | None = None
         self.selected_weapon: str | None = None
         self.hover_tile: tuple[int, int] | None = None

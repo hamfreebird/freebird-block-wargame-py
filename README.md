@@ -64,6 +64,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **火力准备** | 先标定射界，再按准备度加成射击 |
 | **多管齐射** | 齐射可提高命中率，但受备弹与上限约束 |
 | **兵种相克** | 破甲 / 爆破两条通道与目标硬度连续匹配：坦克炮打坦克是打散兵的 1.6 倍，榴弹打坦克只剩六成 |
+| **交叉火力** | 直瞄武器从 ≥3 个方位扇区压制同一地面目标才有加成；据守在工事里的最怕这个 |
 
 ### 部署与战场
 
@@ -84,6 +85,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **模组接口** | 第三方 Python 模块可注册新武器、新兵种并订阅规则钩子 |
 | **规则钩子** | 想定 JSON 可声明「条件 + 效果」规则——不写 Python 也能做模组 |
 | **战术体检** | `--check` 不只查结构：目标点谁也打不到、制高点一边倒、防空伞漏成筛子都会点名 |
+| **AI 战术** | 会改主意、会认输、会配合：目标转移、分档撤退、集火接力、交叉火力、佯攻牵制 |
 
 ### 内容与性能（v2.1）
 
@@ -163,6 +165,7 @@ python tools/test_icons.py      # 单位图标包自检
 python tools/test_campaign_editor.py   # 战役编辑器自检
 python tools/test_perf.py       # 性能回归自检（渲染 / 探测 / 结论一致性）
 python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动 / 战术规则）
+python tools/test_ai_deep.py     # AI 深化自检（改派 / 撤退 / 集火 / 交叉火力 / 佯攻 / A/B）
 python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
 python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
 python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）

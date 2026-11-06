@@ -410,6 +410,11 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
     state.log_message(None, f"读取存档：第 {state.turn_count} 回合 · {state.map.name}", "system")
 
     state._ai_planner = None
+    # AI 的作战决心不存档：它记的是「某支部队要去某格」，读档后单位 uid
+    # 与位置都可能已变，沿用旧决心会让 AI 往空地上跑。清掉，让它重新判断。
+    for _side in (Side.BLUE, Side.RED):
+        state.ai_assign[_side].clear()
+        state.ai_assign_turn[_side].clear()
     state.refresh_detection()
     return state
 

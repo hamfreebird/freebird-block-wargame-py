@@ -15,7 +15,7 @@ from . import rules
 from . import ai_tactics as tactics
 from .enums import Detection, Domain, Facility, SensorKind, Side, UnitClass, WeaponKind
 from .env import environment_for
-from .model import Unit
+from .model import Unit, Weapon
 
 FACILITY_VALUE = {
     Facility.AIRBASE: 9.0,
@@ -41,11 +41,20 @@ class AIAction:
     tile: tuple[int, int] | None = None
     decoy_kind: str = ""
     note: str = ""
+    #: 这一发的**预期毁伤**（命中率 × 突防率 × 单发毁伤 × 发数）。
+    #: 用来记账：同一回合内已经往某目标身上砸了多少火力，避免过量射击。
+    expected: float = 0.0
 
 
 class AIPlanner:
-    def __init__(self, state: "GameState", side: Side):
+    def __init__(self, state: "GameState", side: Side, deep: bool = True):
+        """`deep=False` 退回 v2.2 的行为，作为 A/B 对比的基线。
+
+        保留它的理由不是兼容，而是**可证伪**：新战术到底有没有用，
+        得能拿同一张想定、同一个种子跑两遍比出来（tools/test_ai_deep.py）。
+        """
         self.side = side
+        self.deep = deep
         order = sorted(
             [u for u in state.units_of(side)],
             key=lambda u: (-u.template.cost, u.domain is Domain.SPACE),
@@ -54,7 +63,22 @@ class AIPlanner:
         self.ew_done: set[int] = set()
         self.move_done: set[int] = set()
         self.actions_taken: dict[int, int] = {}
-        self.assign: dict[int, tuple[int, int] | None] = {}
+        # 作战决心跨回合保留（deep 模式）：规划器每回合重建，但「这支部队去打哪」
+        # 不该跟着重掷一次——否则每次都是新决定，「转移优先级」无从谈起。
+        if deep:
+            self.assign = state.ai_assign.setdefault(side, {})
+            self.assign_turn = state.ai_assign_turn.setdefault(side, {})
+        else:
+            self.assign = {}
+            self.assign_turn = {}
+        #: 本回合各目标已分配的预期毁伤（集火台账）
+        self.fire_damage: dict[int, float] = {}
+        #: 本回合因何改派——写进战报，方便回看 AI 的判断
+        self.switch_note: dict[int, str] = {}
+        self.feint: tactics.FeintPlan | None = None
+        self.feint_note_done = False
+        #: 已经问过「要不要改派」的单位（每回合只问一次，见 _should_switch）
+        self._switch_checked: set[int] = set()
         self.decoy_done: set[int] = set()
         self.returning: set[int] = set()
         self.smoke_done: set[int] = set()
@@ -126,9 +150,14 @@ class AIPlanner:
             shot = self._best_shot(state, unit)
             if shot is not None:
                 target, weapon, value = shot
+                exp = self._fire_expected(state, unit, target, weapon)
+                if self.deep:
+                    self.fire_damage[target.uid] = \
+                        self.fire_damage.get(target.uid, 0.0) + exp
                 return AIAction(
                     "fire", unit.uid, target_uid=target.uid, weapon_id=weapon.id,
                     note=f"{unit.name} 向 {target.name} 发射 {weapon.name}",
+                    expected=exp,
                 )
             strike = self._best_facility_target(state, unit)
             if strike is not None:
@@ -255,6 +284,16 @@ class AIPlanner:
         return None
 
     # ------------------------------------------------------------------ #
+    def _fire_expected(self, state: "GameState", unit: Unit, target: Unit,
+                       weapon: Weapon) -> float:
+        """这一发的预期毁伤，用于集火台账与「别再打死的目标」判断。"""
+        p = rules.shot_profile(state, unit, target, weapon)
+        if not p.ok:
+            return 0.0
+        n = max(1, min(weapon.salvo, rules.salvo_limit(unit, weapon),
+                       unit.ammo.get(weapon.id, 0)))
+        return p.pk * (1.0 - p.intercept_pk) * p.damage * n
+
     def _best_shot(self, state: "GameState", unit: Unit):
         best = None
         best_val = 3.0
@@ -265,6 +304,13 @@ class AIPlanner:
             focus = state.unit_by_uid(ordered.target_uid)
             if focus is not None and (not focus.alive or focus.side is unit.side):
                 focus = None
+
+        # 集火台账：本回合已经砸在这个目标上的预期毁伤。
+        # 用途有两个，而且方向相反——
+        #   1) 已经够打死它了就别再往里填弹药（省下来打下一个也是火力）；
+        #   2) 差一口气没死，就更该补这一刀（半死的目标跑掉等于白打）。
+        dealt = self.fire_damage if self.deep else {}
+
         for enemy in state.enemies_of(self.side):
             if not enemy.alive:
                 continue
@@ -272,6 +318,9 @@ class AIPlanner:
                 continue
             if enemy.domain is Domain.SPACE and not any(w.asat for w in unit.usable_weapons()):
                 continue
+            already = dealt.get(enemy.uid, 0.0)
+            if already >= enemy.hp:
+                continue          # 已经被判定打掉了，别浪费弹药
             for w in unit.usable_weapons():
                 p = rules.shot_profile(state, unit, enemy, w)
                 if not p.ok:
@@ -286,9 +335,30 @@ class AIPlanner:
                 # 集中火力：指定目标获得显著加成
                 if focus is not None and enemy is focus:
                     val *= 2.2
+                if already > 0:
+                    val += self._follow_up_bonus(state, unit, enemy, w, already)
                 if val > best_val:
                     best_val, best = val, (enemy, w, val)
         return best
+
+    def _follow_up_bonus(self, state: "GameState", unit: Unit, target: Unit,
+                         weapon: Weapon, already: float) -> float:
+        """跨单位协同的第二步：接力的加成。
+
+        第一支打响之后，目标已经暴露、被压制、在躲；后续射手拿到的
+        是「已知诸元 + 一个正在找掩体的目标」。所以补刀比开新战场划算——
+        这正是「集火」在数值上唯一说得通的理由。
+        """
+        need = target.hp - already
+        if need <= 0:
+            return 0.0
+        exp = self._fire_expected(state, unit, target, weapon)
+        if exp <= 0:
+            return 0.0
+        if exp >= need:
+            # 差的那一口气这一发就能补上：结束一个单位，远比打伤十个有用
+            return 2.6 + target.template.cost / 260.0
+        return 0.45
 
     def _best_facility_target(self, state: "GameState", unit: Unit):
         """选择值得打击的敌方固定设施（优先机场/港口）。"""
@@ -532,11 +602,19 @@ class AIPlanner:
             return None
         here = (unit.x, unit.y)
         ordered = getattr(unit, "order", None)
+        # 交叉火力阵位：己方对附近敌目标已经占了哪几个方位（每回合一次）
+        xmap = tactics.crossfire_map(state, self.side, unit) if self.deep else {}
 
-        # 撤退：重伤且孤立时脱离接触。
+        # 撤退：打不下去时脱离接触。
         # 「活着回去」比「拼掉」更有价值——尤其是有占领能力的单位，
-        # 打残了带不回下一关，等于白送。
-        if tactics.should_retreat(state, self.side, unit):
+        # 打残了带不回下一关，等于白送。但踩在己方要点上时守土优先，
+        # 这个取舍由战术库按局部兵力对比给出。
+        if self.deep:
+            decision = tactics.retreat_assessment(state, self.side, unit)
+        else:
+            decision = tactics.RetreatDecision(
+                tactics.should_retreat(state, self.side, unit), 2)
+        if decision.retreat:
             spot = self._retreat_spot(state, unit)
             if spot is not None:
                 path = rules.find_path(state, unit, spot)
@@ -545,12 +623,12 @@ class AIPlanner:
 
         # 固守指令：不脱离当前阵位，只在原地附近择优（不前出）
         if ordered is not None and ordered.kind == "hold":
-            base = self._score_tile(state, unit, here, 0.0)
+            base = self._score_tile(state, unit, here, 0.0, xmap)
             best_pos, best_score = None, base + 0.4
             for pos, cost in reach.items():
                 if pos == here or cost <= 1e-6 or cost > 2.5:
                     continue
-                sc = self._score_tile(state, unit, pos, cost)
+                sc = self._score_tile(state, unit, pos, cost, xmap)
                 if sc > best_score:
                     best_score, best_pos = sc, pos
             if best_pos is not None:
@@ -585,18 +663,22 @@ class AIPlanner:
                         continue
                     pen = 0.0 if unit.uid in self.returning else self._threat_penalty(state, unit, pos)
                     val = fc + pen * 1.2 + cost * 0.05
+                    if xmap:
+                        # 交叉火力阵位：能补上第三个方位的落脚点更值钱
+                        val -= 1.6 * tactics.crossfire_opportunity(
+                            state, self.side, unit, pos, xmap)
                     if best_val is None or val < best_val:
                         best_val, best_pos = val, pos
                 if best_pos is not None:
                     return rules.find_path(state, unit, best_pos)
 
         # 兜底：按战术评分就地择优（已在目标点附近时用于寻找掩护）
-        base = self._score_tile(state, unit, here, 0.0)
+        base = self._score_tile(state, unit, here, 0.0, xmap)
         best_pos, best_score = None, base + 0.4
         for pos, cost in reach.items():
             if pos == here or cost <= 1e-6:
                 continue
-            s = self._score_tile(state, unit, pos, cost)
+            s = self._score_tile(state, unit, pos, cost, xmap)
             if s > best_score:
                 best_score, best_pos = s, pos
         if best_pos is None:
@@ -672,7 +754,17 @@ class AIPlanner:
     def _assign_for(self, state: "GameState", unit: Unit) -> tuple[int, int] | None:
         """为单位分配一个固定目标点，避免逐回合摇摆。"""
         if unit.uid in self.assign:
-            return self.assign[unit.uid]
+            cur = self.assign[unit.uid]
+            if not self.deep or unit.uid in self._switch_checked:
+                return cur
+            self._switch_checked.add(unit.uid)
+            if self._should_switch(state, unit, cur):
+                # 目标作废或出现明显更优的选择：把这支部队从旧目标上摘下来，
+                # 让它重新走一遍分配流程。摘掉之前别人的 `defenders` 计数
+                # 还要靠 `self.assign` 算，所以必须先 pop 再重算。
+                self.assign.pop(unit.uid, None)
+            else:
+                return cur
 
         # 航空兵按剩余航程判断是否返场
         if self._needs_return(state, unit):
@@ -758,11 +850,138 @@ class AIPlanner:
             if g is not None:
                 defenders[g] = defenders.get(g, 0) + 1
         plans = tactics.evaluate_objectives(state, self.side, unit, defenders)
+        if plans and plans[0].score >= tactics.FEINT_WEAK_PLAN:
+            best = plans[0]
+            self.assign[unit.uid] = (best.tile.x, best.tile.y)
+            return self.assign[unit.uid]
+
+        # ---- 佯攻：**只在没别的事可做的时候**才分兵 ----
+        # 这一步刻意放在争点之后。早先放在之前，结果是「把一支本来要去
+        # 主攻方向的部队抽去做姿态」——实测在 40×40 想定里净亏 10 个胜负点。
+        # 现在佯攻是「闲兵的差事」：它本来只会去一个很远又不值钱的点
+        # （或者干脆原地发呆），那还不如去敌人必救的方向上晃一圈。
+        if self.deep:
+            spot = self._feint_for(state, unit)
+            if spot is not None:
+                self.assign[unit.uid] = spot
+                self.assign_turn.setdefault(unit.uid, state.turn_count)
+                return spot
         if plans:
             best = plans[0]
             self.assign[unit.uid] = (best.tile.x, best.tile.y)
             return self.assign[unit.uid]
         return None
+
+    # ------------------------------------------------------------------ #
+    # 多目标优先级转移
+    # ------------------------------------------------------------------ #
+    def _defender_map(self) -> dict[tuple[int, int], int]:
+        """当前已分配给各目标点的兵力数。
+
+        与 `_defenders_assigned` 不同：这里只数「本回合已经定了去向」的单位，
+        不做 uid → 单位的反查，用在每回合都要跑好几次的路径上。
+        """
+        out: dict[tuple[int, int], int] = {}
+        for g in self.assign.values():
+            if g is not None:
+                out[g] = out.get(g, 0) + 1
+        return out
+
+    def _should_switch(self, state: "GameState", unit: Unit,
+                       cur: tuple[int, int] | None) -> bool:
+        """当前目标还要不要继续去。
+
+        只在**每回合第一次**问这个问题（`_switch_checked` 守住），
+        否则 `_score_tile` 每评估一个格就会连带问一次。
+        """
+        if cur is None:
+            return False
+        # 回防：自家要地被打上门了，决心再坚定也得回来。这条不受冷却限制——
+        # 等三个回合再回防，回来时点上已经插着别人的旗了。
+        if self._home_threatened(state, unit, cur):
+            self.switch_note[unit.uid] = "回防要地"
+            return True
+        turn = state.turn_count
+        if turn - self.assign_turn.get(unit.uid, -99) < tactics.REASSIGN_COOLDOWN:
+            return False
+        dec = tactics.reassess_objective(state, self.side, unit, cur, None,
+                                         self._defender_map())
+        self.assign_turn[unit.uid] = turn
+        if dec.switch:
+            self.switch_note[unit.uid] = dec.reason
+        return dec.switch
+
+    def _home_threatened(self, state: "GameState", unit: Unit,
+                         cur: tuple[int, int]) -> bool:
+        """己方要点是否正在挨打，而我却已经走远了。"""
+        if not unit.template.can_capture:
+            return False
+        cur_tile = state.map.at(cur[0], cur[1])
+        if cur_tile is not None and cur_tile.objective and cur_tile.owner is self.side:
+            return False        # 我本来就在守一个点，别再拆东墙补西墙
+        for t in state.objective_tiles:
+            if t.owner is not self.side:
+                continue
+            if self._defenders_assigned(state, t) >= 2:
+                continue
+            for e in state.enemies_of(self.side):
+                if not e.alive or e.domain in (Domain.AIR, Domain.SPACE):
+                    continue
+                if state.known_level(self.side, e) is Detection.NONE:
+                    continue
+                if rules.dist((t.x, t.y), (e.x, e.y)) <= 6.0:
+                    return True
+        return False
+
+    # ------------------------------------------------------------------ #
+    # 佯攻
+    # ------------------------------------------------------------------ #
+    def _feint_plan(self, state: "GameState") -> tactics.FeintPlan:
+        """本回合的佯攻编成。
+
+        要等**几支部队已经排开**再决定：分兵的前提是「主攻有多少人」，
+        而这件事在回合开头还是一片空白——那会儿算出来的 `support` 恒为 0，
+        判断一定是否决。所以前几个单位先不给计划（也不缓存），
+        等 `assign` 有了内容再算一次，算完就定下来。
+        """
+        if self.feint is not None:
+            return self.feint
+        if len(self.assign) < 3:
+            return tactics.FeintPlan()
+        counts = self._defender_map()
+        # 主攻方向 = **进攻性**目标里争的人最多的那个。
+        # 不能只看「被分配得最多」：己方要点因为防守分支往往人最多，
+        # 把它当主攻方向会让「佯攻」跑去打自己的家门口（实测两方都在
+        # 满地图对穿，谁也没吸引到谁）。
+        main: tuple[int, int] | None = None
+        support = 0
+        for g in sorted(counts):
+            tile = state.map.at(g[0], g[1])
+            if tile is None or not tile.objective or tile.owner is self.side:
+                continue        # 守家、以及去追敌人（不是目标点）都不算主攻方向
+            if counts[g] > support:
+                main, support = g, counts[g]
+        if main is None:
+            cand = sorted((t for t in state.objective_tiles if t.owner is not self.side),
+                          key=lambda t: (-t.victory_points, t.y, t.x))
+            if cand:
+                main = (cand[0].x, cand[0].y)
+                support = counts.get(main, 0)
+        self.feint = tactics.plan_feint(state, self.side, main, support)
+        return self.feint
+
+    def _feint_for(self, state: "GameState", unit: Unit) -> tuple[int, int] | None:
+        """这支部队是不是本回合的佯动部队；是就给出佯攻点。"""
+        plan = self._feint_plan(state)
+        if not plan.active or plan.unit_uid != unit.uid:
+            return None
+        # 佯动部队被打残 → 收回来。佯攻的价值是「看起来像」，不是「拼光」
+        if unit.hp_ratio < 0.55:
+            return None
+        t = state.map.at(plan.tile[0], plan.tile[1])
+        if t is not None and t.owner is self.side:
+            return None          # 佯攻点已经拿到手，佯动就变成真的了
+        return plan.tile
 
     def _objective_threatened(self, state: "GameState", t) -> bool:
         """该目标点是否正受威胁（附近有已知敌军）。
@@ -792,7 +1011,8 @@ class AIPlanner:
         return n
 
     def _score_tile(self, state: "GameState", unit: Unit, pos: tuple[int, int],
-                    cost: float) -> float:
+                    cost: float,
+                    xmap: dict[int, set[int]] | None = None) -> float:
         score = -cost * 0.12
         cur = (unit.x, unit.y)
         md = state.map
@@ -849,6 +1069,10 @@ class AIPlanner:
                 score += 0.5
             if tile.objective and not unit.template.can_capture and tile.owner is not self.side:
                 score -= 6.0
+            # 5) 交叉火力阵位：能补上第三个直瞄方位的落脚点更值钱
+            if xmap:
+                score += 1.6 * tactics.crossfire_opportunity(
+                    state, self.side, unit, pos, xmap)
         return score
 
 

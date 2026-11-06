@@ -80,6 +80,7 @@ _COUNTER_TR = {
     "机动": "ui.counter.mobility",
     "高度": "ui.counter.altitude",
     "频段": "ui.counter.band",
+    "交叉火力": "ui.counter.crossfire",
 }
 
 # 教学想定在主菜单中的固定入口（不依赖想定文件名）
@@ -3097,8 +3098,11 @@ class App:
                 T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
                             T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
                 if prof.damage_factors:
-                    # 相克对毁伤的修正：这一发「为什么打得不疼」，一眼能看出来
-                    chan = next(iter(prof.damage_factors))
+                    # 毁伤修正：这一发「为什么打得疼/不疼」，一眼能看出来。
+                    # 因子可能有好几项（破甲 × 交叉火力 …），标出**影响最大**的那项，
+                    # 否则先入为主的键会掩盖真正起作用的机制。
+                    chan = max(prof.damage_factors,
+                               key=lambda k: abs(prof.damage_factors[k] - 1.0))
                     key = _COUNTER_TR.get(chan)
                     name = tr(key, chan) if key else chan
                     T.draw_text(s, f"×{prof.damage_mult:.2f} {name}", (r.right - 10, yy), 11,

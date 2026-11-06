@@ -61,6 +61,77 @@ def dist_units(u1: Unit, u2: Unit) -> float:
     return dist((u1.x, u1.y), (u2.x, u2.y))
 
 
+# --------------------------------------------------------------------------- #
+# 交叉火力
+# --------------------------------------------------------------------------- #
+#: 能形成交叉火力的武器：只有直瞄（弹道可见、要靠炮口指向）才谈得上「方位」。
+#: 间瞄与面杀伤从哪个方向来都一样，多几个方位并不增加威胁。
+CROSSFIRE_KINDS = frozenset({
+    WeaponKind.GUN, WeaponKind.ATGM, WeaponKind.CIWS, WeaponKind.TORPEDO,
+})
+#: 只有落在地面/水面的目标才「有侧面」可打。空中目标一闪而过，
+#: 多方位压制来不及形成，因此不参与交叉火力加成。
+CROSSFIRE_DOMAINS = frozenset({Domain.LAND, Domain.INFRA, Domain.SEA})
+#: 参战方位按 45° 一档统计。八档里占到三档（约 90° 张角）才算真的「交叉」。
+CROSSFIRE_SECTORS = 8
+#: 超出这个距离的友军不算同一场交战——他们打的是另一场仗。
+CROSSFIRE_RADIUS = 16.0
+
+
+def bearing_sector(src: tuple[int, int], center: tuple[int, int]) -> int:
+    """src 相对 center 的方位扇区（0..7，每档 45°）。"""
+    ang = math.atan2(src[1] - center[1], src[0] - center[0])
+    return int((ang + math.pi) / (2 * math.pi) * CROSSFIRE_SECTORS) % CROSSFIRE_SECTORS
+
+
+def _can_crossfire(unit: Unit, target: Unit, d: float) -> bool:
+    """该单位此刻能否用直瞄火力够到目标（只看射程与目标类型，不问通视）。"""
+    for w in unit.usable_weapons():
+        if w.kind not in CROSSFIRE_KINDS:
+            continue
+        if target.domain not in w.targets:
+            continue
+        if d <= w.range_max + RANGE_TOLERANCE and unit.ammo.get(w.id, 0) > 0:
+            return True
+    return False
+
+
+def crossfire_bonus(state: "GameState", attacker: Unit, target: Unit,
+                    weapon: Weapon) -> tuple[float, int]:
+    """交叉火力对毁伤的加成：``(倍率, 参与方位数)``。
+
+    为什么是毁伤而不是命中率：正面挨一发和侧面挨一发，命中概率是同一个问题，
+    差别在于**目标把哪一面朝向威胁**。堑壕、掩体、装甲都是按一个方向加固的，
+    换个方位打过去，那份加固就用不上了——所以加成只对有掩蔽的目标明显。
+
+    这也解释了为什么它值钱：它是「工事 + 城区死守」少数几个正经解法之一。
+    """
+    if weapon.kind not in CROSSFIRE_KINDS or target.domain not in CROSSFIRE_DOMAINS:
+        return 1.0, 1
+    tpos = (target.x, target.y)
+    sectors = {bearing_sector((attacker.x, attacker.y), tpos)}
+    for u in state.units:
+        if u is attacker or not u.alive or u.side is not attacker.side:
+            continue
+        d = dist((u.x, u.y), tpos)
+        if d > CROSSFIRE_RADIUS:
+            continue
+        if _can_crossfire(u, target, d):
+            sectors.add(bearing_sector((u.x, u.y), tpos))
+    n = len(sectors)
+    if n < 3:
+        return 1.0, n
+    # 有掩蔽的目标（工事 / 挖壕 / 城区丘陵）交叉火力收益翻倍
+    tile = state.map.at(target.x, target.y)
+    covered = target.entrench > 0
+    if tile is not None:
+        covered = covered or tile.fort_cover_for(target.side) > 0.02 \
+            or tile.terrain.armor_bonus > 0.05
+    step = 0.11 if covered else 0.07
+    extra = min(3, n - 2)
+    return 1.0 + step * extra, n
+
+
 # 诱饵信号特征：不同诱饵只在对应频段上"像真的"。
 # 数值是探测距离的倍率（>1 表示比真实目标更好找），缺失视为完全不可见。
 DECOY_SIGNATURE: dict[str, dict[SensorKind, float]] = {
@@ -708,7 +779,7 @@ class ShotProfile:
     in_range: bool = False
     has_los: bool = True
     factors: dict[str, float] = field(default_factory=dict)
-    #: 相克对**毁伤**的修正（与 factors 分开：factors 乘的是命中率）
+    #: 对**毁伤**的总修正（相克 × 交叉火力；与 factors 分开：factors 乘的是命中率）
     damage_factors: dict[str, float] = field(default_factory=dict)
     damage_mult: float = 1.0
     salvo: int = 1
@@ -897,10 +968,20 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
         # 城区不再单独乘一个固定系数——它作为目标的「掩蔽 / 疏散空间」
         # 进入了目标画像，与武器通道一起决定结果。
         counter, reasons = counter_rules.counter_multiplier(weapon, target, tgt_tile)
-        p.damage_mult = counter
+        mult = 1.0
+        dfac: dict[str, float] = {}
         if abs(counter - 1.0) >= 0.005:
-            dmg *= counter
-            p.damage_factors = dict(reasons)
+            mult *= counter
+            dfac.update(reasons)
+        # 交叉火力：多方位同时压制，工事与掩体只挡得住一个方向
+        xfire, _sectors = crossfire_bonus(state, attacker, target, weapon)
+        if xfire > 1.001:
+            mult *= xfire
+            dfac["交叉火力"] = xfire
+        p.damage_mult = mult
+        if dfac:
+            dmg *= mult
+            p.damage_factors = dfac
         p.damage = dmg
     p.ok = True
 
@@ -2000,6 +2081,7 @@ __all__ = [
     "DetectionResult", "evaluate_detection", "detection_level", "build_detection_map",
     "ShotProfile", "shot_profile", "interception_estimate",
     "CounterThreat", "counter_threat_profile", "salvo_limit",
+    "crossfire_bonus", "bearing_sector", "CROSSFIRE_RADIUS", "CROSSFIRE_KINDS",
     "FacilityStrike", "facility_strike_profile", "service_tile", "facility_service_ok",
     "FACILITY_SIZE", "ORBITAL_ENGAGEMENT_DISTANCE", "AIRBASE_CAPACITY",
     "tile_move_cost", "find_path", "reachable_tiles", "flood_reachable", "path_cost",
