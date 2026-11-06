@@ -836,8 +836,8 @@ class MapView:
 
     # -- 棋子精灵缓存 -----------------------------------------------------
     def _token_epoch(self) -> tuple:
-        """棋子精灵的失效指纹（主题色变化时必须重画）。"""
-        return (self.tile, T.current_theme().id)
+        """棋子精灵的失效指纹（主题色或形状标识变化时必须重画）。"""
+        return (self.tile, T.current_theme().id, T.shape_cues())
 
     def _token_sprite(self, u: Unit, w: int, h: int) -> pygame.Surface | None:
         """取棋子的缓存底板；缓存未命中时烘焙一张。"""
@@ -875,11 +875,27 @@ class MapView:
         edge = cols["edge"]
         if u.template.is_radar_emitter and u.radar_on and self.state.player_side is u.side:
             edge = T.mix(edge, (120, 255, 190), 0.5)
-        pygame.draw.rect(surf, edge, body, width=1, border_radius=3)
+        friendly = u.side is self.state.player_side
+        # 形状标识：敌方切角 + 兵种角标。两者都不靠色相，灰度下同样可读。
+        cues = T.shape_cues()
+        if cues and not friendly:
+            # 敌方：右上切角 + 沿新轮廓描边，一步到位
+            draw_enemy_notch(surf, body, edge)
+        else:
+            pygame.draw.rect(surf, edge, body, width=1, border_radius=3)
 
-        # 兵种图标
+        # 兵种图标：开了形状标识时把底部让出一条给角标，
+        # 否则飞机那类几乎铺满棋子的图形会把角标盖住。
         icon_col = T.mix(cols["text"], (255, 255, 255), 0.22)
-        self.draw_class_icon(surf, body, u.template.unit_class, icon_col)
+        icon_r = body
+        if cues:
+            strip = badge_size(body) + 3
+            if body.height - strip >= 12:
+                icon_r = pygame.Rect(body.x, body.y, body.width, body.height - strip)
+        self.draw_class_icon(surf, icon_r, u.template.unit_class, icon_col)
+        if cues:
+            draw_class_badge(surf, body, u.template.unit_class,
+                             T.mix(cols["text"], (255, 255, 255), 0.35), fill)
 
     def _select_corners(self, surf: pygame.Surface, r: pygame.Rect, col) -> None:
         L = max(4, r.width // 4)
@@ -1248,4 +1264,100 @@ def draw_vector_class_icon(surf: pygame.Surface, rect: pygame.Rect,
         pygame.draw.line(surf, c, P(0.25, 0), P(0.9, 0), w)
     else:
         pygame.draw.rect(surf, c, rect.inflate(-4, -4), 1)
+
+
+# --------------------------------------------------------------------------- #
+# 形状标识（v3.1.1 无障碍）
+# --------------------------------------------------------------------------- #
+# 红绿是最容易混淆的一对（红绿色盲约占男性 8%）。色盲主题已经把敌方改成
+# 琥珀 / 金黄，但那仍然是「靠颜色」——灰度截图里就没了。
+#
+# 这里给棋子加两处**不依赖色相**的信息：
+#   * 敌方棋子右上角切掉一个三角（我方是完整圆角矩形）——轮廓差异，
+#     比边框粗细更耐看，远处一眼能分敌我；
+#   * 左下角一枚兵种家族角标——25 个兵种各有专属中央图标，但小棋子上
+#     分不清 25 种，收成 7 个家族形状才是能记住的量。
+#
+# 角标只画形状不写文字：棋子只有 30 来个像素，文字会糊成一团。
+class_badge_shape: dict[UnitClass, str] = {
+    UnitClass.MBT: "square", UnitClass.IFV: "square",
+    UnitClass.INFANTRY: "dot", UnitClass.ENGINEER: "dot",
+    UnitClass.ARTY: "tri_up", UnitClass.MLRS: "tri_up",
+    UnitClass.SAM: "tri_down", UnitClass.AAA: "tri_down",
+    UnitClass.FIGHTER: "diamond", UnitClass.BOMBER: "diamond",
+    UnitClass.AEW: "diamond", UnitClass.UAV: "diamond",
+    UnitClass.TANKER: "diamond", UnitClass.HELI: "diamond",
+    UnitClass.ATTACK_HELI: "diamond", UnitClass.TRANSPORT: "diamond",
+    UnitClass.DESTROYER: "ring", UnitClass.FRIGATE: "ring",
+    UnitClass.CARRIER: "ring", UnitClass.SUB: "ring", UnitClass.AMPHIB: "ring",
+    UnitClass.RADAR: "cross", UnitClass.EW: "cross", UnitClass.HQ: "cross",
+    UnitClass.SATELLITE: "cross",
+}
+
+
+def draw_shape_prim(surf: pygame.Surface, rect: pygame.Rect, kind: str, color) -> None:
+    """在 rect 内画一个形状角标（实心，1px 描边保证小尺寸下不糊）。"""
+    cx, cy = rect.center
+    r = max(2, min(rect.width, rect.height) // 2)
+    if kind == "dot":
+        pygame.draw.circle(surf, color, (cx, cy), r)
+    elif kind == "ring":
+        pygame.draw.circle(surf, color, (cx, cy), r, 1 if r < 4 else 2)
+    elif kind == "tri_up":
+        pygame.draw.polygon(surf, color, [(cx, cy - r), (cx + r, cy + r), (cx - r, cy + r)])
+    elif kind == "tri_down":
+        pygame.draw.polygon(surf, color, [(cx - r, cy - r), (cx + r, cy - r), (cx, cy + r)])
+    elif kind == "diamond":
+        pygame.draw.polygon(surf, color, [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)])
+    elif kind == "cross":
+        t = max(1, r // 2)
+        pygame.draw.rect(surf, color, pygame.Rect(cx - r, cy - t, r * 2, t * 2))
+        pygame.draw.rect(surf, color, pygame.Rect(cx - t, cy - r, t * 2, r * 2))
+    else:   # square
+        pygame.draw.rect(surf, color, pygame.Rect(cx - r, cy - r, r * 2, r * 2))
+
+
+def draw_enemy_notch(surf: pygame.Surface, body: pygame.Rect, edge) -> None:
+    """把棋子右上角切掉一个三角，并按新轮廓描边（直接擦除 SRCALPHA 像素）。
+
+    只擦不补线的话，轮廓会在切口处断开，看起来像画坏了；
+    所以擦完立刻沿新的五边形描一圈边。
+    """
+    cut = max(4, body.height // 4)
+    pygame.draw.polygon(surf, (0, 0, 0, 0),
+                        [(body.right - cut, body.y), (body.right, body.y),
+                         (body.right, body.y + cut)])
+    pygame.draw.polygon(surf, edge, [(body.right - cut, body.y), (body.x, body.y),
+                                     (body.x, body.bottom), (body.right, body.bottom),
+                                     (body.right, body.y + cut)], 1)
+
+
+def badge_size(body: pygame.Rect) -> int:
+    """角标边长：棋子高度的四分之一，至少 8px。"""
+    return max(8, body.height // 4)
+
+
+def draw_class_badge(surf: pygame.Surface, body: pygame.Rect, cls: UnitClass,
+                     color, back) -> None:
+    """棋子左下角的兵种家族角标（画在底部血条之上）。
+
+    角标底下垫一块棋子填充色：飞机类的图形几乎铺满整个棋子，
+    不垫底的话角标会和机翼糊成一片，等于没画。
+    """
+    s = badge_size(body)
+    if body.width < s * 3 or body.height < s * 3:
+        return
+    box = pygame.Rect(body.x + 2, body.bottom - s - 3, s, s)
+    pygame.draw.rect(surf, back, box.inflate(2, 2), border_radius=2)
+    draw_shape_prim(surf, box, class_badge_shape.get(cls, "square"), color)
+
+
+__all__ = [
+    "MapView",
+    "draw_vector_class_icon",
+    "draw_shape_prim",
+    "draw_enemy_notch",
+    "draw_class_badge",
+    "class_badge_shape",
+]
 

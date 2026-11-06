@@ -85,20 +85,39 @@ def main() -> int:
         app._on_key(key(pygame.K_LEFT))
         check(app.cfg.theme != t0, "设置面板：← 反向切换主题")
 
-        p.focus_index = 4                # language
+        # 焦点项按下标定位太脆——每加一行选项，后面全部错位。
+        # 这里按 kind 查找，新增选项不会打破既有断言。
+        def focus_of(kind_name: str) -> int:
+            return next(i for i, (kind, _) in enumerate(items) if kind == kind_name)
+
+        p.focus_index = focus_of("language")
         l0 = app.cfg.language
         app._on_key(key(pygame.K_RIGHT))
         check(app.cfg.language != l0, "设置面板：←→ 可切换界面语言")
 
-        p.focus_index = 3                # volume
+        p.focus_index = focus_of("volume")
         v0 = app.cfg.volume
         app._on_key(key(pygame.K_LEFT))
         check(app.cfg.volume < v0, "设置面板：←→ 可调整音量")
 
-        p.focus_index = 2                # sound
+        p.focus_index = focus_of("sound")
         s0 = app.cfg.sound_enabled
         app._on_key(key(pygame.K_RETURN))
         check(app.cfg.sound_enabled != s0, "设置面板：Enter 可开关音效")
+
+        # 无障碍新增的两行也必须能用键盘改
+        p.focus_index = focus_of("font_scale")
+        f0 = app.cfg.font_scale
+        app._on_key(key(pygame.K_RIGHT))
+        check(app.cfg.font_scale != f0, "设置面板：←→ 可切换字号档位")
+        p.focus_index = focus_of("shape")
+        c0 = app.cfg.shape_cues
+        app._on_key(key(pygame.K_RIGHT))
+        check(app.cfg.shape_cues != c0, "设置面板：←→ 可切换形状标识")
+        app.cfg.set_font_scale("standard")
+        app.cfg.set_shape_cues("auto")
+        app._apply_font_scale("standard")
+        app._apply_shape_cues("auto")
 
         kidx = next(i for i, (kind, _) in enumerate(items) if kind == "key")
         p.focus_index = kidx

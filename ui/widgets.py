@@ -129,7 +129,7 @@ class LogView:
         pygame.draw.rect(surf, T.PANEL_SUNK, self.rect, border_radius=3)
         pygame.draw.rect(surf, T.BORDER, self.rect, width=1, border_radius=3)
         lines = self._build(entries, self.rect.width)
-        line_h = self.size + 5
+        line_h = T.lh(self.size)
         visible = (self.rect.height - 8) // line_h
         max_scroll = max(0, len(lines) - visible)
         self.scroll = min(self.scroll, max_scroll)
@@ -152,7 +152,7 @@ def draw_tooltip(surf: pygame.Surface, text: str, pos: tuple[int, int],
     if not lines:
         return
     w = min(max_w, max(T.text_width(l, size) for l in lines)) + 16
-    h = len(lines) * (size + 4) + 10
+    h = len(lines) * T.lh(size) + 10
     x, y = pos
     sw, sh = surf.get_size()
     if x + w > sw - 8:
@@ -165,17 +165,17 @@ def draw_tooltip(surf: pygame.Surface, text: str, pos: tuple[int, int],
     yy = y + 5
     for l in lines:
         T.draw_text(surf, l, (x + 8, yy), size, T.TEXT)
-        yy += size + 4
+        yy += T.lh(size)
 
 
 # --------------------------------------------------------------------------- #
 def section(surf: pygame.Surface, rect: pygame.Rect, title: str,
             accent: tuple[int, int, int] = T.CYAN) -> pygame.Rect:
     """标题栏 + 细分隔线，返回内容区起点 y。"""
-    pygame.draw.rect(surf, accent, pygame.Rect(rect.x, rect.y + 3, 3, 12))
+    pygame.draw.rect(surf, accent, pygame.Rect(rect.x, rect.y + 3, 3, T.m(12)))
     T.draw_text(surf, title, (rect.x + 9, rect.y), 12, T.TEXT_DIM, bold=True)
-    T.hline(surf, rect.x, rect.right, rect.y + 19, (28, 37, 49))
-    return pygame.Rect(rect.x, rect.y + 24, rect.width, rect.height - 24)
+    T.hline(surf, rect.x, rect.right, rect.y + T.m(19), (28, 37, 49))
+    return pygame.Rect(rect.x, rect.y + T.m(24), rect.width, rect.height - T.m(24))
 
 
 def kv(surf: pygame.Surface, x: int, y: int, key: str, value: str,
@@ -187,4 +187,4 @@ def kv(surf: pygame.Surface, x: int, y: int, key: str, value: str,
         val_color = T.TEXT
     T.draw_text(surf, key, (x, y), size, key_color)
     T.draw_text(surf, value, (x + width, y), size, val_color, anchor="topright", mono=True)
-    return y + size + 4
+    return y + T.lh(size)

@@ -101,11 +101,16 @@ def build_rows(unit: Unit, viewer_side: Side, known: Detection,
 
 
 class InspectCard:
-    """悬停信息卡的绘制器（跟随光标，自动避让屏幕边缘）。"""
+    """悬停信息卡的绘制器（跟随光标，自动避让屏幕边缘）。
+
+    尺寸全部走主题的度量函数：字号放大档位下卡片要跟着长高、变宽，
+    否则一行的值会顶到卡片外沿。`ROW_H` 等保留基准值（标准档）。
+    """
 
     ROW_H = 15
     HEAD_H = 26
     PAD = 9
+    WIDTH = 236
 
     def __init__(self) -> None:
         self.rect = pygame.Rect(0, 0, 0, 0)
@@ -115,16 +120,19 @@ class InspectCard:
         rows = build_rows(unit, viewer_side, known, state)
         if not rows:
             return
-        w = 236
-        h = self.HEAD_H + len(rows) * self.ROW_H + self.PAD * 2
+        row_h = T.m(self.ROW_H)
+        head_h = T.m(self.HEAD_H)
+        pad = T.m(self.PAD)
+        w = T.m(self.WIDTH)
+        h = head_h + len(rows) * row_h + pad * 2
 
-        x = mouse[0] + 18
-        y = mouse[1] + 14
+        x = mouse[0] + T.m(18)
+        y = mouse[1] + T.m(14)
         sw, sh = surf.get_size()
-        if x + w > sw - 6:
-            x = mouse[0] - w - 14
-        if y + h > sh - 6:
-            y = max(4, mouse[1] - h - 10)
+        if x + w > sw - T.m(6):
+            x = mouse[0] - w - T.m(14)
+        if y + h > sh - T.m(6):
+            y = max(T.m(4), mouse[1] - h - T.m(10))
         r = pygame.Rect(int(x), int(y), w, h)
         self.rect = r
 
@@ -137,15 +145,20 @@ class InspectCard:
         side_col = T.side_color(unit.side, "edge")
         pygame.draw.rect(surf, side_col, pygame.Rect(r.x + 1, r.y + 1, 3, r.height - 2))
         title_col = T.TEXT if unit.side is viewer_side else T.WHITE
-        T.draw_text(surf, unit.name, (r.x + self.PAD, r.y + 6), 12, title_col, bold=True)
-        T.draw_text(surf, unit.side.label, (r.right - self.PAD, r.y + 7), 10, side_col,
+        side_w = T.text_width(unit.side.label, 10) + pad
+        T.draw_text(surf, T.ellipsize(unit.name, 12, w - pad * 2 - side_w, bold=True),
+                    (r.x + pad, r.y + T.m(6)), 12, title_col, bold=True)
+        T.draw_text(surf, unit.side.label, (r.right - pad, r.y + T.m(7)), 10, side_col,
                     anchor="topright")
 
-        yy = r.y + self.HEAD_H
+        yy = r.y + head_h
         for key, val, col in rows:
-            T.draw_text(surf, key, (r.x + self.PAD, yy), 11, T.TEXT_FAINT)
-            T.draw_text(surf, val, (r.right - self.PAD, yy), 11, col, anchor="topright")
-            yy += self.ROW_H
+            T.draw_text(surf, key, (r.x + pad, yy), 11, T.TEXT_FAINT)
+            # 值右对齐：放大后长值（弹药清单）会压到键上，按可用宽度收一下
+            avail = w - pad * 2 - T.text_width(key, 11) - T.m(8)
+            T.draw_text(surf, T.ellipsize(val, 11, avail), (r.right - pad, yy), 11, col,
+                        anchor="topright")
+            yy += row_h
 
 
 __all__ = ["InspectCard", "build_rows"]

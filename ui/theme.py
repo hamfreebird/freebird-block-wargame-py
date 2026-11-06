@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -306,6 +307,9 @@ def __dir__() -> list[str]:
 # 小字号在 1500×920 的窗口上确实难读，投影与高分屏上更甚。
 # 这里统一定义字号档位，调用方用常量而不是魔法数字——
 # 想整体调大只需改这一处。
+#
+# 下面这些是**基准字号**（标准档），运行时由 `px()` 换算到当前档位。
+# 界面代码仍写基准值，这样「调大字号」不需要改几百个调用点。
 FS_TINY = 10        # 角标、标签、单位缩写
 FS_SMALL = 11       # 次要说明、状态行
 FS_BODY = 12        # 正文
@@ -314,6 +318,180 @@ FS_SUBTITLE = 14    # 小标题
 FS_TITLE = 16       # 区块标题
 FS_HEAD = 18        # 大标题
 FS_HERO = 24        # 结算大标题
+
+
+# --------------------------------------------------------------------------- #
+# 字号缩放（v3.1.1 无障碍）
+# --------------------------------------------------------------------------- #
+# 只放大文字是没用的：字号一变，行高、卡片高度、面板宽度全都要跟着变，
+# 否则文字会顶出容器、行与行互相压住。所以这里一并提供 `m()`（基准度量 →
+# 当前档位），界面里凡是「按字号调过的像素值」都走它。
+#
+# 三档的倍率不是随手取的：1.15 刚好让 11 号字落到 13 号（常见的舒适正文），
+# 1.30 让 10 号角标过 13 号——再大就会在 1500×920 的窗口里挤不下侧栏。
+@dataclass(frozen=True)
+class FontScale:
+    """一档字号缩放。"""
+
+    id: str
+    name: str
+    ratio: float
+
+
+FONT_SCALES: tuple[FontScale, ...] = (
+    FontScale("standard", "标准", 1.00),
+    FontScale("large", "大", 1.15),
+    FontScale("xlarge", "特大", 1.30),
+)
+DEFAULT_FONT_SCALE = "standard"
+
+_current_scale: FontScale = FONT_SCALES[0]
+
+
+def set_font_scale(scale_id: str) -> bool:
+    """切换字号档位。返回 True 表示档位有效。
+
+    只改一个倍率，不动任何调用点——`draw_text` / `text_width` /
+    `wrap_text` 全都在内部过 `px()`，所以测量与绘制永远一致。
+    """
+    global _current_scale
+    for fs in FONT_SCALES:
+        if fs.id != scale_id:
+            continue
+        if fs.id != _current_scale.id:
+            _current_scale = fs
+            _text_cache.clear()      # 缓存键含像素字号，但清掉更省内存
+        return True
+    return False
+
+
+def font_scale_id() -> str:
+    return _current_scale.id
+
+
+def font_scale_ids() -> list[str]:
+    return [f.id for f in FONT_SCALES]
+
+
+def font_scale_name(scale_id: str) -> str:
+    for f in FONT_SCALES:
+        if f.id == scale_id:
+            return f.name
+    return scale_id
+
+
+def font_ratio() -> float:
+    return _current_scale.ratio
+
+
+@contextlib.contextmanager
+def at_font_scale(scale_id: str):
+    """临时按指定档位排版，退出时还原（画完即恢复）。
+
+    地图 / 战役编辑器是**工具界面**：三百多个控件的位置按像素写死，
+    不跟字号档位走。与其把它们全部改成 `T.m()`（收益低、回归面大），
+    不如在绘制编辑器期间强制回到标准档——放大字号后编辑器仍然工整，
+    而游戏主界面照常放大。
+    """
+    global _current_scale
+    prev = _current_scale
+    try:
+        set_font_scale(scale_id)
+        yield
+    finally:
+        _current_scale = prev
+
+
+def px(size: int) -> int:
+    """基准字号 → 当前档位的像素字号。"""
+    if _current_scale.ratio == 1.0:
+        return int(size)
+    # 下限 9：再小连角标都糊成一团，放大档位不该产生更小的字
+    return max(9, int(round(size * _current_scale.ratio)))
+
+
+def m(base: int) -> int:
+    """基准度量（行高 / 控件高度 / 内边距）→ 当前档位。
+
+    标准档原样返回，避免给默认路径引入取整误差。
+    """
+    if _current_scale.ratio == 1.0:
+        return int(base)
+    return int(round(base * _current_scale.ratio))
+
+
+def lh(size: int, factor: float = 1.0) -> int:
+    """一行文字占的高度（含行距）——排版累加 y 时用它，别写死 +16。"""
+    p = px(size)
+    return max(p + 2, int(round(p * 1.42 * factor)))
+
+
+def ellipsize(s: str, size: int, max_width: int, bold: bool = False) -> str:
+    """把文字截到 max_width 以内，超出的用省略号收尾。
+
+    字号放大后，原本刚好的标题会顶出卡片。硬切片（``name[:14]``）
+    对不同语言的字宽毫无概念，所以这里按**像素**收，而不是按字收。
+    """
+    s = str(s)
+    if max_width <= 0 or text_width(s, size, bold) <= max_width:
+        return s
+    ell = "…"
+    lo, hi = 0, len(s)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if text_width(s[:mid] + ell, size, bold) <= max_width:
+            lo = mid
+        else:
+            hi = mid - 1
+    return (s[:lo] + ell) if lo > 0 else ell
+
+
+# --------------------------------------------------------------------------- #
+# 形状标识（v3.1.1 无障碍）
+# --------------------------------------------------------------------------- #
+# 红绿是最容易混淆的一对（红绿色盲约占男性 8%）。色盲主题已经把敌方改成
+# 琥珀 / 金黄，但那仍是「靠颜色」；本项让敌我与兵种类别**另有形状**，
+# 灰度截图里也能读出来。
+#
+# 默认 `auto`：只在色盲主题下启用。理由是形状会占掉棋子上本就紧张的几个
+# 像素——普通主题下多数玩家不需要，不如留白；需要的人可以在设置里强制打开。
+SHAPE_MODES: tuple[tuple[str, str], ...] = (
+    ("auto", "自动"),
+    ("on", "开"),
+    ("off", "关"),
+)
+DEFAULT_SHAPE_MODE = "auto"
+_COLORBLIND_THEMES = frozenset({"deuteranopia", "protanopia"})
+
+_shape_mode: str = DEFAULT_SHAPE_MODE
+
+
+def set_shape_mode(mode: str) -> bool:
+    global _shape_mode
+    if mode not in {k for k, _ in SHAPE_MODES}:
+        return False
+    _shape_mode = mode
+    return True
+
+
+def shape_mode() -> str:
+    return _shape_mode
+
+
+def shape_mode_name(mode: str) -> str:
+    for k, v in SHAPE_MODES:
+        if k == mode:
+            return v
+    return mode
+
+
+def shape_cues() -> bool:
+    """当前是否绘制形状标识。"""
+    if _shape_mode == "on":
+        return True
+    if _shape_mode == "off":
+        return False
+    return _current.id in _COLORBLIND_THEMES
 
 
 # --------------------------------------------------------------------------- #
@@ -444,11 +622,13 @@ _CN_CHARS = re.compile(r"[　-〿一-鿿＀-￯]")
 
 def render_text(s: str, size: int, color: tuple[int, int, int],
                 bold: bool = False, mono: bool = False) -> pygame.Surface:
+    """渲染一行文字。`size` 传**基准字号**，这里统一换算到当前档位。"""
     # 等宽字体（Consolas 等）**没有中文字形**——用它渲染中文会出现
     # 方框或字距错乱。含中文的文本一律改用中文字体；
     # 纯数字 / 纯拉丁文本仍走等宽，保证表格对齐。
     if mono and _CN_CHARS.search(s):
         mono = False
+    size = px(size)
     key = (s, size, color, bold, mono)
     surf = _text_cache.get(key)
     if surf is None:
@@ -494,6 +674,8 @@ def draw_text(surface: pygame.Surface, s: str, pos: tuple[int, int], size: int =
 
 
 def text_width(s: str, size: int = 13, bold: bool = False, mono: bool = False) -> int:
+    """文字宽度。`size` 同样是基准字号——测量与绘制必须走同一换算，
+    否则放大档位下「算出来放得下」会在画的时候顶出去。"""
     return render_text(str(s), size, (255, 255, 255), bold, mono).get_width()
 
 
@@ -520,7 +702,7 @@ def wrap_text(s: str, size: int, max_width: int, bold: bool = False) -> list[str
     没有空格，按词切等于整段不换行。所以含空格的段先试按词排，
     某个词本身超宽时才退回按字符硬拆。
     """
-    font = fonts().get(size, bold, False)
+    font = fonts().get(px(size), bold, False)
     lines: list[str] = []
     for para in s.split("\n"):
         if not para:
