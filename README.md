@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.1.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.1.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -118,6 +118,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v3.0.1** | 缺陷修复 | 修复键盘光标自动滚屏方向写反、**读档未还原随机流**（重跑不再等价）、坏档异常直接结束进程；Python 版本承诺收紧到 3.10+ |
 | **v3.0.2** | 本地化补完 | 实战状态行 / 信息卡 / 主菜单 / 简报 / 战报回顾全部词条化（440 条 × 8 语言，覆盖率 100%）；`wrap_text` 拉丁文按词断行；模组 `entry` 路径越界拦截 |
 | **v3.1.0** | 深度 | **机制边界收敛**（烟幕随风 / 工时制工事 / 多段拦截）、**兵种相克函数化**（破甲 / 爆破双通道连续匹配）、**消耗与补给链**（油弹备件实数库存，断粮三档降火力）、**想定战术体检**（目标点谁也打不到会点名）、**AI 战术深化**（改派 / 分档撤退 / 集火 / 交叉火力 / 佯攻） |
+| **v3.1.1** | 无障碍 | **字号三档缩放**（标准 / 大 / 特大，行高与控件尺寸同步换算）、**色盲形状标识**（敌方棋子切角表示阵营、7 种兵种家族角标）；修掉三处放大后才暴露的布局缺陷 |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 

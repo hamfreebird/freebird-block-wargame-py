@@ -206,13 +206,29 @@ def build_debrief(state) -> DebriefData:
 # --------------------------------------------------------------------------- #
 # 绘制：简报
 # --------------------------------------------------------------------------- #
+def briefing_panel_rect(size: tuple[int, int]) -> pygame.Rect:
+    """简报浮层的矩形。
+
+    绘制与按钮定位**共用**这份几何：字号放大后浮层会长高，
+    按钮若还按 `h // 2 + 232` 算，就会飘到面板中间去。
+    """
+    sw, sh = size
+    w = min(T.m(880), sw - T.m(100))
+    h = min(T.m(600), sh - T.m(70))
+    return pygame.Rect((sw - w) // 2, (sh - h) // 2, w, h)
+
+
+def briefing_button_rect(size: tuple[int, int]) -> pygame.Rect:
+    r = briefing_panel_rect(size)
+    bw, bh = T.m(200), T.m(42)
+    return pygame.Rect(r.centerx - bw // 2, r.bottom - bh - T.m(26), bw, bh)
+
+
 def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
                   btn: pygame.Rect) -> None:
     """绘制想定简报浮层。`btn` 为「开始作战」按钮矩形（就地绘制）。"""
     sw, sh = s.get_size()
-    w = min(880, sw - 100)
-    h = min(600, sh - 70)
-    r = pygame.Rect((sw - w) // 2, (sh - h) // 2, w, h)
+    r = briefing_panel_rect((sw, sh))
 
     dim = pygame.Surface((sw, sh), pygame.SRCALPHA)
     dim.fill((*T.mix(T.BG, (0, 0, 0), 0.55), 205))
@@ -220,57 +236,63 @@ def draw_briefing(s: pygame.Surface, d: BriefingData, mouse: tuple[int, int],
 
     T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
     # 标题区
-    T.draw_text(s, tr("brief.title"), (r.x + 26, r.y + 18), 12, T.CYAN, bold=True)
-    T.draw_text(s, d.title, (r.x + 26, r.y + 38), 24, T.TEXT, bold=True)
+    T.draw_text(s, tr("brief.title"), (r.x + T.m(26), r.y + T.m(18)), 12, T.CYAN, bold=True)
+    T.draw_text(s, T.ellipsize(d.title, 24, r.width - T.m(52), bold=True),
+                (r.x + T.m(26), r.y + T.m(38)), 24, T.TEXT, bold=True)
     if d.subtitle:
-        for i, line in enumerate(T.wrap_text(d.subtitle, 12, w - 52)[:2]):
-            T.draw_text(s, line, (r.x + 26, r.y + 72 + i * 17), 12, T.TEXT_DIM)
+        for i, line in enumerate(T.wrap_text(d.subtitle, 12, r.width - T.m(52))[:2]):
+            T.draw_text(s, line, (r.x + T.m(26), r.y + T.m(72) + i * T.m(17)), 12, T.TEXT_DIM)
     T.draw_text(s, tr("ui.brief_map_fmt") % (d.map_size, d.tile_km, d.turn_limit,),
-                (r.right - 26, r.y + 44), 12, T.TEXT_FAINT, anchor="topright")
-    T.hline(s, r.x + 24, r.right - 24, r.y + 108, T.BORDER)
+                (r.right - T.m(26), r.y + T.m(44)), 12, T.TEXT_FAINT, anchor="topright")
+    T.hline(s, r.x + T.m(24), r.right - T.m(24), r.y + T.m(108), T.BORDER)
 
     # 三栏：敌情 / 我方 / 目标
-    col_y = r.y + 122
-    col_w = (w - 60) // 3
-    _draw_force_column(s, pygame.Rect(r.x + 24, col_y, col_w, 210),
+    col_y = r.y + T.m(122)
+    col_w = (r.width - T.m(60)) // 3
+    col_h = T.m(210)
+    _draw_force_column(s, pygame.Rect(r.x + T.m(24), col_y, col_w, col_h),
                        d.foe, tr("brief.enemy"), hostile=True)
-    _draw_force_column(s, pygame.Rect(r.x + 30 + col_w, col_y, col_w, 210),
+    _draw_force_column(s, pygame.Rect(r.x + T.m(30) + col_w, col_y, col_w, col_h),
                        d.own, tr("brief.own"), hostile=False)
 
     # 目标与胜利条件
-    ox = r.x + 36 + col_w * 2
-    ow = r.right - 24 - ox
+    ox = r.x + T.m(36) + col_w * 2
+    ow = r.right - T.m(24) - ox
     T.draw_text(s, tr("brief.objective"), (ox, col_y), 12, T.CYAN, bold=True)
-    yy = col_y + 22
+    yy = col_y + T.m(22)
     for name, vp, owner in d.objectives[:5]:
         # 归属存的是 Side 枚举而非中文标签——标签会随语言变，
         # 拿它当身份比较，切一次语言就认不出自己的目标点了。
         col = T.side_color(owner) \
             if owner in (Side.BLUE, Side.RED) else T.TEXT_FAINT
-        T.draw_text(s, name[:14], (ox, yy), 11, T.TEXT)
-        T.draw_text(s, f"{vp} VP", (ox + ow, yy), 11, T.AMBER, anchor="topright", mono=True)
-        yy += 19
+        vp_txt = f"{vp} VP"
+        vp_w = T.text_width(vp_txt, 11, mono=True)
+        T.draw_text(s, T.ellipsize(name, 11, ow - vp_w - T.m(8)), (ox, yy), 11, T.TEXT)
+        T.draw_text(s, vp_txt, (ox + ow, yy), 11, T.AMBER, anchor="topright", mono=True)
+        yy += T.m(19)
     if not d.objectives:
         T.draw_text(s, tr("ui.brief_no_objectives"), (ox, yy), 11, T.TEXT_FAINT)
-        yy += 19
-    yy += 6
+        yy += T.m(19)
+    yy += T.m(6)
     for line in T.wrap_text(d.victory_hint, 11, ow)[:3]:
         T.draw_text(s, line, (ox, yy), 11, T.mix(T.GREEN, T.TEXT, 0.4))
-        yy += 16
+        yy += T.m(16)
 
     # 环境与事件
-    ey = col_y + 224
-    T.draw_text(s, tr("brief.env"), (r.x + 24, ey), 12, T.CYAN, bold=True)
-    T.draw_text(s, d.env_label, (r.x + 100, ey), 12, T.TEXT)
-    for i, line in enumerate(T.wrap_text(d.env_effects, 11, w - 140)[:2]):
-        T.draw_text(s, line, (r.x + 100, ey + 20 + i * 16), 11, T.TEXT_DIM)
+    ey = col_y + T.m(224)
+    T.draw_text(s, tr("brief.env"), (r.x + T.m(24), ey), 12, T.CYAN, bold=True)
+    env_x = r.x + T.m(100)
+    T.draw_text(s, d.env_label, (env_x, ey), 12, T.TEXT)
+    for i, line in enumerate(T.wrap_text(d.env_effects, 11, r.width - T.m(140))[:2]):
+        T.draw_text(s, line, (env_x, ey + T.m(20) + i * T.m(16)), 11, T.TEXT_DIM)
     if d.events:
-        T.draw_text(s, tr("brief.events"), (r.x + 24, ey + 62), 12, T.CYAN, bold=True)
-        ex = r.x + 100
+        T.draw_text(s, tr("brief.events"), (r.x + T.m(24), ey + T.m(62)), 12, T.CYAN, bold=True)
+        ex = env_x
         for turn, desc in d.events[:4]:
-            T.draw_text(s, f"T{turn}", (ex, ey + 62), 11, T.AMBER, mono=True)
-            T.draw_text(s, desc[:16], (ex + 30, ey + 62), 11, T.TEXT_DIM)
-            ex += 180
+            T.draw_text(s, f"T{turn}", (ex, ey + T.m(62)), 11, T.AMBER, mono=True)
+            T.draw_text(s, T.ellipsize(desc, 11, T.m(150)), (ex + T.m(30), ey + T.m(62)),
+                        11, T.TEXT_DIM)
+            ex += T.m(180)
 
     # 按钮
     hover = btn.collidepoint(mouse)
@@ -285,62 +307,77 @@ def _draw_force_column(s: pygame.Surface, r: pygame.Rect, f: ForceSummary,
                        title: str, hostile: bool) -> None:
     """绘制一方的编成摘要。"""
     T.draw_text(s, title, (r.x, r.y), 12, T.RED if hostile else T.BLUE, bold=True)
-    y = r.y + 22
-    col = T.side_color(f.side)
+    y = r.y + T.m(22)
     T.draw_text(s, tr("ui.brief_total_units") % (f.total,), (r.x, y), 13, T.TEXT, bold=True)
-    T.draw_text(s, tr("ui.brief_cost_fmt") % (f.cost,), (r.right, y), 11, T.TEXT_FAINT, anchor="topright")
-    y += 22
+    T.draw_text(s, tr("ui.brief_cost_fmt") % (f.cost,), (r.right, y), 11, T.TEXT_FAINT,
+                anchor="topright")
+    y += T.m(22)
     # 兵种分布
     T.draw_text(s, tr("ui.brief_domain_fmt") % (f.air, f.sea, f.land,), (r.x, y), 11, T.TEXT_DIM)
-    y += 17
+    y += T.m(17)
     T.draw_text(s, tr("ui.brief_avg_hp_fmt") % (f.avg_hp, f.total_ammo,), (r.x, y), 11, T.TEXT_DIM)
-    y += 17
+    y += T.m(17)
     if f.interceptors:
         T.draw_text(s, tr("ui.brief_interceptors_fmt") % (f.interceptors,), (r.x, y), 11,
                     T.mix(T.CYAN, T.TEXT, 0.3))
-        y += 17
+        y += T.m(17)
     # 主要单位
     T.draw_text(s, tr("ui.brief_main_units"), (r.x, y), 11, T.TEXT_FAINT)
-    y += 16
+    y += T.m(16)
     for name, cls in f.top_units[:5]:
-        short = name[:12]
-        T.draw_text(s, short, (r.x, y), 11, T.TEXT)
-        T.draw_text(s, cls, (r.right, y), 11, T.TEXT_FAINT, anchor="topright")
-        y += 17
+        cls_w = T.text_width(cls, 11) + T.m(8)
+        T.draw_text(s, T.ellipsize(name, 11, r.width - cls_w), (r.x, y), 11, T.TEXT)
+        T.draw_text(s, T.ellipsize(cls, 11, T.m(120)), (r.right, y), 11, T.TEXT_FAINT,
+                    anchor="topright")
+        y += T.m(17)
 
 
 # --------------------------------------------------------------------------- #
 # 绘制：回顾
 # --------------------------------------------------------------------------- #
+def debrief_panel_rect(size: tuple[int, int]) -> pygame.Rect:
+    """战报回顾浮层的矩形（绘制与按钮定位共用）。"""
+    sw, sh = size
+    w = min(T.m(820), sw - T.m(100))
+    h = min(T.m(560), sh - T.m(70))
+    return pygame.Rect((sw - w) // 2, (sh - h) // 2, w, h)
+
+
+def debrief_button_rect(size: tuple[int, int]) -> pygame.Rect:
+    r = debrief_panel_rect(size)
+    bw, bh = T.m(260), T.m(44)
+    return pygame.Rect(r.centerx - bw // 2, r.bottom - bh - T.m(18), bw, bh)
+
+
 def draw_debrief(s: pygame.Surface, d: DebriefData, mouse: tuple[int, int],
                  btn: pygame.Rect) -> None:
     """绘制战斗回顾浮层。"""
     sw, sh = s.get_size()
-    w = min(820, sw - 100)
-    h = min(560, sh - 70)
-    r = pygame.Rect((sw - w) // 2, (sh - h) // 2, w, h)
+    r = debrief_panel_rect((sw, sh))
 
     dim = pygame.Surface((sw, sh), pygame.SRCALPHA)
     dim.fill((*T.mix(T.BG, (0, 0, 0), 0.55), 205))
     s.blit(dim, (0, 0))
 
     T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
-    T.draw_text(s, tr("over.stats"), (r.x + 26, r.y + 18), 12, T.CYAN, bold=True)
-    T.draw_text(s, d.title, (r.x + 26, r.y + 38), 22, T.TEXT, bold=True)
+    T.draw_text(s, tr("over.stats"), (r.x + T.m(26), r.y + T.m(18)), 12, T.CYAN, bold=True)
+    T.draw_text(s, T.ellipsize(d.title, 22, r.width - T.m(260), bold=True),
+                (r.x + T.m(26), r.y + T.m(38)), 22, T.TEXT, bold=True)
     if d.win is True:
         title, col = tr("ui.over.result_win"), T.GREEN
     elif d.win is False:
         title, col = tr("ui.over.result_lose"), T.RED
     else:
         title, col = tr("ui.over.result_draw"), T.AMBER
-    T.draw_text(s, title, (r.right - 26, r.y + 36), 26, col, bold=True, anchor="topright")
-    for i, line in enumerate(T.wrap_text(d.reason, 11, w - 52)[:2]):
-        T.draw_text(s, line, (r.x + 26, r.y + 70 + i * 16), 11, T.TEXT_DIM)
-    T.hline(s, r.x + 24, r.right - 24, r.y + 104, T.BORDER)
+    T.draw_text(s, title, (r.right - T.m(26), r.y + T.m(36)), 26, col, bold=True,
+                anchor="topright")
+    for i, line in enumerate(T.wrap_text(d.reason, 11, r.width - T.m(52))[:2]):
+        T.draw_text(s, line, (r.x + T.m(26), r.y + T.m(70) + i * T.m(16)), 11, T.TEXT_DIM)
+    T.hline(s, r.x + T.m(24), r.right - T.m(24), r.y + T.m(104), T.BORDER)
 
     # 交战效能对比
-    ty = r.y + 116
-    T.draw_text(s, tr("over.efficiency"), (r.x + 26, ty), 12, T.CYAN, bold=True)
+    ty = r.y + T.m(116)
+    T.draw_text(s, tr("over.efficiency"), (r.x + T.m(26), ty), 12, T.CYAN, bold=True)
     rows = [
         (tr("over.shots"), d.shots_blue, d.shots_red),
         (tr("over.hits"), d.hits_blue, d.hits_red),
@@ -349,48 +386,52 @@ def draw_debrief(s: pygame.Surface, d: DebriefData, mouse: tuple[int, int],
         (tr("over.losses"), d.casualties_blue, d.casualties_red),
         (tr("over.survivors"), d.survivors_blue, d.survivors_red),
     ]
-    yy = ty + 24
-    bar_x = r.x + 150
-    bar_w = (w - 320) // 2
+    yy = ty + T.m(24)
+    bar_x = r.x + T.m(150)
+    bar_w = (r.width - T.m(320)) // 2
+    bar_h = T.m(12)
     for label, bv, rv in rows:
-        T.draw_text(s, label, (r.x + 26, yy), 12, T.TEXT_DIM)
+        T.draw_text(s, label, (r.x + T.m(26), yy), 12, T.TEXT_DIM)
         # 蓝方条
         total = max(bv + rv, 1)
         bw = int(bar_w * bv / total)
-        pygame.draw.rect(s, T.PANEL_SUNK, pygame.Rect(bar_x, yy + 2, bar_w, 12),
+        pygame.draw.rect(s, T.PANEL_SUNK, pygame.Rect(bar_x, yy + T.m(2), bar_w, bar_h),
                          border_radius=3)
         if bw:
             pygame.draw.rect(s, T.side_color(Side.BLUE),
-                             pygame.Rect(bar_x, yy + 2, bw, 12), border_radius=3)
-        T.draw_text(s, str(bv), (bar_x + bar_w + 8, yy), 12, T.TEXT, mono=True)
+                             pygame.Rect(bar_x, yy + T.m(2), bw, bar_h), border_radius=3)
+        T.draw_text(s, str(bv), (bar_x + bar_w + T.m(8), yy), 12, T.TEXT, mono=True)
         # 红方条
-        rb_x = bar_x + bar_w + 80
+        rb_x = bar_x + bar_w + T.m(80)
         rw = int(bar_w * rv / total)
-        pygame.draw.rect(s, T.PANEL_SUNK, pygame.Rect(rb_x, yy + 2, bar_w, 12),
+        pygame.draw.rect(s, T.PANEL_SUNK, pygame.Rect(rb_x, yy + T.m(2), bar_w, bar_h),
                          border_radius=3)
         if rw:
             pygame.draw.rect(s, T.side_color(Side.RED),
-                             pygame.Rect(rb_x + bar_w - rw, yy + 2, rw, 12), border_radius=3)
-        T.draw_text(s, str(rv), (rb_x + bar_w + 8, yy), 12, T.TEXT, mono=True)
-        yy += 24
-    T.draw_text(s, tr("over.blue"), (bar_x, ty + 4), 11, T.side_color(Side.BLUE),
+                             pygame.Rect(rb_x + bar_w - rw, yy + T.m(2), rw, bar_h),
+                             border_radius=3)
+        T.draw_text(s, str(rv), (rb_x + bar_w + T.m(8), yy), 12, T.TEXT, mono=True)
+        yy += T.m(24)
+    T.draw_text(s, tr("over.blue"), (bar_x, ty + T.m(4)), 11, T.side_color(Side.BLUE),
                 bold=True)
-    T.draw_text(s, tr("over.red"), (bar_x + bar_w + 80, ty + 4), 11,
+    T.draw_text(s, tr("over.red"), (bar_x + bar_w + T.m(80), ty + T.m(4)), 11,
                 T.side_color(Side.RED), bold=True)
 
     # VP 曲线
-    cy = yy + 12
-    ch = 96
-    T.draw_text(s, tr("over.vp_curve"), (r.x + 26, cy), 12, T.CYAN, bold=True)
-    curve = pygame.Rect(r.x + 26, cy + 20, w - 52, ch)
+    cy = yy + T.m(12)
+    ch = T.m(96)
+    T.draw_text(s, tr("over.vp_curve"), (r.x + T.m(26), cy), 12, T.CYAN, bold=True)
+    curve = pygame.Rect(r.x + T.m(26), cy + T.m(20), r.width - T.m(52), ch)
     pygame.draw.rect(s, T.PANEL_SUNK, curve, border_radius=3)
     _draw_vp_curve(s, curve, d.vp_curve)
 
     # 要点
-    hy = curve.bottom + 12
-    T.draw_text(s, tr("over.highlights"), (r.x + 26, hy), 12, T.CYAN, bold=True)
+    hy = curve.bottom + T.m(12)
+    T.draw_text(s, tr("over.highlights"), (r.x + T.m(26), hy), 12, T.CYAN, bold=True)
+    text_x = r.x + T.m(76)
     for i, line in enumerate(d.highlights[:3]):
-        T.draw_text(s, "· " + line, (r.x + 76, hy), 11, T.TEXT_DIM)
+        T.draw_text(s, T.ellipsize("· " + line, 11, r.right - T.m(26) - text_x),
+                    (text_x, hy + i * T.m(16)), 11, T.TEXT_DIM)
 
     # 按钮
     hover = btn.collidepoint(mouse)
@@ -435,4 +476,6 @@ def _draw_vp_curve(s: pygame.Surface, rect: pygame.Rect,
 
 __all__ = ["ForceSummary", "BriefingData", "DebriefData",
            "summarize_force", "build_briefing", "build_debrief",
+           "briefing_panel_rect", "briefing_button_rect",
+           "debrief_panel_rect", "debrief_button_rect",
            "draw_briefing", "draw_debrief"]

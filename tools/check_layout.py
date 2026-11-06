@@ -201,6 +201,23 @@ def _check_all_screens(app: App) -> list[str]:
     app.mode = "menu"
     app.debrief = None
     _scan("主菜单")
+
+    # -- 战役选择浮层 --
+    # 这里曾漏传坐标（把字号 11 当成了位置），一开战役菜单就抛 TypeError。
+    # 只有真的有战役数据时才会走到那一行，所以必须在这里显式画一次。
+    app.show_campaign_menu = True
+    app._scan_campaigns()
+    try:
+        app.draw()
+        rows = getattr(app, "_campaign_rows", [])
+        for rid, row in enumerate(r for r, _ in rows):
+            if row.right > app.w or row.bottom > app.h or row.left < 0 or row.top < 0:
+                problems.append(f"[战役菜单] 第 {rid + 1} 行越界：{row}")
+        print(f"  [OK] 战役菜单可绘制（{len(rows)} 个战役）")
+    except Exception as e:                       # noqa: BLE001
+        problems.append(f"[战役菜单] 绘制抛出异常：{e!r}")
+    finally:
+        app.show_campaign_menu = False
     # 主菜单的按钮是独立的一套矩形（_menu_*_rect），也要查
     menu_rects = [
         ("菜单/开始作战", app._menu_start_rect()),
@@ -276,9 +293,8 @@ def _check_min_size(app: App) -> list[str]:
     return problems
 
 
-def main() -> int:
-    app = App()
-
+def _run_all_checks(app: App) -> tuple[list[str], int, int]:
+    """在当前字号档位下跑完整套检查，返回 (问题列表, 元素数, 设置控件数)。"""
     problems: list[str] = []
     problems.extend(_check_all_screens(app))
     problems.extend(_check_min_size(app))
@@ -291,6 +307,12 @@ def main() -> int:
     panel_elements: list[tuple[str, pygame.Rect]] = []
     for rect, tid in p._theme_buttons:
         panel_elements.append((f"主题/{tid}", rect))
+    for rect, sid in p._scale_buttons:
+        panel_elements.append((f"字号/{sid}", rect))
+    for rect, mode in p._shape_buttons:
+        panel_elements.append((f"形状/{mode}", rect))
+    for rect, pid in p._icon_buttons:
+        panel_elements.append((f"图标包/{pid}", rect))
     for rect, code in p._lang_buttons:
         panel_elements.append((f"语言/{code}", rect))
     if p._sound_btn.width > 0:
@@ -311,6 +333,13 @@ def main() -> int:
             n2, r2 = panel_elements[j]
             if _overlaps(r1, r2):
                 problems.append(f"设置面板重叠：{n1} {r1} ↔ {n2} {r2}")
+    # 控件必须落在面板矩形内——语言行有 8 种语言，放大档位下最容易
+    # 「最后一个按钮跑到面板外」，而这种越界在窗口边界检查里是看不出来的
+    pr = p.rect
+    for name, rect in panel_elements:
+        if rect.left < pr.left or rect.top < pr.top or \
+                rect.right > pr.right or rect.bottom > pr.bottom:
+            problems.append(f"设置面板控件越界：{name} {rect}（面板 {pr}）")
     # 设置面板的键位行之间不应重叠
     for i in range(len(p.rows)):
         for j in range(i + 1, len(p.rows)):
@@ -349,14 +378,33 @@ def main() -> int:
         if blocker:
             problems.append(f"设置面板控件「{name}」被「{blocker}」遮挡，点击无效")
 
-    print(f"检查元素 {len(elements)} 个（顶栏 / 侧栏 / 系统菜单）"
-          f" + {len(panel_elements)} 个（设置面板）")
+    return problems, len(elements), len(panel_elements)
+
+
+def main() -> int:
+    """三档字号各跑一遍。
+
+    无障碍的验收标准是「三档下都不重叠、不截断」——只测标准档等于没测：
+    真正的布局风险恰恰在放大之后才出现。
+    """
+    from ui import theme as T
+
+    problems: list[str] = []
+    for scale_id in T.font_scale_ids():
+        T.set_font_scale(scale_id)
+        app = App()
+        probs, n_elem, n_panel = _run_all_checks(app)
+        problems.extend(f"[{scale_id}] {pr}" for pr in probs)
+        print(f"  {scale_id:8s} 检查元素 {n_elem} 个（顶栏 / 侧栏 / 系统菜单）"
+              f" + {n_panel} 个（设置面板）")
+    T.set_font_scale("standard")
+
     if problems:
         print(f"\n发现 {len(problems)} 个布局问题：")
         for pr in problems:
             print("  [FAIL]", pr)
         return 1
-    print("布局检查通过：无重叠、无越界、无遮挡")
+    print("布局检查通过（标准 / 大 / 特大）：无重叠、无越界、无遮挡")
     return 0
 
 

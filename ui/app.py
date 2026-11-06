@@ -49,7 +49,8 @@ from core.tutorial import Tutorial, build_tutorial
 
 from . import theme as T
 from .audio import AudioManager
-from .briefing import (BriefingData, DebriefData, build_briefing, build_debrief,
+from .briefing import (BriefingData, DebriefData, briefing_button_rect,
+                       build_briefing, build_debrief, debrief_button_rect,
                        draw_briefing, draw_debrief)
 from .editor import Editor
 from .importdlg import ImportDialog
@@ -68,9 +69,29 @@ MAP_DIR = _paths.maps_dir()
 ARMORY = _paths.armory_path()
 ICON_DIR = _paths.icon_dir()
 
+# 顶栏 / 底栏 / 侧栏的**基准**尺寸（标准字号档）。
+# 实际取值走下面的 top_h() / bottom_h() / side_w()——字号放大后侧栏要变宽、
+# 顶栏要变高，写死的常量会让文字顶出边界。界面代码一律调用函数。
 TOP_H = 50
 BOTTOM_H = 26
 SIDE_W = 400
+
+
+def top_h() -> int:
+    """顶栏高度（当前字号档）。"""
+    return T.m(TOP_H)
+
+
+def bottom_h() -> int:
+    """底栏高度（当前字号档）。"""
+    return T.m(BOTTOM_H)
+
+
+def side_w() -> int:
+    """侧栏宽度（当前字号档）。"""
+    return T.m(SIDE_W)
+
+
 MIN_W, MIN_H = 1180, 740
 
 #: 相克通道（core.counter 的中文键）→ 界面词条
@@ -224,6 +245,8 @@ class App:
         i18n.load_language_dir(_paths.lang_dir())
         i18n.load_language_dir(_paths.user_lang_dir())
         self._apply_theme(self.cfg.theme)
+        self._apply_font_scale(self.cfg.font_scale)
+        self._apply_shape_cues(self.cfg.shape_cues)
         self._apply_language(self.cfg.language)
         self.audio = AudioManager(enabled=self.cfg.sound_enabled,
                                   volume=self.cfg.volume)
@@ -318,7 +341,9 @@ class App:
 
     # -- 菜单按钮几何 -----------------------------------------------------
     def _menu_button_y(self) -> int:
-        return 420 + 122
+        # 卡片区底边 + 24。字号放大后卡片变高，按钮必须跟着下移——
+        # 早先写死 542，特大档下卡片会压到按钮上。
+        return self._menu_cards_area().bottom + T.m(24)
 
     # -- 主菜单想定列表：网格与滚动 --------------------------------------
     def _menu_cards_area(self) -> pygame.Rect:
@@ -327,19 +352,19 @@ class App:
         右侧为机制速览 + 阵营选择，预留 320px——窄窗口下右侧面板
         可能显示不下，所以这里只保证卡片区不挤压它。
         """
-        right_reserved = 320          # 右侧机制速览 + 阵营选择的宽度
-        area_w = max(320, self.w - 60 - right_reserved - 20)
-        return pygame.Rect(60, 200, area_w, 318)
+        right_reserved = T.m(320)     # 右侧机制速览 + 阵营选择的宽度
+        area_w = max(T.m(320), self.w - T.m(60) - right_reserved - T.m(20))
+        return pygame.Rect(T.m(60), T.m(200), area_w, T.m(318))
 
     def _menu_grid(self) -> tuple[int, int, int, int]:
         """返回 (列数, 卡片宽, 卡片高, 行高)。"""
         area = self._menu_cards_area()
-        card_w = 340
-        gap = 16
+        card_w = T.m(340)
+        gap = T.m(16)
         cols = max(1, area.width // (card_w + gap))
         card_w = min(card_w, (area.width - (cols - 1) * gap) // cols)
-        card_h = 148
-        return cols, card_w, card_h, card_h + 10
+        card_h = T.m(148)
+        return cols, card_w, card_h, card_h + T.m(10)
 
     def _menu_card_rect(self, index: int) -> pygame.Rect | None:
         """第 index 张想定卡片的屏幕矩形；不在可视行内则返回 None。
@@ -353,7 +378,7 @@ class App:
         vis_rows = max(1, area.height // row_h)
         if row < self.menu_scroll or row >= self.menu_scroll + vis_rows:
             return None
-        return pygame.Rect(area.x + col * (card_w + 16),
+        return pygame.Rect(area.x + col * (card_w + T.m(16)),
                            area.y + (row - self.menu_scroll) * row_h, card_w, card_h)
 
     def _menu_card_at(self, pos: tuple[int, int]) -> int:
@@ -372,14 +397,23 @@ class App:
     SIDE_CARD_STEP = 50
     SIDE_CARD_H = 48
 
+    def _side_card_top(self) -> int:
+        """阵营卡片区顶边（当前字号档）。
+
+        基准值与卡片区底边对齐：卡片区 200+318=518，按钮行在 542，
+        阵营卡片放在 432 起——放大后必须跟着卡片区一起走，
+        否则会插到想定卡片中间。
+        """
+        return self._menu_cards_area().bottom - T.m(86)
+
     def _menu_side_rects(self) -> list[tuple[Side, pygame.Rect]]:
         """两个阵营卡片的矩形。宽度依赖右侧面板，窄窗口下保底 280。"""
         area = self._menu_cards_area()
-        px = area.right + 18
-        pw = self.w - px - 48
-        side_w = min(pw if pw >= 220 else 280, 320)
-        return [(side, pygame.Rect(px, self.SIDE_CARD_Y + j * self.SIDE_CARD_STEP,
-                                   side_w, self.SIDE_CARD_H))
+        px = area.right + T.m(18)
+        pw = self.w - px - T.m(48)
+        side_w = min(pw if pw >= T.m(220) else T.m(280), T.m(320))
+        return [(side, pygame.Rect(px, self._side_card_top() + j * T.m(self.SIDE_CARD_STEP),
+                                   side_w, T.m(self.SIDE_CARD_H)))
                 for j, side in enumerate((Side.BLUE, Side.RED))]
 
     def _menu_side_at(self, pos: tuple[int, int]) -> Side | None:
@@ -412,11 +446,11 @@ class App:
 
     def _menu_import_rect(self) -> pygame.Rect:
         """主菜单「导入想定」按钮。"""
-        return pygame.Rect(self.w - 60 - 110, 168, 110, 24)
+        return pygame.Rect(self.w - T.m(60) - T.m(110), T.m(168), T.m(110), T.m(24))
 
     def _menu_replay_rect(self) -> pygame.Rect:
         """主菜单「导入回放」按钮（在「导入想定」左侧）。"""
-        return pygame.Rect(self.w - 60 - 110 - 8 - 110, 168, 110, 24)
+        return pygame.Rect(self.w - T.m(60) - T.m(226), T.m(168), T.m(110), T.m(24))
 
     def _replays_dir(self) -> str:
         return _paths.replays_dir()
@@ -434,19 +468,19 @@ class App:
         self._menu_scroll_to_index()
 
     def _menu_start_rect(self) -> pygame.Rect:
-        return pygame.Rect(60, self._menu_button_y(), 240, 46)
+        return pygame.Rect(T.m(60), self._menu_button_y(), T.m(240), T.m(46))
 
     def _menu_edit_rect(self) -> pygame.Rect:
-        return pygame.Rect(316, self._menu_button_y(), 200, 46)
+        return pygame.Rect(T.m(316), self._menu_button_y(), T.m(200), T.m(46))
 
     def _menu_tutorial_rect(self) -> pygame.Rect:
-        return pygame.Rect(532, self._menu_button_y(), 170, 46)
+        return pygame.Rect(T.m(532), self._menu_button_y(), T.m(170), T.m(46))
 
     def _menu_campaign_rect(self) -> pygame.Rect:
-        return pygame.Rect(718, self._menu_button_y(), 130, 46)
+        return pygame.Rect(T.m(718), self._menu_button_y(), T.m(130), T.m(46))
 
     def _menu_settings_rect(self) -> pygame.Rect:
-        return pygame.Rect(864, self._menu_button_y(), 110, 46)
+        return pygame.Rect(T.m(864), self._menu_button_y(), T.m(110), T.m(46))
 
     # ------------------------------------------------------------------ #
     # 教学想定
@@ -523,6 +557,41 @@ class App:
         ok = T.set_theme(theme_id)
         if ok:
             self.cfg.set_theme(T.current_theme().id)
+            # 形状标识默认跟着主题走（色盲主题下自动启用），
+            # 换主题可能改变实际取值，棋子底板必须重烘焙。
+            if self.mapview is not None:
+                self.mapview._token_cache.clear()
+        return ok
+
+    def _apply_font_scale(self, scale_id: str) -> bool:
+        """切换字号档位（立即生效）。
+
+        主题层的 `px()` / `m()` 会换算到新档位，所以这里不需要重建任何界面——
+        但棋子精灵缓存里的**图内文字**（放大后显示的单位缩写）是按旧字号
+        烘焙的，得让它失效。
+        """
+        ok = T.set_font_scale(scale_id)
+        if ok:
+            self.cfg.set_font_scale(T.font_scale_id())
+            if self.mapview is not None:
+                self.mapview._token_cache.clear()
+            # 顶栏高度、侧栏宽度、按钮尺寸都跟着档位变——重新排一次版面，
+            # 否则地图仍按旧尺寸铺设，右边会留一条空白或压到侧栏底下。
+            if self.state is not None:
+                self._layout_game()
+        return ok
+
+    def _apply_shape_cues(self, mode: str) -> bool:
+        """切换形状标识（立即生效）。
+
+        界面主题是「跟着主题走」时，切主题也可能改变这里的实际取值，
+        所以 `_apply_theme` 里也要清一次棋子缓存。
+        """
+        ok = T.set_shape_mode(mode)
+        if ok:
+            self.cfg.set_shape_cues(mode)
+            if self.mapview is not None:
+                self.mapview._token_cache.clear()
         return ok
 
     def _apply_language(self, lang: str) -> bool:
@@ -565,6 +634,8 @@ class App:
                 on_sound=self._apply_sound,
                 on_language=self._apply_language,
                 on_icons=self._apply_icon_pack,
+                on_font_scale=self._apply_font_scale,
+                on_shape_cues=self._apply_shape_cues,
             )
         self.show_settings = True
 
@@ -750,46 +821,54 @@ class App:
         if not hasattr(self, "campaigns"):
             self._scan_campaigns()
         camps = getattr(self, "campaigns", [])
-        w = 620
-        h = 130 + max(1, len(camps)) * 86
-        r = pygame.Rect((self.w - w) // 2, max(60, (self.h - h) // 2), w, h)
+        # 尺寸全部走 T.m()：放大字号后 620×86 的固定尺寸会装不下三行文字
+        w = T.m(620)
+        row_h = T.m(78)
+        step = row_h + T.m(8)
+        h = T.m(74) + max(1, len(camps)) * step + T.m(56)
+        r = pygame.Rect((self.w - w) // 2, max(T.m(60), (self.h - h) // 2), w, h)
         dim = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
         dim.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 200))
         s.blit(dim, (0, 0))
         T.panel(s, r, T.mix(T.PANEL, T.PURPLE, 0.15), T.PURPLE, radius=6)
-        T.draw_text(s, tr("ui.campaign_title"), (r.x + 22, r.y + 16), 17, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.campaign_title"), (r.x + T.m(22), r.y + T.m(16)), 17,
+                    T.TEXT, bold=True)
         T.draw_text(s, tr("ui.campaign_desc"),
-                    (r.x + 22, r.y + 40), 11, T.TEXT_FAINT)
-        T.hline(s, r.x + 20, r.right - 20, r.y + 62, T.BORDER)
+                    (r.x + T.m(22), r.y + T.m(42)), 11, T.TEXT_FAINT)
+        T.hline(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(64), T.BORDER)
 
         self._campaign_rows: list[tuple[pygame.Rect, CampaignDef]] = []
         if not camps:
-            T.draw_text(s, tr("ui.campaign_empty"), (r.x + 22, r.y + 84),
+            T.draw_text(s, tr("ui.campaign_empty"), (r.x + T.m(22), r.y + T.m(86)),
                         12, T.TEXT_DIM)
-        y = r.y + 74
+        y = r.y + T.m(76)
         for c in camps:
             prog = load_progress(self._campaign_root(), c.id)
-            row = pygame.Rect(r.x + 16, y, r.width - 32, 78)
+            row = pygame.Rect(r.x + T.m(16), y, r.width - T.m(32), row_h)
             hover = row.collidepoint(self.mouse)
             pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL_SUNK, row, border_radius=4)
             pygame.draw.rect(s, T.PURPLE if hover else T.BORDER, row, 1, border_radius=4)
-            T.draw_text(s, c.name, (row.x + 12, row.y + 8), 15, T.TEXT, bold=True)
+            T.draw_text(s, T.ellipsize(c.name, 15, row.width - T.m(180), bold=True),
+                        (row.x + T.m(12), row.y + T.m(8)), 15, T.TEXT, bold=True)
             if c.author:
-                T.draw_text(s, tr("ui.author_of") % (c.author,), (row.right - 12, row.y + 11), 11,
+                T.draw_text(s, tr("ui.author_of") % (c.author,), (row.right - T.m(12), row.y + T.m(11)), 11,
                             T.TEXT_FAINT, anchor="topright")
-            T.draw_text(s, tr("ui.campaign_step_desc") % (c.total_steps, c.description[:52],),
-                        11, T.TEXT_DIM)
+            # 描述行（曾漏了坐标、把字号 11 传成了位置，一开战役菜单就崩）
+            T.draw_text(s, T.ellipsize(
+                            tr("ui.campaign_step_desc") % (c.total_steps, c.description),
+                            11, row.width - T.m(24)),
+                        (row.x + T.m(12), row.y + T.m(30)), 11, T.TEXT_DIM)
             if prog is not None:
                 done = prog.step_index
                 T.draw_text(s, tr("ui.campaign_progress") % (done, c.total_steps, prog.blue_vp, prog.red_vp,),
-                            (row.x + 12, row.y + 50), 11, T.CYAN)
-                T.draw_text(s, tr("ui.click_continue"), (row.right - 12, row.y + 50), 11, T.CYAN,
+                            (row.x + T.m(12), row.y + T.m(52)), 11, T.CYAN)
+                T.draw_text(s, tr("ui.click_continue"), (row.right - T.m(12), row.y + T.m(52)), 11, T.CYAN,
                             anchor="topright")
             else:
-                T.draw_text(s, tr("ui.click_start"), (row.right - 12, row.y + 50), 11, T.TEXT_FAINT,
+                T.draw_text(s, tr("ui.click_start"), (row.right - T.m(12), row.y + T.m(52)), 11, T.TEXT_FAINT,
                             anchor="topright")
             self._campaign_rows.append((row, c))
-            y += 86
+            y += step
 
     def _click_campaign_menu(self, pos: tuple[int, int]) -> None:
         for row, c in getattr(self, "_campaign_rows", []):
@@ -946,8 +1025,9 @@ class App:
 
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
-        T.draw_text(s, tr("ui.mechanics_brief"), (r.x + 16, r.y + 14), 13, T.CYAN, bold=True)
-        T.hline(s, r.x + 16, r.right - 16, r.y + 36, T.BORDER)
+        T.draw_text(s, tr("ui.mechanics_brief"), (r.x + T.m(16), r.y + T.m(14)), 13,
+                    T.CYAN, bold=True)
+        T.hline(s, r.x + T.m(16), r.right - T.m(16), r.y + T.m(36), T.BORDER)
         items = [
             (tr("ui.menu.feat_recon_title"), tr("ui.menu.feat_recon_desc")),
             (tr("ui.menu.feat_ew_title"), tr("ui.menu.feat_ew_desc")),
@@ -955,20 +1035,21 @@ class App:
             (tr("ui.menu.feat_standoff_title"), tr("ui.menu.feat_standoff_desc")),
             (tr("ui.menu.feat_space_title"), tr("ui.menu.feat_space_desc")),
         ]
-        yy = r.y + 48
+        yy = r.y + T.m(48)
         for title, desc in items:
-            if yy > r.bottom - 30:
+            if yy > r.bottom - T.m(30):
                 break
-            pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x + 16, yy + 3, 2, 10))
-            T.draw_text(s, title, (r.x + 24, yy), 12, T.TEXT, bold=True)
-            yy += 17
+            pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x + T.m(16), yy + T.m(3), 2, T.m(10)))
+            T.draw_text(s, T.ellipsize(title, 12, r.width - T.m(40), bold=True),
+                        (r.x + T.m(24), yy), 12, T.TEXT, bold=True)
+            yy += T.m(17)
             # 换行宽度必须按**绘制字号**算：按 10 号排、用 11 号画，
             # 拉丁字母会宽出一成，右侧被切掉。
-            room = max(0, (r.bottom - 12 - yy) // 14)
-            for line in T.wrap_text(desc, 11, r.width - 40)[:room]:
-                T.draw_text(s, line, (r.x + 24, yy), 11, T.TEXT_DIM)
-                yy += 14
-            yy += 6
+            room = max(0, (r.bottom - T.m(12) - yy) // T.lh(11))
+            for line in T.wrap_text(desc, 11, r.width - T.m(40))[:room]:
+                T.draw_text(s, line, (r.x + T.m(24), yy), 11, T.TEXT_DIM)
+                yy += T.lh(11)
+            yy += T.m(6)
 
     def _draw_menu(self) -> None:
         s = self.screen
@@ -978,12 +1059,13 @@ class App:
             pygame.draw.line(s, T.GRID, (x, 0), (x, self.h))
         for y in range(0, self.h, 48):
             pygame.draw.line(s, T.GRID, (0, y), (self.w, y))
-        T.draw_text(s, tr("ui.game_title"), (60, 54), 40, T.TEXT, bold=True)
-        T.draw_text(s, tr("ui.game_subtitle"), (62, 104), 15, T.CYAN)
-        T.draw_text(s, tr("ui.game_tagline"), (62, 128), 12, T.TEXT_DIM)
-        T.hline(s, 60, self.w - 60, 158, T.BORDER)
+        T.draw_text(s, tr("ui.game_title"), (T.m(60), T.m(54)), 40, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.game_subtitle"), (T.m(62), T.m(104)), 15, T.CYAN)
+        T.draw_text(s, tr("ui.game_tagline"), (T.m(62), T.m(128)), 12, T.TEXT_DIM)
+        T.hline(s, T.m(60), self.w - T.m(60), T.m(158), T.BORDER)
 
-        T.draw_text(s, i18n.tr("menu.select_scenario"), (60, 176), 13, T.TEXT_DIM, bold=True)
+        T.draw_text(s, i18n.tr("menu.select_scenario"), (T.m(60), T.m(176)), 13,
+                    T.TEXT_DIM, bold=True)
         # 导入按钮：把社区想定包导入用户目录
         self._menu_import_btn = self._menu_import_rect()
         _imp_hover = self._menu_import_btn.collidepoint(self.mouse)
@@ -1026,52 +1108,78 @@ class App:
                 T.panel(s, r, T.PANEL_HI, T.BORDER_HI, radius=5)
             else:
                 T.panel(s, r, T.PANEL, T.BORDER, radius=5)
-            # 卡片内元素按固定行序排布，避免互相重叠：
-            #   标题行 → 规格行 → 元数据行 → 描述（最多 2 行）
-            head_y = r.y + 12
+            # 卡片内元素按游标**顺序流排**，避免互相重叠：
+            #   角标（仅教学）→ 标题 → 规格 → 元数据 → 标签 → 描述
+            # 绝不能写成 head_y + 38 / +56 这类固定偏移——字号一放大，
+            # 标题行本身变高，下面几行还停在原处就会压上去。
+            pad_x = T.m(16)
+            text_w = r.width - T.m(32)
+            yy = r.y + T.m(10)
             if is_tut:
                 # 教学想定：左上角角标 + 高亮边框
                 pygame.draw.rect(s, T.GREEN, r, 1, border_radius=5)
-                badge = pygame.Rect(r.x + 12, head_y, 56, 17)
+                badge_h = T.lh(11)
+                badge = pygame.Rect(r.x + T.m(12), yy, T.m(56), badge_h)
                 pygame.draw.rect(s, T.mix(T.PANEL, T.GREEN, 0.22), badge, border_radius=3)
                 T.draw_text(s, i18n.tr("menu.tutorial_tag"), badge.center, 11,
                             T.mix(T.GREEN, T.WHITE, 0.4), anchor="center")
-            T.draw_text(s, sc["name"], (r.x + 16, head_y + (20 if is_tut else 0)), 16,
-                        T.TEXT, bold=True)
+                yy += badge_h + T.m(3)
+            T.draw_text(s, T.ellipsize(sc["name"], 16, text_w, bold=True),
+                        (r.x + pad_x, yy), 16, T.TEXT, bold=True)
+            yy += T.lh(16)
             T.draw_text(s, tr("ui.map_size_fmt") % (sc['size'][0], sc['size'][1], sc['tile_km'],) +
                             tr("ui.map_turns_fmt") % (sc['turns'], sc['blue'], sc['red']),
-                        (r.x + 16, head_y + 38), 11, T.TEXT_FAINT)
+                        (r.x + pad_x, yy), 11, T.TEXT_FAINT)
+            yy += T.lh(11)
             # 元数据：难度标签 + 作者 + 事件数（同一行内横向排布）
             meta = sc.get("meta") or {}
             diff = meta.get("difficulty", "")
-            meta_y = head_y + 56
-            bx = r.x + 16
+            meta_y = yy
+            row_h = T.lh(11)
+            bx = r.x + pad_x
             if diff:
                 accent = DIFFICULTY_ACCENTS.get(diff, "")
                 col_c = getattr(T, accent.upper()) if accent else T.CYAN
                 label = difficulty_label(diff)
-                bw = T.text_width(label, 11) + 14
-                chip = pygame.Rect(bx, meta_y, bw, 16)
+                bw = T.text_width(label, 11) + T.m(14)
+                chip = pygame.Rect(bx, meta_y, bw, row_h)
                 # 芯片底色由主题派生，浅色主题下不会变成深色块
                 pygame.draw.rect(s, T.button_fill(col_c), chip,
                                  border_radius=3)
                 pygame.draw.rect(s, col_c, chip, 1, border_radius=3)
                 T.draw_text(s, label, chip.center, 11, col_c, anchor="center")
-                bx += bw + 6
-            if meta.get("author"):
-                T.draw_text(s, tr("ui.author_fmt") % (meta['author'],), (bx, meta_y + 2), 11, T.TEXT_FAINT)
+                bx += bw + T.m(6)
+            # 事件数是右对齐的，作者行必须先把它让出来，
+            # 否则长作者名会直接压到「脚本事件 N 条」上
+            events_txt = ""
             if sc.get("events"):
-                T.draw_text(s, tr("ui.events_count_fmt") % (sc['events'],), (r.right - 16, meta_y + 2), 11,
+                events_txt = tr("ui.events_count_fmt") % (sc['events'],)
+            reserve = (T.text_width(events_txt, 11) + T.m(12)) if events_txt else 0
+            if meta.get("author"):
+                T.draw_text(s, T.ellipsize(tr("ui.author_fmt") % (meta['author'],), 11,
+                                           r.right - pad_x - bx - reserve),
+                            (bx, meta_y), 11, T.TEXT_FAINT)
+            if events_txt:
+                T.draw_text(s, events_txt, (r.right - pad_x, meta_y), 11,
                             T.PURPLE, anchor="topright")
+            yy += row_h + T.m(3)
             # 标签行（单独一行，不与难度标签重叠）
             # 注意：循环变量不能用 i——外层 i 是想定索引，被覆盖会导致悬停高亮错位
-            for ti, tag in enumerate(meta.get("tags", [])[:3]):
-                tx = r.x + 16 + ti * 62
-                T.draw_text(s, f"#{tag}", (tx, meta_y + 20), 11, T.mix(T.CYAN, T.TEXT_DIM, 0.5))
-            # 描述：放在元数据下方，最多 1 行（卡片高度有限，多了会挤到底部提示）
-            yy = meta_y + 36
-            for line in T.wrap_text(sc["desc"], 11, r.width - 32)[:1]:
-                T.draw_text(s, line, (r.x + 16, yy), 11, T.TEXT_DIM)
+            tag_x = r.x + pad_x
+            for tag in meta.get("tags", [])[:3]:
+                chip_txt = f"#{tag}"
+                if tag_x + T.text_width(chip_txt, 11) > r.right - pad_x:
+                    break
+                T.draw_text(s, chip_txt, (tag_x, yy), 11,
+                            T.mix(T.CYAN, T.TEXT_DIM, 0.5))
+                tag_x += T.text_width(chip_txt, 11) + T.m(10)
+            yy += T.lh(11)
+            # 描述：放在标签下方，最多 1 行（卡片高度有限，多了会挤到底部提示）
+            # 底部提示是绝对定位的，描述不能越过它——放大档位下二者只差几个像素
+            hint_y = r.bottom - T.m(20)
+            if yy + T.lh(11) <= hint_y:
+                for line in T.wrap_text(sc["desc"], 11, text_w)[:1]:
+                    T.draw_text(s, line, (r.x + pad_x, yy), 11, T.TEXT_DIM)
             # 底部提示：选中态显示「已选中」，悬停但未选中显示「点击选择」
             if active:
                 hint, hint_col = tr("ui.menu.picked"), T.CYAN
@@ -1079,30 +1187,31 @@ class App:
                 hint, hint_col = tr("ui.menu.click_pick"), T.mix(T.CYAN, T.TEXT_DIM, 0.4)
             else:
                 hint, hint_col = tr("ui.menu.click_pick"), T.TEXT_FAINT
-            T.draw_text(s, hint, (r.x + 16, r.bottom - 20), 11, hint_col)
+            T.draw_text(s, T.ellipsize(hint, 11, text_w), (r.x + pad_x, hint_y),
+                        11, hint_col)
 
         # 滚动条：想定多于可视行数时才出现
         if max_scroll > 0:
-            track = pygame.Rect(area.right - 6, area.y, 4, area.height)
+            track = pygame.Rect(area.right - T.m(6), area.y, T.m(4), area.height)
             pygame.draw.rect(s, T.PANEL_SUNK, track, border_radius=2)
-            knob_h = max(24, int(track.height * vis_rows / max(1, vis_rows + max_scroll)))
+            knob_h = max(T.m(24), int(track.height * vis_rows / max(1, vis_rows + max_scroll)))
             knob_y = track.y + int((track.height - knob_h)
                                    * (self.menu_scroll / max(1, max_scroll)))
-            pygame.draw.rect(s, T.BORDER_HI, pygame.Rect(track.x, knob_y, 4, knob_h),
+            pygame.draw.rect(s, T.BORDER_HI, pygame.Rect(track.x, knob_y, T.m(4), knob_h),
                              border_radius=2)
             T.draw_text(s, f"{self.menu_index + 1}/{len(self.scenarios)}",
-                        (area.right - 14, area.bottom + 4), 11, T.TEXT_FAINT,
+                        (area.right - T.m(14), area.bottom + T.m(4)), 11, T.TEXT_FAINT,
                         anchor="topright")
 
         # 右侧机制速览（窄窗口下允许省略，但不能整块消失）
-        px = area.right + 18
-        pw = self.w - px - 48
-        if pw >= 220:
-            self._draw_menu_features(s, pygame.Rect(px, 200, pw, 210))
+        px = area.right + T.m(18)
+        pw = self.w - px - T.m(48)
+        if pw >= T.m(220):
+            self._draw_menu_features(s, pygame.Rect(px, area.y, pw, T.m(210)))
 
         # 阵营选择（放在右侧面板下方）
         side_x = px
-        T.draw_text(s, tr("ui.select_side"), (side_x, self.SIDE_CARD_Y - 18),
+        T.draw_text(s, tr("ui.select_side"), (side_x, self._side_card_top() - T.m(18)),
                     T.FS_LABEL, T.TEXT_DIM, bold=True)
         for (side, label, desc), (_sd, r) in zip([
             (Side.BLUE, tr("ui.menu.side_blue_name"), tr("ui.menu.side_blue_desc")),
@@ -1117,19 +1226,21 @@ class App:
                 T.panel(s, r, T.PANEL_HI, T.BORDER_HI, radius=4)
             else:
                 T.panel(s, r, T.PANEL, T.BORDER, radius=4)
-            pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + 10, r.y + 9, 4, 24))
-            T.draw_text(s, label, (r.x + 22, r.y + 2), 14, T.TEXT, bold=True)
+            pygame.draw.rect(s, T.side_color(side), pygame.Rect(r.x + T.m(10), r.y + T.m(9),
+                                                               T.m(4), T.m(24)))
+            T.draw_text(s, T.ellipsize(label, 14, r.width - T.m(46), bold=True),
+                        (r.x + T.m(22), r.y + T.m(2)), 14, T.TEXT, bold=True)
             # 描述自动换行——右栏可能只有 240px 宽，硬截断会把末字切掉。
             # 只留两行且字号降到 FS_SMALL-1：德语/俄语比中文长得多，
             # 11 号两行会顶出卡片下沿。
-            for k, line in enumerate(T.wrap_text(desc, T.FS_SMALL, r.width - 32)[:2]):
-                T.draw_text(s, line, (r.x + 22, r.y + 22 + k * 11), T.FS_SMALL - 1,
-                            T.TEXT_DIM)
+            for k, line in enumerate(T.wrap_text(desc, T.FS_SMALL, r.width - T.m(32))[:2]):
+                T.draw_text(s, line, (r.x + T.m(22), r.y + T.m(22) + k * T.m(11)),
+                            T.FS_SMALL - 1, T.TEXT_DIM)
             # 提示：已选 / 可点击
             tip = tr("ui.menu.picked") if active else (
                 tr("ui.menu.click_pick") if hovered else "")
             if tip:
-                T.draw_text(s, tip, (r.right - 12, r.y + 6), 10,
+                T.draw_text(s, tip, (r.right - T.m(12), r.y + T.m(6)), 10,
                             T.CYAN if active else T.mix(T.CYAN, T.TEXT_DIM, 0.4),
                             anchor="topright")
 
@@ -1327,7 +1438,8 @@ class App:
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()
-        map_rect = pygame.Rect(0, TOP_H, self.w - SIDE_W, self.h - TOP_H - BOTTOM_H)
+        map_rect = pygame.Rect(0, top_h(), self.w - side_w(),
+                               self.h - top_h() - bottom_h())
         if self.mapview is None:
             self.mapview = MapView(map_rect, self.state)
         else:
@@ -1335,9 +1447,15 @@ class App:
             self.mapview.state = self.state
         self.mapview.fit()
         self._build_buttons()
-        side_x = self.w - SIDE_W
+        side_x = self.w - side_w()
+        # 日志视图的矩形每帧都要跟着走——字号档位一换，侧栏宽度就变了，
+        # 只在小号为 None 时建一次会让它一直停在旧尺寸上。
+        log_rect = pygame.Rect(side_x + T.m(12), top_h() + T.m(48),
+                               side_w() - T.m(24), T.m(200))
         if self.logview is None:
-            self.logview = LogView(pygame.Rect(side_x + 12, TOP_H + 48, SIDE_W - 24, 200), size=12)
+            self.logview = LogView(log_rect, size=12)
+        else:
+            self.logview.rect = log_rect
 
     def _build_buttons(self) -> None:
         """构建顶栏按钮。
@@ -1346,38 +1464,41 @@ class App:
         避免出现「后建按钮压在先建按钮上」导致点不到的情况。
         """
         self.buttons = []
-        x = self.w - 14
+        x = self.w - T.m(14)
         specs = [
             (i18n.tr("top.end_turn"), self.end_turn, "primary", "end_turn", 96),
             (i18n.tr("top.help"), self.toggle_help, "ghost", "help", 62),
         ]
+        bh = T.m(32)
+        by = T.m(9)
         for label, cb, kind, act, width in specs:
-            x -= width
-            btn = Button(pygame.Rect(x, 9, width, 32), label, cb, kind,
+            x -= T.m(width)
+            btn = Button(pygame.Rect(x, by, T.m(width), bh), label, cb, kind,
                          size=13, hotkey=hotkey_label(self.cfg, act))
             # 记住「结束回合」按钮本体：绘制时要按身份判断可用性，
             # 拿 label 做字符串匹配的话，一换语言就认不出来。
             if act == "end_turn":
                 self.end_turn_btn = btn
             self.buttons.append(btn)
-            x -= 8                      # 按钮间距
+            x -= T.m(8)                 # 按钮间距
         # 叠加层切换
-        x -= 84
-        self.overlay_btn = Button(pygame.Rect(x, 9, 84, 32), i18n.tr("top.overlay"),
+        x -= T.m(84)
+        self.overlay_btn = Button(pygame.Rect(x, by, T.m(84), bh), i18n.tr("top.overlay"),
                                   self.cycle_overlay,
                                   "ghost", size=12)
         self.buttons.append(self.overlay_btn)
-        x -= 8
+        x -= T.m(8)
         # 设置
-        x -= 62
-        self.settings_btn = Button(pygame.Rect(x, 9, 62, 32),
+        x -= T.m(62)
+        self.settings_btn = Button(pygame.Rect(x, by, T.m(62), bh),
                                    i18n.tr("menu.settings"), self.open_settings,
                                    "ghost", size=12)
         self.buttons.append(self.settings_btn)
-        x -= 8
+        x -= T.m(8)
         # 系统菜单（存档/读档/返回）
-        x -= 82
-        self.menu_btn = Button(pygame.Rect(x, 9, 82, 32), tr("ui.hud.menu"), self.toggle_menu,
+        x -= T.m(82)
+        self.menu_btn = Button(pygame.Rect(x, by, T.m(82), bh), tr("ui.hud.menu"),
+                               self.toggle_menu,
                                "ghost", size=12, hotkey=hotkey_label(self.cfg, "system_menu"))
         self.buttons.append(self.menu_btn)
 
@@ -1716,7 +1837,7 @@ class App:
                 return
             if self.mode != "game":
                 return
-            if self.mouse[0] >= self.w - SIDE_W and self.tab == "log" and self.logview:
+            if self.mouse[0] >= self.w - side_w() and self.tab == "log" and self.logview:
                 self.logview.scroll_by(e.y * 3)
             elif self.mapview and self.mapview.contains(self.mouse):
                 self.mapview.zoom_at(self.mouse, 1 if e.y > 0 else -1)
@@ -2019,7 +2140,7 @@ class App:
 
         st = self.state
         # 顶栏按钮
-        if pos[1] < TOP_H:
+        if pos[1] < top_h():
             for b in self.buttons:
                 if b.handle_click(pos):
                     return
@@ -2032,7 +2153,7 @@ class App:
             return
 
         # 侧栏
-        side_x = self.w - SIDE_W
+        side_x = self.w - side_w()
         if pos[0] >= side_x:
             self._on_sidebar_click(pos)
             return
@@ -2216,7 +2337,10 @@ class App:
     def draw(self) -> None:
         if self.mode == "editor":
             if self.editor:
-                self.editor.draw(self.screen)
+                # 编辑器是工具界面，控件位置按像素写死；这里强制标准档排版，
+                # 避免「游戏里开了特大字号，编辑器就串行」的半吊子状态
+                with T.at_font_scale("standard"):
+                    self.editor.draw(self.screen)
             pygame.display.flip()
             return
         if self.mode == "menu":
@@ -2258,7 +2382,7 @@ class App:
         if self.mode == "over":
             self._draw_over(s)
         if self.show_briefing and self.briefing is not None:
-            self._brief_btn = pygame.Rect(self.w // 2 - 100, self.h // 2 + 232, 200, 42)
+            self._brief_btn = briefing_button_rect((self.w, self.h))
             draw_briefing(s, self.briefing, self.mouse, self._brief_btn)
         pygame.display.flip()
 
@@ -2341,38 +2465,42 @@ class App:
         s.blit(dim, (0, 0))
 
         slots = self.slot_info or list_slots(ROOT)
-        w, row_h = 560, 66
-        h = 104 + len(slots) * row_h + 82
+        w, row_h = T.m(560), T.m(66)
+        h = T.m(104) + len(slots) * row_h + T.m(82)
         # 面板高度不得超过窗口——槽位多时压缩，而不是溢出屏幕
-        h = min(h, self.h - 40)
+        h = min(h, self.h - T.m(40))
         r = pygame.Rect((self.w - w) // 2, (self.h - h) // 2, w, h)
         # 暴露面板矩形——布局自检脚本据此验证底部按钮没有顶出面板
         self.menu_panel_rect = r
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)
-        T.draw_text(s, tr("ui.system_menu"), (r.x + 22, r.y + 16), T.FS_TITLE + 1, T.TEXT, bold=True)
-        T.draw_text(s, tr("ui.quick_save_hint"), (r.right - 22, r.y + 20), T.FS_SMALL,
-                    T.TEXT_FAINT, anchor="topright")
-        T.hline(s, r.x + 20, r.right - 20, r.y + 48, T.BORDER)
+        T.draw_text(s, tr("ui.system_menu"), (r.x + T.m(22), r.y + T.m(16)), T.FS_TITLE + 1,
+                    T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.quick_save_hint"), (r.right - T.m(22), r.y + T.m(20)),
+                    T.FS_SMALL, T.TEXT_FAINT, anchor="topright")
+        T.hline(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(48), T.BORDER)
 
         self.menu_rects = []
-        y = r.y + 58
+        y = r.y + T.m(58)
         for info in slots:
-            row = pygame.Rect(r.x + 16, y, w - 32, row_h - 8)
+            row = pygame.Rect(r.x + T.m(16), y, w - T.m(32), row_h - T.m(8))
             pygame.draw.rect(s, T.PANEL_SUNK, row, border_radius=3)
             pygame.draw.rect(s, T.BORDER, row, 1, border_radius=3)
-            T.draw_text(s, tr("ui.slot_fmt") % (info['slot'],), (row.x + 12, row.y + 8), T.FS_LABEL,
-                        T.TEXT, bold=True)
+            T.draw_text(s, tr("ui.slot_fmt") % (info['slot'],), (row.x + T.m(12), row.y + T.m(8)),
+                        T.FS_LABEL, T.TEXT, bold=True)
             if info.get("exists"):
                 ts = time.strftime("%m-%d %H:%M", time.localtime(info.get("mtime", 0)))
                 sc_name = os.path.splitext(info.get("scenario", ""))[0]
-                T.draw_text(s, tr("ui.turn_line_fmt") % (info.get('turn', 0), sc_name,) +
-                                f"{tr('ui.side_blue') if info.get('player') == 'BLUE' else tr('ui.side_red')} · {ts}",
-                            (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
+                line = (tr("ui.turn_line_fmt") % (info.get('turn', 0), sc_name,)
+                        + (tr('ui.side_blue') if info.get('player') == 'BLUE'
+                           else tr('ui.side_red')) + f" · {ts}")
+                T.draw_text(s, T.ellipsize(line, T.FS_SMALL, row.width - T.m(190)),
+                            (row.x + T.m(12), row.y + T.m(30)), T.FS_SMALL, T.TEXT_FAINT)
             else:
-                T.draw_text(s, tr("ui.slot_empty"), (row.x + 12, row.y + 30), T.FS_SMALL, T.TEXT_FAINT)
+                T.draw_text(s, tr("ui.slot_empty"), (row.x + T.m(12), row.y + T.m(30)),
+                            T.FS_SMALL, T.TEXT_FAINT)
 
-            b_save = pygame.Rect(row.right - 162, row.y + 10, 72, 30)
-            b_load = pygame.Rect(row.right - 84, row.y + 10, 72, 30)
+            b_save = pygame.Rect(row.right - T.m(162), row.y + T.m(10), T.m(72), T.m(30))
+            b_load = pygame.Rect(row.right - T.m(84), row.y + T.m(10), T.m(72), T.m(30))
             for b, label, act, enabled in (
                     (b_save, tr("ui.sys.save"), "save", True),
                     (b_load, tr("ui.sys.load"), "load", info.get("exists", False))):
@@ -2396,12 +2524,12 @@ class App:
                 (tr("ui.sys.export_md"), "export_md"), (tr("ui.sys.export_pkg"), "export_pkg"),
                 (tr("ui.sys.export_replay"), "export_replay"), (tr("ui.sys.settings"), "settings"),
                 (tr("ui.sys.quit"), "quit")]
-        gap = 8
-        pad = 16
+        gap = T.m(8)
+        pad = T.m(16)
         # 宽度必须把**按钮间隙**算进去，否则最后一个按钮会顶出面板
         bw = (w - pad * 2 - gap * (len(btns) - 1)) // len(btns)
-        bh = 36
-        by = min(y + 8, r.bottom - bh - 14)
+        bh = T.m(36)
+        by = min(y + T.m(8), r.bottom - bh - T.m(14))
         for i, (label, act) in enumerate(btns):
             b = pygame.Rect(r.x + pad + i * (bw + gap), by, bw, bh)
             hover = b.collidepoint(self.mouse)
@@ -2419,80 +2547,123 @@ class App:
 
     # -- 顶栏 -------------------------------------------------------------
     def _draw_topbar(self, s: pygame.Surface) -> None:
+        """顶栏：左侧信息块 + 右侧按钮。
+
+        信息块用**游标 + 实测宽度**排布，而不是写死 x 坐标。原因很直接：
+        1500px 的窗口在标准档刚好塞下七块，字号放大 30% 之后写死的坐标
+        必然互相压住。现在按优先级依次尝试，放不下的整块略过——
+        宁可少显示一个卫星导航条，也不能把「回合」压到「胜负点」上。
+        """
         st = self.state
-        pygame.draw.rect(s, T.PANEL, pygame.Rect(0, 0, self.w, TOP_H))
-        T.hline(s, 0, self.w, TOP_H - 1, T.BORDER)
+        bar_h = top_h()
+        pygame.draw.rect(s, T.PANEL, pygame.Rect(0, 0, self.w, bar_h))
+        T.hline(s, 0, self.w, bar_h - 1, T.BORDER)
 
-        T.draw_text(s, tr("ui.game_title"), (14, 7), 15, T.TEXT, bold=True)
-        T.draw_text(s, st.map.name, (14, 28), 11, T.TEXT_FAINT)
-        T.vline(s, 156, 10, TOP_H - 10, T.BORDER)
+        y_label = T.m(7)
+        y_value = T.m(22)
+        y_note = T.m(36)
+        # 右侧按钮是固定宽度从右往左排的，信息块不能越过它们
+        limit = self._topbar_limit()
+        x = T.m(14)
 
-        # 回合
-        x = 172
-        T.draw_text(s, tr("ui.turn_label"), (x, 7), 11, T.TEXT_FAINT)
-        T.draw_text(s, f"{st.turn_count:02d}", (x, 20), 19, T.TEXT, bold=True, mono=True)
-        T.draw_text(s, f"/{st.turn_limit}", (x + 30, 30), 11, T.TEXT_FAINT, mono=True)
+        def sep() -> None:
+            nonlocal x
+            T.vline(s, x, T.m(10), bar_h - T.m(10), T.BORDER)
+            x += T.m(16)
+
+        def fits(width: int) -> bool:
+            return x + width <= limit
+
+        # -- 标题（永远画）--
+        title, map_name = tr("ui.game_title"), st.map.name
+        name_size = 11
+        tw = max(T.text_width(title, 15, bold=True),
+                 T.text_width(map_name, name_size))
+        T.draw_text(s, title, (x, y_label), 15, T.TEXT, bold=True)
+        T.draw_text(s, T.ellipsize(map_name, name_size, tw), (x, T.m(28)), name_size,
+                    T.TEXT_FAINT)
+        x += tw + T.m(20)
+        sep()
+
+        # -- 回合（永远画：这是顶栏存在的理由）--
+        label = tr("ui.turn_label")
+        turn_txt = f"{st.turn_count:02d}"
+        suffix = f"/{st.turn_limit}"
+        num_w = T.text_width(turn_txt, 19, bold=True, mono=True)
         if st.phase == "over":
             phase_txt = tr("ui.hud.phase_over")
         else:
             actor = self.side if st.phase == "player" else self.side.foe
             phase_txt = tr("ui.hud.phase_fmt") % (actor.label,)
+        phase_w = T.text_width(phase_txt, 12, bold=True)
+        block_w = max(T.text_width(label, 11), num_w + T.m(4)
+                      + T.text_width(suffix, 11, mono=True) + T.m(12) + phase_w)
+        T.draw_text(s, label, (x, y_label), 11, T.TEXT_FAINT)
+        T.draw_text(s, turn_txt, (x, T.m(20)), 19, T.TEXT, bold=True, mono=True)
+        T.draw_text(s, suffix, (x + num_w + T.m(4), T.m(30)), 11, T.TEXT_FAINT, mono=True)
         col = T.CYAN if st.phase == "player" else T.AMBER
-        T.draw_text(s, phase_txt, (x + 66, 22), 12, col, bold=True)
+        phase_x = x + num_w + T.m(4) + T.text_width(suffix, 11, mono=True) + T.m(12)
+        T.draw_text(s, phase_txt, (phase_x, y_value), 12, col, bold=True)
         if st.phase == "ai":
-            T.draw_text(s, tr("ui.simulating"), (x + 66, 8), 11, T.AMBER)
+            T.draw_text(s, tr("ui.simulating"), (phase_x, y_label), 11, T.AMBER)
         if self.mode == "replay":
             # 回放模式：顶栏明确标注，别让人以为是在操作对局
-            _badge = pygame.Rect(x + 132, 9, 66, 20)
-            pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.22), _badge, border_radius=3)
-            pygame.draw.rect(s, T.CYAN, _badge, 1, border_radius=3)
-            T.draw_text(s, tr("ui.replay_marker"), _badge.center, 11, T.CYAN, anchor="center")
-        T.vline(s, 318, 10, TOP_H - 10, T.BORDER)
+            badge = pygame.Rect(phase_x, T.m(30), T.m(66), T.m(20))
+            pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.22), badge, border_radius=3)
+            pygame.draw.rect(s, T.CYAN, badge, 1, border_radius=3)
+            T.draw_text(s, tr("ui.replay_marker"), badge.center, 11, T.CYAN, anchor="center")
+        x += block_w + T.m(16)
+        sep()
 
-        # 胜负点
-        x = 334
-        T.draw_text(s, tr("ui.vp_label"), (x, 7), 11, T.TEXT_FAINT)
-        T.draw_text(s, tr("ui.side_blue_short"), (x, 25), 11, T.side_color(Side.BLUE))
-        T.draw_text(s, str(st.vp[Side.BLUE]), (x + 16, 20), 15,
-                    T.side_color(Side.BLUE), bold=True, mono=True)
-        bar_r = pygame.Rect(x + 46, 28, 92, 6)
-        pygame.draw.rect(s, T.SIDE_COLORS[Side.RED]["fill"], bar_r, border_radius=3)
-        total = max(1, st.vp[Side.BLUE] + st.vp[Side.RED])
-        bw = int(bar_r.width * st.vp[Side.BLUE] / total)
-        if bw:
-            pygame.draw.rect(s, T.SIDE_COLORS[Side.BLUE]["edge"],
-                             pygame.Rect(bar_r.x, bar_r.y, bw, bar_r.height), border_radius=3)
-        T.draw_text(s, str(st.vp[Side.RED]), (x + 146, 20), 15,
-                    T.side_color(Side.RED), bold=True, mono=True)
-        T.draw_text(s, tr("ui.side_red_short"),
-                    (x + 146 + T.text_width(str(st.vp[Side.RED]), 15, mono=True) + 4, 25),
-                    11, T.side_color(Side.RED))
-        T.vline(s, 512, 10, TOP_H - 10, T.BORDER)
+        # -- 胜负点 --
+        blue_short, red_short = tr("ui.side_blue_short"), tr("ui.side_red_short")
+        bvp, rvp = str(st.vp[Side.BLUE]), str(st.vp[Side.RED])
+        bar_w = T.m(92)
+        vpw = (max(T.text_width(blue_short, 11), T.m(16))
+               + T.text_width(bvp, 15, bold=True, mono=True) + T.m(8) + bar_w
+               + T.m(8) + T.text_width(rvp, 15, bold=True, mono=True) + T.m(4)
+               + T.text_width(red_short, 11))
+        if fits(vpw):
+            T.draw_text(s, tr("ui.vp_label"), (x, y_label), 11, T.TEXT_FAINT)
+            T.draw_text(s, blue_short, (x, y_value + T.m(3)), 11, T.side_color(Side.BLUE))
+            bx = x + max(T.text_width(blue_short, 11), T.m(16))
+            nbw = T.text_width(bvp, 15, bold=True, mono=True)
+            T.draw_text(s, bvp, (bx, T.m(20)), 15, T.side_color(Side.BLUE),
+                        bold=True, mono=True)
+            bar_r = pygame.Rect(bx + nbw + T.m(8), T.m(28), bar_w, T.m(6))
+            pygame.draw.rect(s, T.SIDE_COLORS[Side.RED]["fill"], bar_r, border_radius=3)
+            total = max(1, st.vp[Side.BLUE] + st.vp[Side.RED])
+            bw = int(bar_r.width * st.vp[Side.BLUE] / total)
+            if bw:
+                pygame.draw.rect(s, T.SIDE_COLORS[Side.BLUE]["edge"],
+                                 pygame.Rect(bar_r.x, bar_r.y, bw, bar_r.height),
+                                 border_radius=3)
+            rx = bar_r.right + T.m(8)
+            nrw = T.text_width(rvp, 15, bold=True, mono=True)
+            T.draw_text(s, rvp, (rx, T.m(20)), 15, T.side_color(Side.RED),
+                        bold=True, mono=True)
+            T.draw_text(s, red_short, (rx + nrw + T.m(4), y_value + T.m(3)), 11,
+                        T.side_color(Side.RED))
+            x += vpw + T.m(16)
+            sep()
 
-        # 兵力
-        x = 528
-        T.draw_text(s, tr("ui.forces_label"), (x, 7), 11, T.TEXT_FAINT)
-        T.draw_text(s, str(len(st.units_of(Side.BLUE))), (x, 21), 14,
-                    T.side_color(Side.BLUE), bold=True, mono=True)
-        T.draw_text(s, ":", (x + 20, 24), 11, T.TEXT_FAINT)
-        T.draw_text(s, str(len(st.units_of(Side.RED))), (x + 30, 21), 14,
-                    T.side_color(Side.RED), bold=True, mono=True)
-        T.vline(s, 600, 10, TOP_H - 10, T.BORDER)
+        # -- 兵力 --
+        nb, nr = str(len(st.units_of(Side.BLUE))), str(len(st.units_of(Side.RED)))
+        fw = (T.text_width(nb, 14, bold=True, mono=True) + T.m(12)
+              + T.text_width(nr, 14, bold=True, mono=True))
+        fw = max(fw, T.text_width(tr("ui.forces_label"), 11))
+        if fits(fw):
+            T.draw_text(s, tr("ui.forces_label"), (x, y_label), 11, T.TEXT_FAINT)
+            T.draw_text(s, nb, (x, y_value), 14, T.side_color(Side.BLUE),
+                        bold=True, mono=True)
+            nbw = T.text_width(nb, 14, bold=True, mono=True)
+            T.draw_text(s, ":", (x + nbw + T.m(4), y_value + T.m(3)), 11, T.TEXT_FAINT)
+            T.draw_text(s, nr, (x + nbw + T.m(12), y_value), 14, T.side_color(Side.RED),
+                        bold=True, mono=True)
+            x += fw + T.m(16)
+            sep()
 
-        # 卫星导航
-        x = 616
-        T.draw_text(s, tr("ui.sat_nav_label"), (x, 7), 11, T.TEXT_FAINT)
-        for i, side in enumerate((Side.BLUE, Side.RED)):
-            yy = 24 + i * 12
-            v = st.gps[side]
-            T.draw_text(s, tr("ui.side_blue_short") if side is Side.BLUE
-                    else tr("ui.side_red_short"), (x, yy - 2), 11, T.side_color(side))
-            T.bar(s, pygame.Rect(x + 14, yy, 50, 5), v, T.hp_color(v))
-            T.draw_text(s, f"{v * 100:.0f}%", (x + 70, yy - 4), 11, T.TEXT_DIM, mono=True)
-        T.vline(s, 742, 10, TOP_H - 10, T.BORDER)
-
-        # 战场环境（时段 · 天候）
-        x = 758
+        # -- 战场环境（时段 · 天候 · 风）--
         env = environment_for(st)
         env_col = {TimeOfDay.DAWN: T.AMBER, TimeOfDay.DAY: T.WHITE,
                    TimeOfDay.DUSK: T.AMBER, TimeOfDay.NIGHT: T.BLUE}.get(
@@ -2500,25 +2671,58 @@ class App:
         wcol = {Weather.CLEAR: T.TEXT_DIM, Weather.RAIN: T.BLUE,
                 Weather.FOG: T.TEXT_DIM, Weather.SNOW: T.CYAN}.get(
                     env.weather, T.TEXT_DIM)
-        T.draw_text(s, tr("ui.env_label"), (x, 7), 11, T.TEXT_FAINT)
-        # 风向箭头 + 风力：烟幕会顺风漂移，这一格现在能决定烟往哪边糊
-        T.draw_wind_icon(s, (x + 106, 12), env.wind_vector, env.wind_speed)
-        T.draw_text(s, str(env.wind_speed), (x + 116, 7), T.FS_TINY,
-                    T.TEXT_FAINT if env.wind_speed <= 1 else T.CYAN, mono=True)
-        T.draw_text(s, env.time_of_day.label, (x, 21), 12, env_col, bold=True)
-        T.draw_text(s, env.clock, (x + 34, 22), 11, T.TEXT_DIM, mono=True)
-        T.draw_text(s, env.weather.label, (x + 68, 22), 11, wcol)
-        T.draw_text(s, env.describe_effects()[:26], (x, 36), 11, T.TEXT_FAINT)
-        T.vline(s, 886, 10, TOP_H - 10, T.BORDER)
+        effects = env.describe_effects()
+        ew = max(T.text_width(env.time_of_day.label, 12, bold=True) + T.m(6)
+                 + T.text_width(env.clock, 11, mono=True) + T.m(6)
+                 + T.text_width(env.weather.label, 11),
+                 T.text_width(tr("ui.env_label"), 11) + T.m(8) + T.m(30))
+        ew = max(ew, T.text_width(effects, 11))
+        if fits(ew):
+            T.draw_text(s, tr("ui.env_label"), (x, y_label), 11, T.TEXT_FAINT)
+            # 风向箭头 + 风力：烟幕会顺风漂移，这一格现在能决定烟往哪边糊
+            T.draw_wind_icon(s, (x + T.m(106), T.m(12)), env.wind_vector, env.wind_speed,
+                             length=T.m(7))
+            T.draw_text(s, str(env.wind_speed), (x + T.m(116), y_label), T.FS_TINY,
+                        T.TEXT_FAINT if env.wind_speed <= 1 else T.CYAN, mono=True)
+            T.draw_text(s, env.time_of_day.label, (x, y_value - T.m(1)), 12, env_col,
+                        bold=True)
+            tw2 = T.text_width(env.time_of_day.label, 12, bold=True) + T.m(6)
+            T.draw_text(s, env.clock, (x + tw2, y_value), 11, T.TEXT_DIM, mono=True)
+            cw = T.text_width(env.clock, 11, mono=True) + T.m(6)
+            T.draw_text(s, env.weather.label, (x + tw2 + cw, y_value), 11, wcol)
+            T.draw_text(s, T.ellipsize(effects, 11, ew), (x, y_note), 11, T.TEXT_FAINT)
+            x += ew + T.m(16)
+            sep()
 
-        # 在飞弹药
-        x = 900
-        T.draw_text(s, tr("ui.inflight_ammo"), (x, 7), 11, T.TEXT_FAINT)
+        # -- 卫星导航 --
+        gps_w = (max(T.text_width(blue_short, 11), T.text_width(red_short, 11))
+                 + T.m(6) + T.m(50) + T.m(8) + T.m(34))
+        gps_w = max(gps_w, T.text_width(tr("ui.sat_nav_label"), 11))
+        if fits(gps_w):
+            T.draw_text(s, tr("ui.sat_nav_label"), (x, y_label), 11, T.TEXT_FAINT)
+            for i, side in enumerate((Side.BLUE, Side.RED)):
+                yy = T.m(24) + i * T.m(12)
+                v = st.gps[side]
+                T.draw_text(s, blue_short if side is Side.BLUE else red_short,
+                            (x, yy - T.m(2)), 11, T.side_color(side))
+                T.bar(s, pygame.Rect(x + T.m(14), yy, T.m(50), T.m(5)), v, T.hp_color(v))
+                T.draw_text(s, f"{v * 100:.0f}%", (x + T.m(70), yy - T.m(4)), 11,
+                            T.TEXT_DIM, mono=True)
+            x += gps_w + T.m(16)
+            sep()
+
+        # -- 在飞弹药 --
         nmiss = str(len(st.missiles))
-        T.draw_text(s, nmiss, (x, 21), 14,
-                    T.AMBER if st.missiles else T.TEXT_DIM, bold=True, mono=True)
-        if st.missiles:
-            T.draw_text(s, tr("ui.rounds_unit"), (x + T.text_width(nmiss, 14, mono=True) + 4, 27), 11, T.TEXT_FAINT)
+        aw = max(T.text_width(tr("ui.inflight_ammo"), 11),
+                 T.text_width(nmiss, 14, bold=True, mono=True))
+        if fits(aw):
+            T.draw_text(s, tr("ui.inflight_ammo"), (x, y_label), 11, T.TEXT_FAINT)
+            T.draw_text(s, nmiss, (x, y_value), 14,
+                        T.AMBER if st.missiles else T.TEXT_DIM, bold=True, mono=True)
+            if st.missiles:
+                T.draw_text(s, tr("ui.rounds_unit"),
+                            (x + T.text_width(nmiss, 14, bold=True, mono=True) + T.m(4),
+                             y_value + T.m(5)), 11, T.TEXT_FAINT)
 
         for b in self.buttons:
             b.update(self.mouse)
@@ -2529,6 +2733,12 @@ class App:
             elif b is self.end_turn_btn:
                 b.enabled = st.phase == "player" and not st.over
             b.draw(s)
+
+    def _topbar_limit(self) -> int:
+        """顶栏信息块可用的右边界（右侧按钮左沿）。"""
+        if not getattr(self, "buttons", None):
+            return self.w - T.m(14)
+        return min(b.rect.left for b in self.buttons) - T.m(10)
 
     # -- 地图浮层 ---------------------------------------------------------
     def _draw_map_overlay_widgets(self, s: pygame.Surface) -> None:
@@ -2574,16 +2784,17 @@ class App:
     # -- 侧栏 -------------------------------------------------------------
     def _draw_sidebar(self, s: pygame.Surface) -> None:
         self.action_buttons = []
-        x = self.w - SIDE_W
-        pygame.draw.rect(s, T.PANEL, pygame.Rect(x, TOP_H, SIDE_W, self.h - TOP_H - BOTTOM_H))
-        T.vline(s, x, TOP_H, self.h - BOTTOM_H, T.BORDER)
+        x = self.w - side_w()
+        pygame.draw.rect(s, T.PANEL, pygame.Rect(x, top_h(), side_w(), self.h - top_h() - bottom_h()))
+        T.vline(s, x, top_h(), self.h - bottom_h(), T.BORDER)
 
         # 页签
         tabs = [("unit", i18n.tr("tab.unit")),
                 ("ops", i18n.tr("tab.situation")),
                 ("log", i18n.tr("tab.log"))]
         self._tab_rects = []
-        r = pygame.Rect(x + 12, TOP_H + 10, (SIDE_W - 24) // 3 - 4, 28)
+        r = pygame.Rect(x + T.m(12), top_h() + T.m(10), (side_w() - T.m(24)) // 3 - T.m(4),
+                        T.m(28))
         for key, label in tabs:
             active = self.tab == key
             pygame.draw.rect(s, T.PANEL_HI if active else T.PANEL_SUNK, r, border_radius=3)
@@ -2591,9 +2802,10 @@ class App:
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(r.x, r.bottom - 2, r.width, 2))
             T.draw_text(s, label, r.center, 12, T.TEXT if active else T.TEXT_FAINT, anchor="center")
             self._tab_rects.append((pygame.Rect(r), key))
-            r.x += r.width + 6
+            r.x += r.width + T.m(6)
 
-        body = pygame.Rect(x + 12, TOP_H + 48, SIDE_W - 24, self.h - TOP_H - BOTTOM_H - 58)
+        body = pygame.Rect(x + T.m(12), top_h() + T.m(48), side_w() - T.m(24),
+                           self.h - top_h() - bottom_h() - T.m(58))
         if self.tab == "unit":
             self._draw_unit_tab(s, body)
         elif self.tab == "ops":
@@ -2632,35 +2844,46 @@ class App:
 
     def _draw_unit_card(self, s, body, u: Unit, y: int) -> int:
         has_ew = bool(u.template.jam_bands or u.template.datalink)
-        h = 104 if has_ew else 100
+        h = T.m(104 if has_ew else 100)
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.PANEL_HI, T.side_color(u.side, "edge"), radius=4)
         # 图标块
-        icon_r = pygame.Rect(r.x + 10, r.y + 12, 44, 44)
+        icon_side = T.m(44)
+        icon_r = pygame.Rect(r.x + T.m(10), r.y + T.m(12), icon_side, icon_side)
         pygame.draw.rect(s, T.SIDE_COLORS[u.side]["fill"], icon_r, border_radius=3)
         pygame.draw.rect(s, T.side_color(u.side), icon_r, 1, border_radius=3)
-        self.mapview.draw_class_icon(s, icon_r.inflate(-8, -8), u.template.unit_class,
+        self.mapview.draw_class_icon(s, icon_r.inflate(-T.m(8), -T.m(8)), u.template.unit_class,
                                      T.side_color(u.side, "text"))
-        T.draw_text(s, u.name, (r.x + 64, r.y + 7), 14, T.TEXT, bold=True)
-        T.draw_text(s, tr("ui.mp_fmt") % (u.mp, u.template.mp,), (r.right - 10, r.y + 9), 11,
+        text_x = r.x + T.m(64)
+        trail = r.width - T.m(76)       # 右侧还给「机动 / 出击 / 状态」三行
+        T.draw_text(s, T.ellipsize(u.name, 14, trail - T.m(8), bold=True),
+                    (text_x, r.y + T.m(7)), 14, T.TEXT, bold=True)
+        # 右侧数值列也是顺序流排：机动 → 出击 → 任务（仅空中单位）。
+        # 写死 m(9)/m(22)/m(35) 在放大档位下会互压，因为行高比偏移增长得快。
+        ry = r.y + T.m(7)
+        T.draw_text(s, tr("ui.mp_fmt") % (u.mp, u.template.mp,), (r.right - T.m(10), ry), 11,
                     T.CYAN if u.mp > 0.1 else T.TEXT_FAINT, anchor="topright", mono=True)
+        ry += T.lh(11)
         T.draw_text(s, tr("ui.sortie_fmt") % (u.shots_left, u.template.sortie_shots,),
-                    (r.right - 10, r.y + 22), 11,
+                    (r.right - T.m(10), ry), 11,
                     T.AMBER if u.shots_left else T.TEXT_FAINT, anchor="topright", mono=True)
+        ry += T.lh(11)
         if u.domain.value == "air":
             ml = {"strike": tr("ui.hud.mission_strike"),
                   "cap": tr("ui.hud.mission_cap"),
                   "ferry": tr("ui.hud.mission_ferry")}[u.mission]
-            T.draw_text(s, tr("ui.profile_fmt") % (ml,), (r.right - 10, r.y + 35), 11,
+            T.draw_text(s, tr("ui.profile_fmt") % (ml,), (r.right - T.m(10), ry), 11,
                         T.PURPLE if u.mission != "strike" else T.TEXT_FAINT,
                         anchor="topright")
-        T.draw_text(s, f"{u.template.unit_class.label} · {u.domain.label} · {u.side.label}",
-                    (r.x + 64, r.y + 32), 11, T.TEXT_FAINT)
-        T.bar(s, pygame.Rect(r.x + 64, r.y + 49, r.width - 76, 6), u.hp_ratio,
+        T.draw_text(s, T.ellipsize(
+                        f"{u.template.unit_class.label} · {u.domain.label} · {u.side.label}",
+                        11, r.width - T.m(76) - T.m(60)),
+                    (text_x, r.y + T.m(32)), 11, T.TEXT_FAINT)
+        T.bar(s, pygame.Rect(text_x, r.y + T.m(49), r.width - T.m(76), T.m(6)), u.hp_ratio,
               T.hp_color(u.hp_ratio))
-        T.draw_text(s, f"{u.hp:.0f} / {u.template.hp:.0f}", (r.x + 64, r.y + 58), 11,
+        T.draw_text(s, f"{u.hp:.0f} / {u.template.hp:.0f}", (text_x, r.y + T.m(58)), 11,
                     T.TEXT_DIM, mono=True)
-        T.draw_text(s, tr("ui.coord_fmt") % (u.x, u.y,), (r.x + 64, r.y + 76), 11,
+        T.draw_text(s, tr("ui.coord_fmt") % (u.x, u.y,), (text_x, r.y + T.m(76)), 11,
                     T.TEXT_FAINT, mono=True)
         state_bits = []
         if u.fired:
@@ -2706,19 +2929,19 @@ class App:
         # 状态行是单行右对齐的：塞不下就从头丢起（越靠后越次要），
         # 否则德语/法语的长标签会顶到单位图标上，比少显示一条更难看
         while len(state_bits) > 1 and \
-                T.text_width(" · ".join(state_bits), 11) > r.width - 24:
+                T.text_width(" · ".join(state_bits), 11) > r.width - T.m(24):
             state_bits.pop()
-        T.draw_text(s, " · ".join(state_bits), (r.right - 10, r.y + 76), 11,
+        T.draw_text(s, " · ".join(state_bits), (r.right - T.m(10), r.y + T.m(76)), 11,
                     col, anchor="topright")
         # 电子战频段与受扰提示
         if u.template.jam_bands or u.template.datalink:
             self._draw_ew_status(s, r, u)
-        return y + h + 8
+        return y + h + T.m(8)
 
     def _draw_ew_status(self, s, r: pygame.Rect, u: Unit) -> None:
         """显示本单位的电子战频段能力与当前受扰情况。"""
         st = self.state
-        y = r.y + 90
+        y = r.y + T.m(90)
         bits: list[str] = []
         jammed = False
         if u.template.jam_bands:
@@ -2740,33 +2963,43 @@ class App:
             return
         # 别用「文本里含某个词」判断颜色——那等于把中文当语法
         col = T.RED if jammed else T.PURPLE
-        T.draw_text(s, " · ".join(bits), (r.x + 64, y), 11, col)
+        T.draw_text(s, T.ellipsize(" · ".join(bits), 11, r.width - T.m(74)),
+                    (r.x + T.m(64), y), 11, col)
 
     def _draw_weapons(self, s, body, u: Unit, y: int) -> int:
         st = self.state
         T.draw_text(s, tr("ui.weapon_system"), (body.x, y), 11, T.TEXT_FAINT, bold=True)
-        y += 18
+        y += T.m(18)
         if not u.template.weapons:
-            T.draw_text(s, tr("ui.unarmed_support"), (body.x + 4, y), 12, T.TEXT_DIM)
-            return y + 26
+            T.draw_text(s, tr("ui.unarmed_support"), (body.x + T.m(4), y), 12, T.TEXT_DIM)
+            return y + T.m(26)
+        row_h = T.lh(12) + T.lh(11) + T.m(6)
         for w in u.template.weapons:
             ammo = u.ammo.get(w.id, 0)
             sel = st.selected_weapon == w.id
-            row = pygame.Rect(body.x, y, body.width, 38)
+            row = pygame.Rect(body.x, y, body.width, row_h)
             if sel:
                 pygame.draw.rect(s, T.button_fill(T.CYAN, True), row, border_radius=3)
                 pygame.draw.rect(s, T.CYAN, pygame.Rect(row.x, row.y, 2, row.height))
             elif row.collidepoint(self.mouse):
                 pygame.draw.rect(s, T.button_fill(T.CYAN), row, border_radius=3)
             col = T.TEXT if ammo > 0 else T.TEXT_FAINT
-            T.draw_text(s, w.name, (row.x + 8, row.y + 4), 12, col, bold=sel)
+            # 选中行是青底高亮，灰字（TEXT_FAINT）压上去几乎看不见——
+            # 副标题在选中行里要用亮一档的 TEXT_DIM
+            info_col = T.TEXT_DIM if sel else T.TEXT_FAINT
+            # 右侧要留出弹药数（「×12」在放大档位下能占到 40px）
+            ammo_txt = f"×{ammo}"
+            ammo_w = T.text_width(ammo_txt, 13, mono=True) + T.m(16)
+            T.draw_text(s, T.ellipsize(w.name, 12, row.width - T.m(16) - ammo_w, bold=sel),
+                        (row.x + T.m(8), row.y + T.m(3)), 12, col, bold=sel)
             info = f"{w.kind.label} · {w.range_min:.1f}-{w.range_max:.1f}格 · Pk {w.pk * 100:.0f}%"
-            T.draw_text(s, info, (row.x + 8, row.y + 21), 11, T.TEXT_FAINT)
-            T.draw_text(s, f"×{ammo}", (row.right - 8, row.y + 10), 13,
+            T.draw_text(s, T.ellipsize(info, 11, row.width - T.m(16) - ammo_w),
+                        (row.x + T.m(8), row.y + T.m(3) + T.lh(12)), 11, info_col)
+            T.draw_text(s, ammo_txt, (row.right - T.m(8), row.y + T.m(8)), 13,
                         T.AMBER if ammo else T.TEXT_FAINT, anchor="topright", mono=True)
             self.weapon_rows.append((row, w.id))
-            y += 40
-        return y + 4
+            y += row_h + T.m(2)
+        return y + T.m(4)
 
     def _draw_actions(self, s, body, u: Unit, y: int) -> int:
         st = self.state
@@ -2819,9 +3052,11 @@ class App:
                          lambda: self.begin_command(u), False))
         acts.append((tr("ui.hud.standby"), lambda: self._standby(u), False))
 
-        bw = (body.width - 12) // 3
+        bw = (body.width - T.m(12)) // 3
+        bh = T.m(28)
+        step = T.m(33)
         for i, (label, cb, active) in enumerate(acts):
-            r = pygame.Rect(body.x + (i % 3) * (bw + 6), y + (i // 3) * 33, bw, 28)
+            r = pygame.Rect(body.x + (i % 3) * (bw + T.m(6)), y + (i // 3) * step, bw, bh)
             kind = "toggle" if active else "ghost"
             b = Button(r, label, cb, kind, size=11)
             if active:
@@ -2831,7 +3066,7 @@ class App:
             # 关键：登记到点击分发列表，否则按钮只画不响应
             self.action_buttons.append(b)
         rows = (len(acts) + 2) // 3
-        return y + rows * 33 + 6
+        return y + rows * step + T.m(6)
 
     def _build_fort(self, u: Unit) -> None:
         st = self.state
@@ -3032,14 +3267,14 @@ class App:
         self.salvo_rects = []
         opts = self._salvo_options(u, w)
         if len(opts) <= 1:
-            T.draw_text(s, tr("ui.ammo_salvo_fmt") % (u.ammo.get(w.id, 0),), (r.x + 10, y), 11, T.TEXT_FAINT)
-            return y + 18
-        T.draw_text(s, tr("ui.salvo"), (r.x + 10, y + 2), 11, T.TEXT_FAINT)
-        x = r.x + 40
+            T.draw_text(s, tr("ui.ammo_salvo_fmt") % (u.ammo.get(w.id, 0),), (r.x + T.m(10), y), 11, T.TEXT_FAINT)
+            return y + T.m(18)
+        T.draw_text(s, tr("ui.salvo"), (r.x + T.m(10), y + 2), 11, T.TEXT_FAINT)
+        x = r.x + T.m(40)
         cur = max(opts[0], min(self.state.salvo_setting, opts[-1]))
         self.state.salvo_setting = cur
         for n in opts:
-            rr = pygame.Rect(x, y - 2, 34, 18)
+            rr = pygame.Rect(x, y - T.m(2), T.m(34), T.m(18))
             active = n == cur
             hover = rr.collidepoint(self.mouse)
             pygame.draw.rect(s, T.mix(T.PANEL_SUNK, T.CYAN, 0.28) if active
@@ -3049,13 +3284,13 @@ class App:
             T.draw_text(s, f"{n}", rr.center, 11, T.WHITE if active else T.TEXT_DIM,
                         bold=active, anchor="center", mono=True)
             self.salvo_rects.append((rr, n))
-            x += 38
+            x += T.m(38)
         comb = 1.0 - (1.0 - base_pk) ** cur
         T.draw_text(s, tr("ui.salvo_stats_fmt") % (cur, comb * 100,), (x + 4, y + 2), 11,
                     T.AMBER if cur > 1 else T.TEXT_FAINT)
-        T.draw_text(s, tr("ui.ammo_fmt") % (u.ammo.get(w.id, 0),), (r.right - 10, y + 2), 11,
+        T.draw_text(s, tr("ui.ammo_fmt") % (u.ammo.get(w.id, 0),), (r.right - T.m(10), y + 2), 11,
                     T.TEXT_FAINT, anchor="topright", mono=True)
-        return y + 22
+        return y + T.m(22)
 
     def _draw_engage_panel(self, s, body, u: Unit, t: Unit | None, y: int) -> int:
         if self.pending_facility is not None:
@@ -3070,32 +3305,35 @@ class App:
         threat = rules.counter_threat_profile(st, u, t, w) if (w and t) else None
         # 对手视角区块的高度：标题 + 关键指标 + 若干条明细
         th_h = self._threat_panel_height(threat)
-        h = (190 if ok else 92) + th_h
+        h = T.m(190 if ok else 92) + th_h
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.button_fill(T.RED), T.mix(T.BORDER, T.RED, 0.55), radius=4)
-        T.draw_text(s, tr("ui.engage_target"), (r.x + 10, r.y + 8), 11, T.RED, bold=True)
-        T.draw_text(s, t.name, (r.x + 10, r.y + 24), 13, T.TEXT, bold=True)
+        T.draw_text(s, tr("ui.engage_target"), (r.x + T.m(10), r.y + T.m(8)), 11, T.RED, bold=True)
+        T.draw_text(s, T.ellipsize(t.name, 13, r.width - T.m(120), bold=True),
+                    (r.x + T.m(10), r.y + T.m(24)), 13, T.TEXT, bold=True)
         T.draw_text(s, tr("ui.st.inspect_distance_fmt") % (
                         t.template.unit_class.label, lvl.label,
                         f"{prof.distance if prof else rules.dist_units(u, t):.1f}"),
-                    (r.x + 10, r.y + 42), 11, T.TEXT_FAINT)
+                    (r.x + T.m(10), r.y + T.m(42)), 11, T.TEXT_FAINT)
         if lvl is Detection.TRACKED:
-            T.draw_text(s, f"HP {t.hp:.0f}/{t.template.hp:.0f}", (r.right - 10, r.y + 24), 11,
+            T.draw_text(s, f"HP {t.hp:.0f}/{t.template.hp:.0f}", (r.right - T.m(10), r.y + T.m(24)), 11,
                         T.hp_color(t.hp_ratio), anchor="topright", mono=True)
 
         if prof is not None:
-            yy = r.y + 58
+            yy = r.y + T.m(58)
             if prof.ok:
                 pk_col = T.GREEN if prof.pk > 0.6 else (T.AMBER if prof.pk > 0.35 else T.RED)
-                T.draw_text(s, f"{w.name}", (r.x + 10, yy), 11, T.TEXT)
-                T.draw_text(s, f"Pk {prof.pk * 100:.0f}%", (r.right - 10, yy - 1), 13,
+                T.draw_text(s, f"{w.name}", (r.x + T.m(10), yy), 11, T.TEXT)
+                T.draw_text(s, f"Pk {prof.pk * 100:.0f}%", (r.right - T.m(10), yy - 1), 13,
                             pk_col, anchor="topright", bold=True, mono=True)
-                yy += 16
+                yy += T.m(16)
                 parts = [f"{k}×{v:.2f}" for k, v in prof.factors.items() if v < 0.999]
-                T.draw_text(s, " ".join(parts)[:52] or tr("ui.st.no_modifiers"), (r.x + 10, yy), 11, T.TEXT_FAINT)
-                yy += 14
+                T.draw_text(s, T.ellipsize(" ".join(parts) or tr("ui.st.no_modifiers"), 11,
+                                           r.width - T.m(20)),
+                            (r.x + T.m(10), yy), 11, T.TEXT_FAINT)
+                yy += T.m(14)
                 ic = " · 拦截风险 %.0f%%" % (prof.intercept_pk * 100) if prof.intercept_pk > 0.01 else ""
-                T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
+                T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + T.m(10), yy), 11,
                             T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
                 if prof.damage_factors:
                     # 毁伤修正：这一发「为什么打得疼/不疼」，一眼能看出来。
@@ -3105,19 +3343,19 @@ class App:
                                key=lambda k: abs(prof.damage_factors[k] - 1.0))
                     key = _COUNTER_TR.get(chan)
                     name = tr(key, chan) if key else chan
-                    T.draw_text(s, f"×{prof.damage_mult:.2f} {name}", (r.right - 10, yy), 11,
+                    T.draw_text(s, f"×{prof.damage_mult:.2f} {name}", (r.right - T.m(10), yy), 11,
                                 T.GREEN if prof.damage_mult > 1.0 else T.RED,
                                 anchor="topright")
                 if prof.cue_source:
-                    T.draw_text(s, tr("ui.cue_fmt") % (prof.cue_source,), (r.x + 10, yy + 12), 11,
+                    T.draw_text(s, tr("ui.cue_fmt") % (prof.cue_source,), (r.x + T.m(10), yy + T.m(12)), 11,
                                 T.PURPLE)
-                yy += 26
+                yy += T.m(26)
                 yy = self._draw_salvo_row(s, r, u, w, yy, prof.pk)
             else:
-                T.draw_text(s, prof.reason, (r.x + 10, yy), 11, T.RED)
+                T.draw_text(s, prof.reason, (r.x + T.m(10), yy), 11, T.RED)
 
         if self.pending_target is t and ok:
-            btn = pygame.Rect(r.x + 10, r.bottom - 30, r.width - 20, 24)
+            btn = pygame.Rect(r.x + T.m(10), r.bottom - T.m(30), r.width - T.m(20), T.m(24))
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, T.button_fill(T.RED, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.RED, btn, 1, border_radius=3)
@@ -3127,7 +3365,7 @@ class App:
 
         if threat is not None:
             self._draw_counter_threat(s, r, threat, u, t, w)
-        return r.bottom + 8
+        return r.bottom + T.m(8)
 
     # ------------------------------------------------------------------ #
     # 对手视角（为什么打不到）
@@ -3137,7 +3375,9 @@ class App:
         if threat is None:
             return 0
         lines = self._threat_lines(threat)
-        return 30 + len(lines) * 14 + 8
+        # 行距必须用实际行高，不能是 T.m(14) 这种小于行高的定值——
+        # 放大档位下每行都会吃掉下一行的上沿。
+        return T.m(30) + len(lines) * T.lh(11) + T.m(8)
 
     def _threat_lines(self, threat) -> list[tuple[str, str, tuple[int, int, int]]]:
         """构造对手视角的明细行：(标签, 内容, 颜色)。"""
@@ -3148,7 +3388,9 @@ class App:
                         tr("ui.threat.units_fmt") % (f"{threat.intercept_pk * 100:.0f}",
                                                      len(threat.interceptors)), col))
             for name in threat.interceptors[:2]:
-                out.append(("　└", name[:30], T.TEXT_FAINT))
+                # 名字不在这里按字切片——画的时候才知道可用宽度，
+                # 按字收窄在德语/俄语下会截得太早，中文下又收不住
+                out.append(("　└", name, T.TEXT_FAINT))
         else:
             out.append((tr("ui.threat.intercept"), tr("ui.threat.no_cover"), T.GREEN))
 
@@ -3163,7 +3405,7 @@ class App:
                         tr("ui.threat.reply_fmt") % (len(threat.reply_units),
                                                      f"{threat.reply_pk * 100:.0f}"), col))
             for name in threat.reply_weapons[:1]:
-                out.append(("　└", name[:30], T.TEXT_FAINT))
+                out.append(("　└", name, T.TEXT_FAINT))
         else:
             out.append((tr("ui.threat.reply"), tr("ui.threat.no_reply"), T.GREEN))
 
@@ -3172,7 +3414,7 @@ class App:
         out.append((tr("ui.threat.fc"), fc,
                     T.RED if threat.enemy_fire_control else T.TEXT_DIM))
         for b in threat.blockers[:2]:
-            out.append((tr("ui.threat.block"), b[:32], T.AMBER))
+            out.append((tr("ui.threat.block"), b, T.AMBER))
         return out
 
     def _draw_counter_threat(self, s, panel: pygame.Rect, threat, u: Unit, t: Unit,
@@ -3182,16 +3424,23 @@ class App:
         r = pygame.Rect(panel.x, panel.bottom - th_h, panel.width, th_h)
         pygame.draw.rect(s, T.PANEL_SUNK, r, border_radius=3)
         pygame.draw.rect(s, T.BORDER_HI, r, 1, border_radius=3)
-        T.draw_text(s, tr("ui.counter_view_title"), (r.x + 10, r.y + 6), 11,
+        T.draw_text(s, tr("ui.counter_view_title"), (r.x + T.m(10), r.y + T.m(6)), 11,
                         T.mix(T.BLUE, T.CYAN, 0.4), bold=True)
-        T.draw_text(s, tr("ui.counter_view_sub"), (r.right - 10, r.y + 7), 11, T.TEXT_FAINT,
+        T.draw_text(s, tr("ui.counter_view_sub"), (r.right - T.m(10), r.y + T.m(7)), 11, T.TEXT_FAINT,
                     anchor="topright")
 
-        yy = r.y + 22
-        for label, text, col in self._threat_lines(threat):
-            T.draw_text(s, label, (r.x + 10, yy), 11, T.TEXT_FAINT)
-            T.draw_text(s, text, (r.x + 54, yy), 11, col)
-            yy += 14
+        # 标签列宽按**最宽的那个标签**实测，而不是写死 T.m(54)。
+        # 写死 54 时中文四字标签「敌方火控」在放大档位下正好越界，
+        # 会直接压到右侧的判读结论上。
+        lines = self._threat_lines(threat)
+        label_w = max([T.text_width(lb, 11) for lb, _, _ in lines] or [0])
+        val_x = r.x + T.m(10) + label_w + T.m(8)
+        val_w = max(T.m(40), r.right - T.m(10) - val_x)
+        yy = r.y + T.m(22)
+        for label, text, col in lines:
+            T.draw_text(s, label, (r.x + T.m(10), yy), 11, T.TEXT_FAINT)
+            T.draw_text(s, T.ellipsize(text, 11, val_w), (val_x, yy), 11, col)
+            yy += T.lh(11)
 
         # 教学：玩家查看了对手视角
         if self.tutorial is not None and not self.tutorial.finished:
@@ -3204,41 +3453,48 @@ class App:
         w = u.weapon_by_id(st.selected_weapon or "")
         prof = rules.facility_strike_profile(st, u, tile, w) if (tile and w) else None
         ok = bool(prof and prof.ok)
-        h = 176 if ok else 92
+        h = T.m(176 if ok else 92)
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.button_fill(T.AMBER), T.mix(T.BORDER, T.AMBER, 0.55), radius=4)
-        T.draw_text(s, tr("ui.facility_strike"), (r.x + 10, r.y + 8), 11, T.AMBER, bold=True)
+        T.draw_text(s, tr("ui.facility_strike"), (r.x + T.m(10), r.y + T.m(8)), 11, T.AMBER, bold=True)
         if tile is None:
             return r.bottom + 8
-        T.draw_text(s, f"{tile.facility.label} ({tile.x},{tile.y})", (r.x + 10, r.y + 24), 13,
-                    T.TEXT, bold=True)
+        pad_x = T.m(10)
+        inner_w = r.width - T.m(20)
+        T.draw_text(s, T.ellipsize(f"{tile.facility.label} ({tile.x},{tile.y})", 13,
+                                   inner_w, bold=True),
+                    (r.x + pad_x, r.y + T.m(24)), 13, T.TEXT, bold=True)
         T.draw_text(s, tr("ui.structure_fmt") % (tile.facility_hp_ratio * 100,) +
                         f"{tr('ui.st.facility_operational') if tile.operational else tr('ui.st.facility_disabled')}",
-                    (r.x + 10, r.y + 42), 11,
+                    (r.x + pad_x, r.y + T.m(42)), 11,
                     T.hp_color(tile.facility_hp_ratio))
-        T.bar(s, pygame.Rect(r.x + 10, r.y + 56, r.width - 20, 5),
+        T.bar(s, pygame.Rect(r.x + pad_x, r.y + T.m(56), inner_w, T.m(5)),
               tile.facility_hp_ratio, T.hp_color(tile.facility_hp_ratio))
 
         if prof is not None and prof.ok:
-            yy = r.y + 68
+            yy = r.y + T.m(68)
             pk_col = T.GREEN if prof.pk > 0.6 else (T.AMBER if prof.pk > 0.35 else T.RED)
-            T.draw_text(s, f"{w.name}", (r.x + 10, yy), 11, T.TEXT)
-            T.draw_text(s, f"Pk {prof.pk * 100:.0f}%", (r.right - 10, yy - 1), 13,
+            T.draw_text(s, T.ellipsize(f"{w.name}", 11, inner_w - T.m(70)),
+                        (r.x + pad_x, yy), 11, T.TEXT)
+            T.draw_text(s, f"Pk {prof.pk * 100:.0f}%", (r.right - pad_x, yy - T.m(1)), 13,
                         pk_col, anchor="topright", bold=True, mono=True)
-            yy += 16
+            yy += T.lh(11) + T.m(2)
             parts = [f"{k}×{v:.2f}" for k, v in prof.factors.items() if v < 0.999]
-            T.draw_text(s, " ".join(parts)[:52] or tr("ui.st.no_modifiers"), (r.x + 10, yy), 11, T.TEXT_FAINT)
-            yy += 14
+            T.draw_text(s, T.ellipsize(" ".join(parts) or tr("ui.st.no_modifiers"), 11, inner_w),
+                        (r.x + pad_x, yy), 11, T.TEXT_FAINT)
+            yy += T.lh(11)
             ic = f" · 拦截风险 {prof.intercept_pk * 100:.0f}%" if prof.intercept_pk > 0.01 else ""
-            T.draw_text(s, tr("ui.structure_damage_fmt") % (prof.damage, ic,), (r.x + 10, yy), 11,
+            T.draw_text(s, T.ellipsize(tr("ui.structure_damage_fmt") % (prof.damage, ic,), 11, inner_w),
+                        (r.x + pad_x, yy), 11,
                         T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
-            yy += 16
+            yy += T.lh(11) + T.m(2)
             self._draw_salvo_row(s, r, u, w, yy, prof.pk)
         elif prof is not None:
-            T.draw_text(s, prof.reason, (r.x + 10, r.y + 68), 11, T.RED)
+            T.draw_text(s, T.ellipsize(prof.reason, 11, inner_w),
+                        (r.x + pad_x, r.y + T.m(68)), 11, T.RED)
 
         if ok:
-            btn = pygame.Rect(r.x + 10, r.bottom - 30, r.width - 20, 24)
+            btn = pygame.Rect(r.x + T.m(10), r.bottom - T.m(30), r.width - T.m(20), T.m(24))
             hover = btn.collidepoint(self.mouse)
             pygame.draw.rect(s, T.button_fill(T.AMBER, hover), btn, border_radius=3)
             pygame.draw.rect(s, T.AMBER, btn, 1, border_radius=3)
@@ -3268,23 +3524,23 @@ class App:
         if u.template.amphibious:
             rows.append((tr("ui.note.deploy"), tr("ui.note.amphib")))
         notes = T.wrap_text(u.template.notes, 10, body.width - 20)[:3] if u.template.notes else []
-        h = 26 + len(rows) * 15 + (len(notes) * 13 + 6 if notes else 0) + 10
+        h = T.m(26) + len(rows) * T.m(15) + (len(notes) * T.m(13) + T.m(6) if notes else 0) + T.m(10)
         h = min(h, body.bottom - y)
-        if h < 40:
+        if h < T.m(40):
             return
         r = pygame.Rect(body.x, y, body.width, h)
         T.panel(s, r, T.PANEL_SUNK, T.BORDER, radius=4)
-        T.draw_text(s, tr("ui.platform_info"), (r.x + 10, r.y + 8), 11, T.TEXT_FAINT, bold=True)
-        yy = r.y + 24
+        T.draw_text(s, tr("ui.platform_info"), (r.x + T.m(10), r.y + T.m(8)), 11, T.TEXT_FAINT, bold=True)
+        yy = r.y + T.m(24)
         for k, v in rows:
-            T.draw_text(s, k, (r.x + 10, yy), 11, T.TEXT_FAINT)
-            T.draw_text(s, v, (r.x + 74, yy), 11, T.TEXT_DIM)
-            yy += 15
+            T.draw_text(s, k, (r.x + T.m(10), yy), 11, T.TEXT_FAINT)
+            T.draw_text(s, v, (r.x + T.m(74), yy), 11, T.TEXT_DIM)
+            yy += T.m(15)
         if notes:
-            yy += 3
+            yy += T.m(3)
             for line in notes:
-                T.draw_text(s, line, (r.x + 10, yy), 11, T.mix(T.GREEN, T.TEXT_DIM, 0.55))
-                yy += 13
+                T.draw_text(s, line, (r.x + T.m(10), yy), 11, T.mix(T.GREEN, T.TEXT_DIM, 0.55))
+                yy += T.m(13)
 
     # -- 态势页 -----------------------------------------------------------
     def _draw_ops_tab(self, s: pygame.Surface, body: pygame.Rect) -> None:
@@ -3427,8 +3683,8 @@ class App:
 
     # -- 底栏 -------------------------------------------------------------
     def _draw_bottom(self, s: pygame.Surface) -> None:
-        y = self.h - BOTTOM_H
-        pygame.draw.rect(s, T.PANEL, pygame.Rect(0, y, self.w, BOTTOM_H))
+        y = self.h - bottom_h()
+        pygame.draw.rect(s, T.PANEL, pygame.Rect(0, y, self.w, bottom_h()))
         T.hline(s, 0, self.w, y, T.BORDER)
         hint = tr("ui.hud.hint_bar")
         T.draw_text(s, hint, (12, y + 6), 11, T.TEXT_FAINT)
@@ -3444,7 +3700,7 @@ class App:
                     parts.append(f"◆ {t.objective_name}")
                 if t.smoke:
                     parts.append(tr("ui.hud.smoke"))
-                T.draw_text(s, " · ".join(parts), (self.w - SIDE_W - 12, y + 6), 11,
+                T.draw_text(s, " · ".join(parts), (self.w - side_w() - 12, y + 6), 11,
                             T.TEXT_DIM, anchor="topright")
 
     # -- 帮助 -------------------------------------------------------------
@@ -3551,7 +3807,7 @@ class App:
         surf.fill((*T.mix(T.BG, (0, 0, 0), 0.5), 200))
         s.blit(surf, (0, 0))
         if self.debrief is not None:
-            self._debrief_btn = pygame.Rect(self.w // 2 - 130, self.h // 2 + 218, 260, 44)
+            self._debrief_btn = debrief_button_rect((self.w, self.h))
             draw_debrief(s, self.debrief, self.mouse, self._debrief_btn)
             return
         r = pygame.Rect(self.w // 2 - 260, self.h // 2 - 190, 520, 380)

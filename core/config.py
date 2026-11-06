@@ -21,6 +21,14 @@ CONFIG_FILENAME = "user_config.json"
 # 可用的界面主题（与 ui/theme.py 中的定义保持一致）
 DEFAULT_THEME = "tactical"
 
+# 字号档位与形状标识模式（与 ui/theme.py 保持一致）。
+# config 不导入 ui 层（它要能在无 pygame 的环境里跑），所以这里另列一份常量，
+# 由 tools/test_a11y.py 断言两处一致——重复的定义必须有人看着。
+FONT_SCALE_IDS = ("standard", "large", "xlarge")
+DEFAULT_FONT_SCALE = "standard"
+SHAPE_MODE_IDS = ("auto", "on", "off")
+DEFAULT_SHAPE_MODE = "auto"
+
 
 # --------------------------------------------------------------------------- #
 # 键位定义
@@ -219,6 +227,35 @@ class UserConfig:
         if lang not in SUPPORTED_LANGUAGES:
             return False
         self.prefs["language"] = lang
+        return True
+
+    # -- v3.1.1 无障碍 ---------------------------------------------------- #
+    @property
+    def font_scale(self) -> str:
+        """字号档位（standard / large / xlarge，非法值回退标准）。"""
+        v = str(self.prefs.get("font_scale", DEFAULT_FONT_SCALE))
+        return v if v in FONT_SCALE_IDS else DEFAULT_FONT_SCALE
+
+    def set_font_scale(self, scale_id: str) -> bool:
+        if scale_id not in FONT_SCALE_IDS:
+            return False
+        self.prefs["font_scale"] = scale_id
+        return True
+
+    @property
+    def shape_cues(self) -> str:
+        """形状标识模式（auto / on / off）。
+
+        默认 auto：只在色盲主题下启用。配置里存的是模式而不是布尔值，
+        因为「跟着主题走」和「强制打开」是两种不同的意图。
+        """
+        v = str(self.prefs.get("shape_cues", DEFAULT_SHAPE_MODE))
+        return v if v in SHAPE_MODE_IDS else DEFAULT_SHAPE_MODE
+
+    def set_shape_cues(self, mode: str) -> bool:
+        if mode not in SHAPE_MODE_IDS:
+            return False
+        self.prefs["shape_cues"] = mode
         return True
 
     @property
