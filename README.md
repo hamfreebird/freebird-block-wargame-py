@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.1.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.2.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -14,6 +14,9 @@
 
 > 📖 **完整机制说明见 [`GAME_GUIDE.md`](GAME_GUIDE.md)** —— 逐条公式、预设兵器一览、
 > 编辑器操作、数据格式、战术建议与自检工具。本文只做门面与索引。
+>
+> 🧩 **要做模组或想定？见 [`SDK.md`](SDK.md)** —— 数据模型、规则钩子、命令流与回放 API
+> 的逐项参考，附最小可跑示例。文档与代码的清单一致性由 `tools/check_sdk.py` 强制校验。
 
 ---
 
@@ -81,6 +84,8 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | 机制 | 一句话 |
 |---|---|
 | **对局回放** | 想定 + 对局种子 + 命令流 = 完整重演任意一局，逐项一致 |
+| **AI 对战观战** | 双方 AI 自动打完整局，你只看不打：可暂停、调倍速、跳回合、一键存回放 |
+| **可分享想定包** | `.bwscn` 带逐文件 sha256 与版本号，缺图也能完整重演 |
 | **可复现随机** | 所有随机判定由对局种子派生，同种子必得同结果 |
 | **模组接口** | 第三方 Python 模块可注册新武器、新兵种并订阅规则钩子 |
 | **规则钩子** | 想定 JSON 可声明「条件 + 效果」规则——不写 Python 也能做模组 |
@@ -119,6 +124,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v3.0.2** | 本地化补完 | 实战状态行 / 信息卡 / 主菜单 / 简报 / 战报回顾全部词条化（440 条 × 8 语言，覆盖率 100%）；`wrap_text` 拉丁文按词断行；模组 `entry` 路径越界拦截 |
 | **v3.1.0** | 深度 | **机制边界收敛**（烟幕随风 / 工时制工事 / 多段拦截）、**兵种相克函数化**（破甲 / 爆破双通道连续匹配）、**消耗与补给链**（油弹备件实数库存，断粮三档降火力）、**想定战术体检**（目标点谁也打不到会点名）、**AI 战术深化**（改派 / 分档撤退 / 集火 / 交叉火力 / 佯攻） |
 | **v3.1.1** | 无障碍 | **字号三档缩放**（标准 / 大 / 特大，行高与控件尺寸同步换算）、**色盲形状标识**（敌方棋子切角表示阵营、7 种兵种家族角标）；修掉三处放大后才暴露的布局缺陷 |
+| **v3.2.0** | 生态 | **想定分享格式**（`.bwscn` v2：逐文件 sha256 + 制作版本，先校验后落盘）、**回放分享**（内嵌想定，换台机器也能重演）、**AI 对战观战**（主菜单一键双 AI 推演：暂停 / 倍速 / 跳回合 / 镜头跟随 / 存回放）、**官方 SDK 文档**（[`SDK.md`](SDK.md)，900 行 API 参考 + `check_sdk` 双向对齐校验） |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -161,7 +167,7 @@ python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档�
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
 python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
 python tools/test_mods.py       # 模组接口自检（注册 / 钩子 / 错误隔离）
-python tools/smoke_test.py      # 无界面 UI 冒烟测试（197 项断言）
+python tools/smoke_test.py      # 无界面 UI 冒烟测试（212 项断言）
 python tools/test_stack.py      # 同格共存规则测试
 python tools/test_icons.py      # 单位图标包自检
 python tools/test_campaign_editor.py   # 战役编辑器自检
@@ -176,7 +182,9 @@ python tools/lang_check.py       # 语言包校验（覆盖率 / 占位符 / 译
 python tools/test_i18n.py        # 本地化运行时自检（分层包 / 回退链 / 格式化）
 python tools/test_keyboard.py    # 键盘导航自检（设置 / 主菜单 / 系统菜单 / 实战地图光标）
 python tools/test_save.py        # 存档自检（随机流往返 / 坏档不崩）
+python tools/test_share.py       # 分享与观战自检（校验和 / 内嵌想定 / AI 对战可复现）
 python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
+python tools/check_sdk.py       # SDK 文档自检（符号可解析 / 清单全覆盖 / 版本一致）
 python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
 ```
 
@@ -215,7 +223,10 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v2.0**（已发布）—— 对局回放 · 可复现随机流 · 模组接口 · 12 步教学
 - **v2.1**（已发布）—— 战役编辑器 · 单位图标包 · 性能提升
 - **v2.2**（已发布）—— AI 战术库 · 大地图寻路优化 · 规则钩子系统 · 平衡体检
-- **v3.0** —— 官方模组 SDK · 多语言扩展 · 无障碍完善
+- **v3.0**（已发布）—— 官方模组 SDK · 多语言扩展 · 无障碍完善
+- **v3.1**（已发布）—— 机制边界收敛 · 兵种相克函数化 · 补给链 · 想定战术体检 · AI 深化
+- **v3.2**（已发布）—— 想定分享格式 · 回放分享 · AI 对战观战 · SDK 文档
+- **v3.3**（计划）—— 规则层拆分 · 单元测试层 · 存档格式迁移 · 事件总线 · 256×256 性能余量
 
 ---
 
