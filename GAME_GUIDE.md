@@ -127,6 +127,7 @@
    - [`python main.py --check`](#python-mainpy---check)
    - [`python main.py --sim N [--map M]`](#python-mainpy---sim-n---map-m)
    - [`python tools/diag.py [回合数]`](#python-toolsdiagpy-回合数)
+   - [`python tools/test_units.py [--trace]`](#python-toolstestunitspy---trace)
    - [`python tools/check_layout.py`](#python-toolschecklayoutpy)
    - [`python tools/test_stack.py`](#python-toolsteststackpy)
    - [`python tools/test_replay.py`](#python-toolstestreplaypy)
@@ -2549,6 +2550,35 @@ tile=60 时需要一张 15360×15360 的表面（约 900MB）——不可行。�
 | L25 | 内置中英词条键集合一致（8 语言磁盘包另由 `tools/lang_check.py` 校验） |
 
 默认检查三张想定：`strait_shield`、`steppe_thunder`、`training_ground`。
+
+### `python tools/test_units.py [--trace]`
+
+**规则层单元测试**（v3.3）。与上面那些「跑一局看结论」的自检互补：
+这一层不推进回合、不建战场，只给规则函数喂**刁钻的输入**，断言它按定义回答。
+
+覆盖九类：骰子、几何与视线、电子战、探测、射击剖面、防空网、
+设施与后勤、机动规则、寻路。用例用 `@case(group, *targets)` 声明
+自己覆盖了「关键纯函数清单」（`TARGETS`）里的哪几项，跑完报告清单覆盖率：
+
+```
+关键纯函数覆盖
+  core.dice         2/ 2
+  core.geo          6/ 6
+  ...
+  合计 40/40（100.0%）
+```
+
+清单里有一项没被任何用例认领，脚本就失败——这比行覆盖率更能反映
+「规则层的每个决定点都被人盯过」。新增机制时把新函数加进 `TARGETS`，
+否则会立刻提示「有东西没测」。
+
+需要真实行覆盖时加 `--trace`（标准库 `trace`，不依赖 pytest / coverage），
+输出 `core/` 各模块被执行的行数占比。
+
+> **三条给测试作者的经验**（都踩过）：
+> ① 手造的单位 `uid` 必须互不相同——态势表按 uid 做键，全为 0 会互相顶掉；
+> ② 改完地形要 `map_epoch += 1`，否则读到的是改之前的距离场；
+> ③ 直接构造 `GameState` 要填全规则函数会读的字段，漏一个就是 `AttributeError`。
 
 ### `python tools/check_layout.py`
 

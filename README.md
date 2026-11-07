@@ -164,6 +164,7 @@ data/
 python main.py --check          # 数据校验（地图 + 武器库）
 python main.py --sim 16         # 无界面双 AI 推演
 python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档往返）
+python tools/test_units.py      # 规则层单元测试（纯函数 / 40 项覆盖清单，--trace 看行覆盖）
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
 python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
 python tools/test_mods.py       # 模组接口自检（注册 / 钩子 / 错误隔离）
