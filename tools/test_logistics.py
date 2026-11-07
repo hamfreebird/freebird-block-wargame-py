@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
 
-from core import rules  # noqa: E402
+from core import detect, ew, geo, rules  # noqa: E402
 from core.engine import GameState  # noqa: E402
 from core.enums import Detection, Domain, Side  # noqa: E402
 from core.loader import load_armory, load_scenario  # noqa: E402
@@ -150,16 +150,18 @@ def test_firepower() -> None:
     atk.x, atk.y = 5, 5
     st.units[1].x, st.units[1].y = 6, 5
 
-    saved = (rules.own_track, rules.jam_strength_at, rules.has_los, rules.gps_integrity)
-    rules.own_track = lambda *a, **k: True
-    rules.jam_strength_at = lambda *a, **k: 0.0
-    rules.has_los = lambda *a, **k: True
-    rules.gps_integrity = lambda *a, **k: 1.0
+    # 补丁打在**定义处模块**上：v3.3 拆分后 rules 只是门面，
+    # 改它的属性影响不到各模块函数里已经绑定的名字。
+    saved = (detect.own_track, ew.jam_strength_at, geo.has_los, ew.gps_integrity)
+    detect.own_track = lambda *a, **k: True
+    ew.jam_strength_at = lambda *a, **k: 0.0
+    geo.has_los = lambda *a, **k: True
+    ew.gps_integrity = lambda *a, **k: 1.0
     try:
         prof = rules.shot_profile(st, atk, st.units[1], w)
     finally:
-        (rules.own_track, rules.jam_strength_at,
-         rules.has_los, rules.gps_integrity) = saved
+        (detect.own_track, ew.jam_strength_at,
+         geo.has_los, ew.gps_integrity) = saved
 
     check(prof.ok, "枯竭状态下剖面仍成立（不是直接禁用）")
     check(prof.factors.get("补给枯竭") == 0.88,

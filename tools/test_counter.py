@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pygame  # noqa: E402
 
 from core import counter  # noqa: E402
-from core import rules  # noqa: E402
+from core import detect, ew, geo, rules  # noqa: E402
 from core.engine import GameState  # noqa: E402
 from core.enums import Detection, Side  # noqa: E402
 from core.loader import load_armory, load_scenario  # noqa: E402
@@ -236,11 +236,13 @@ def _scene(target_tid: str):
     st.mods = _Mods()
     st.salvo_setting = 1
     # 这些外部因素与相克无关，固定掉以免测试受地图/干扰影响
-    saved = (rules.own_track, rules.jam_strength_at, rules.has_los, rules.gps_integrity)
-    rules.own_track = lambda *a, **k: True
-    rules.jam_strength_at = lambda *a, **k: 0.0
-    rules.has_los = lambda *a, **k: True
-    rules.gps_integrity = lambda *a, **k: 1.0
+    # 补丁打在**定义处模块**上：v3.3 拆分后 rules 只是门面，
+    # 改它的属性影响不到各模块函数里已经绑定的名字。
+    saved = (detect.own_track, ew.jam_strength_at, geo.has_los, ew.gps_integrity)
+    detect.own_track = lambda *a, **k: True
+    ew.jam_strength_at = lambda *a, **k: 0.0
+    geo.has_los = lambda *a, **k: True
+    ew.gps_integrity = lambda *a, **k: 1.0
     return st, atk, tgt, saved
 
 
@@ -252,8 +254,8 @@ def test_shot_profile() -> None:
         try:
             profs[tid] = rules.shot_profile(st, atk, tgt, w("m256_120"))
         finally:
-            (rules.own_track, rules.jam_strength_at,
-             rules.has_los, rules.gps_integrity) = saved
+            (detect.own_track, ew.jam_strength_at,
+             geo.has_los, ew.gps_integrity) = saved
 
     p_inf, p_mbt = profs["usmc"], profs["m1a2"]
     check(p_inf.ok and p_mbt.ok, "两次射击剖面都成立")

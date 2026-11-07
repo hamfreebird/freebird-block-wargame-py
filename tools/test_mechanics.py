@@ -286,7 +286,7 @@ def test_fort_work(sc, arm) -> None:
 
 def test_interception(sc, arm) -> None:
     print("反导多段拦截")
-    from core import rules
+    from core import dice, rules
     from core.model import Missile
     from core.rng import GameRng
 
@@ -317,9 +317,9 @@ def test_interception(sc, arm) -> None:
         return st, m, d
 
     # 打不中时：两轮中段窗口都要真的发生，各消耗一发拦截弹
-    real_roll = rules.roll
+    real_roll = dice.roll
     try:
-        rules.roll = lambda p, rng=None: False
+        dice.roll = lambda p, rng=None: False
         st, m, d = build((9, 6), (16, 10))
         ammo0 = d.ammo.get("thaad_int", 0)
         st.resolve_missiles()
@@ -330,19 +330,19 @@ def test_interception(sc, arm) -> None:
         check(used == rules.MIDCOURSE_WINDOWS, f"每轮烧一发拦截弹（用掉 {used} 发）")
 
         # 打中：第一轮就结束，弹头不再进入后续窗口
-        rules.roll = lambda p, rng=None: True
+        dice.roll = lambda p, rng=None: True
         st2, m2, d2 = build((9, 6), (16, 10))
         st2.resolve_missiles()
         check(not st2.missiles and m2.midcourse_windows == 1,
               "中段命中后弹头即刻消失，不再占用后续窗口")
 
         # 上升段：只有贴着发射点的那套系统够得着
-        rules.roll = lambda p, rng=None: True
+        dice.roll = lambda p, rng=None: True
         st3, m3, d3 = build((2, 2), (16, 10))
         check(st3._boost_interception(m3), "发射点附近的反导系统可打上升段")
         check(m3 not in st3.missiles, "上升段击落即从在飞列表摘除")
 
-        rules.roll = lambda p, rng=None: False
+        dice.roll = lambda p, rng=None: False
         st4, m4, d4 = build((2, 2), (16, 10))
         ammo4 = d4.ammo.get("thaad_int", 0)
         check(not st4._boost_interception(m4), "未命中则弹头继续飞行")
@@ -353,7 +353,7 @@ def test_interception(sc, arm) -> None:
         st5, m5, d5 = build((16, 10), (16, 10))
         check(not st5._boost_interception(m5), "远离发射点的反导系统没有上升段机会")
     finally:
-        rules.roll = real_roll
+        dice.roll = real_roll
 
     # 破片：普通弹药可能被「打残后突防」，弹道/高超目标只认直接碰撞
     sam_tpl = next((t for t in arm.templates.values()
@@ -372,7 +372,7 @@ def test_interception(sc, arm) -> None:
         return s, d
 
     try:
-        rules.roll = lambda p, rng=None: True          # 强制每次判定都成立
+        dice.roll = lambda p, rng=None: True          # 强制每次判定都成立
         s1, d1 = sam_state()
         leakers, events, partial = rules.resolve_salvo_interception(
             s1, (8, 8), Side.BLUE, tom, 2)
@@ -384,14 +384,39 @@ def test_interception(sc, arm) -> None:
             s2, (8, 8), Side.BLUE, isk_w, 2)
         check(part_bal == 0, "弹道弹头不吃破片：要么被直接撞碎，要么完整突防")
 
-        rules.roll = lambda p, rng=None: False
+        dice.roll = lambda p, rng=None: False
         s3, d3 = sam_state()
         leakers3, _, partial3 = rules.resolve_salvo_interception(
             s3, (8, 8), Side.BLUE, tom, 2)
         check(leakers3 == 2 and partial3 == 0, "全部脱靶时既不算拦截也不算打残")
     finally:
-        rules.roll = real_roll
+        dice.roll = real_roll
     check(0 < rules.PARTIAL_DAMAGE < 1.0, "打残后的毁伤折扣在 0 与 1 之间")
+
+
+def test_los_cache_isolated() -> None:
+    """通视缓存必须按局隔离。
+
+    模块级缓存只用坐标做键，换一张地图开局时同坐标对会命中上一张图的
+    地形结论。这条断言用一对**实测结论相反**的坐标锁住它。
+    """
+    print("\n[5] 通视缓存按局隔离")
+    from core.engine import GameState
+    from core.loader import load_scenario
+    from core import geo
+
+    def mk(name):
+        return GameState(load_scenario(f"data/maps/{name}.json", ARMORY),
+                         Side.BLUE, seed=1)
+
+    a, b = mk("steppe_thunder"), mk("strait_confrontation")
+    p0, q0 = (21, 10), (19, 6)
+    ra, rb = geo.has_los(a, p0, q0), geo.has_los(b, p0, q0)
+    check(ra is False and rb is True,
+          f"同一对坐标在两张图上结论不同（{ra} / {rb}）")
+    # 再算一遍，确认后算的那一方没有被先算的污染
+    check(geo.has_los(b, p0, q0) is True, "先算 A 之后 B 仍得到自己的结论")
+    check(geo.has_los(a, p0, q0) is False, "反向同理")
 
 
 def main() -> int:
@@ -405,6 +430,7 @@ def main() -> int:
     test_smoke_drift(sc)
     test_fort_work(sc, arm)
     test_interception(sc, arm)
+    test_los_cache_isolated()
 
     print("=" * 46)
     if FAILED:

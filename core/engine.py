@@ -23,7 +23,7 @@ from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
 from . import mods as _mods
 from .rng import GameRng
 from .anim import AnimTrack
-from . import rules
+from . import dice, rules
 from .env import WIND_MAX, EnvironmentTrack, environment_for
 
 
@@ -630,7 +630,7 @@ class GameState:
         for d, w, pk in rules.midcourse_interceptors(self, missile.origin, defended):
             d.ammo[w.id] = max(0, d.ammo.get(w.id, 0) - 1)
             boost_pk = pk * rules.BOOST_PK_SCALE
-            if rules.roll(boost_pk, self.rng):
+            if dice.roll(boost_pk, self.rng):
                 self.add_fx("intercept", missile.origin, None, ttl=1.2,
                             color=(255, 190, 140), text="上升段拦截")
                 self.anim.add("intercept", missile.origin, None, ttl=1.0,
@@ -669,7 +669,7 @@ class GameState:
                 destroyed = False
                 for d, w, pk in rules.midcourse_interceptors(self, mid, defended):
                     d.ammo[w.id] = max(0, d.ammo.get(w.id, 0) - 1)
-                    if rules.roll(pk, self.rng):
+                    if dice.roll(pk, self.rng):
                         self.add_fx("intercept", mid, None, ttl=1.2, color=(150, 220, 255),
                                     text="中段拦截")
                         # 逐帧动画：中段拦截的冷色调涟漪
@@ -770,7 +770,7 @@ class GameState:
         hits = 0
         total_damage = 0.0
         for i in range(max(1, salvo)):
-            if rules.roll(prof.pk, self.rng):
+            if dice.roll(prof.pk, self.rng):
                 # 被打残的那几发按 PARTIAL_DAMAGE 折算：破片撕开弹体，
                 # 战斗部剩下的能量不足以打出标称毁伤
                 scale = rules.PARTIAL_DAMAGE if i < partial else 1.0
@@ -917,7 +917,7 @@ class GameState:
 
         hits, total = 0, 0.0
         for i in range(n):
-            if rules.roll(prof.pk, self.rng):
+            if dice.roll(prof.pk, self.rng):
                 # 被破片打残的那几发只带来部分毁伤
                 scale = rules.PARTIAL_DAMAGE if i < partial else 1.0
                 dmg = rules.jitter(prof.damage, rng=self.rng) * scale

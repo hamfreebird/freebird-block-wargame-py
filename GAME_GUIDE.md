@@ -400,8 +400,10 @@ python main.py --sim 18 --map 1   # 用第 2 张地图推演
 拦你的正是那门 S-400；此时要么换更低的弹道、要么先用反辐射导弹打掉防空、
 要么绕开它的包线——**这就是「看得见也未必打得中」的量化答案**。
 
-> 实现：`core/rules.py` 的 `counter_threat_profile()`，纯计算，不消耗任何资源，
-> 也不影响结算——真实拦截仍按 `resolve_salvo_interception()` 逐发判定。
+> 实现：`core/combat.py` 的 `counter_threat_profile()`，纯计算，不消耗任何资源，
+> 也不影响结算——真实拦截仍按 `core/adn.py` 的 `resolve_salvo_interception()`
+> 逐发判定。（v3.3 起规则层按域拆成九个模块，`core/rules.py` 只做统一导出，
+> 模块地图见 [SDK.md 第 10 章](SDK.md#10-核心模块地图)。）
 
 ### 5.2 火力与毁伤
 

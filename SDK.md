@@ -52,6 +52,11 @@
   - [8.2 本地化 tr()](#82-本地化-tr)
   - [8.3 单位图标包](#83-单位图标包)
 - [9. 示例与自检](#9-示例与自检)
+- [10. 核心模块地图](#10-核心模块地图)
+  - [10.1 规则层的九个模块](#101-规则层的九个模块)
+  - [10.2 加新机制该放哪](#102-加新机制该放哪)
+  - [10.3 两条必须守住的约定](#103-两条必须守住的约定)
+  - [10.4 门面的约束](#104-门面的约束)
 - [附录 A. 常见错误排查](#附录-a-常见错误排查)
 - [附录 B. 版本历史](#附录-b-版本历史)
 
@@ -899,6 +904,70 @@ python tools/check_sdk.py         # 本文档与代码是否对得上
 ```
 
 ---
+
+## 10. 核心模块地图
+
+改引擎之前先知道代码在哪。规则层 v3.3 起按域拆开，`core/rules.py` 只剩
+re-export——**它是对外的名字清单，不是实现**。
+
+### 10.1 规则层的九个模块
+
+| 模块 | 管什么 | 关键符号 |
+|---|---|---|
+| `core/dice.py` | 骰子 | `roll` `jitter` |
+| `core/geo.py` | 几何、视线、共用常量 | `dist` `has_los` `crossfire_bonus` `RANGE_TOLERANCE` |
+| `core/ew.py` | 电子战 | `jam_field` `jam_strength_at` `gps_integrity` `decoy_signature` |
+| `core/detect.py` | 探测链与增量缓存 | `evaluate_detection` `detection_level` `build_detection_map` |
+| `core/adn.py` | 防空网、逐发拦截、中段反导 | `AirDefenseNetwork` `resolve_salvo_interception` `interception_estimate` |
+| `core/combat.py` | 射击剖面、威胁评估 | `shot_profile` `counter_threat_profile` |
+| `core/facility.py` | 设施打击与服务 | `facility_strike_profile` `service_tile` |
+| `core/logistics.py` | 补给链 | `supply_sources` `assign_supply` `supply_status` |
+| `core/pathfind.py` | 机动与寻路 | `find_path` `flood_reachable` `tile_move_cost` |
+
+依赖方向（箭头指向被依赖者，**无环**）：
+
+```
+pathfind → facility → combat → adn → detect → ew → geo → dice
+```
+
+`pathfind` 依赖 `facility` 只是因为基地容量常量 `AIRBASE_CAPACITY` 放在那边。
+
+### 10.2 加新机制该放哪
+
+| 你要加的 | 放这里 | 理由 |
+|---|---|---|
+| 新的探测条件（如被动声呐受温跃层影响） | `detect.py` 的 `sensor_effective_range` | 所有传感器倍率都在同一处连乘，散开就无法比较 |
+| 新的毁伤修正（如攻顶弹药） | `combat.py` 的 `shot_profile` | 它已经收集了全部伤害因子 |
+| 新的拦截方式 | `adn.py` | 拦截窗口与备弹消耗必须一起看 |
+| 新的地形影响 | `geo.py`（通视）+ `pathfind.py`（代价） | 两件事本来就分开 |
+| 新的电子战频段 | `ew.py` 的 `jam_band_weights` 与 `jam_field` | 频段是「场」的属性，不是单个单位的 |
+
+### 10.3 两条必须守住的约定
+
+**一、跨模块的「环境依赖」走属性访问。** 下面这几处刻意写成
+`ew.jam_strength_at(...)` 而不是 `from .ew import jam_strength_at`：
+
+```
+dice.roll · geo.has_los · ew.jam_strength_at · ew.gps_integrity · detect.own_track
+```
+
+原因只有一个：自检脚本要把它们换成确定性桩值。**打补丁只能改定义处模块的
+属性**，函数体内直接引用的名字是另一份绑定，补丁打不到。如果你新写一个
+「自检需要打桩」的函数，照此办理。
+
+**二、缓存必须挂在 `state` 上，不能模块级。** 用 `geo._cache_of(state, "名字")`
+取一个对局私有的字典。模块级缓存只用坐标或 `id(state)` 做键都会出事：
+
+- 只用坐标 → 换一张地图开局时，同坐标对命中上一张图的地形结论；
+- 用 `id(state)` → CPython 回收旧对局后会复用地址，新对局命中上一局的场。
+
+两条都实测踩过，都会让「同种子重跑」悄悄失效。
+
+### 10.4 门面的约束
+
+`core/rules.py` 只允许有 `import` 与 `__all__`。往里加实现的那一刻，
+拆分就白做了——下一个改动又会找不到地方。要加东西，加到对应的域模块，
+再让门面导出它。
 
 ## 附录 A. 常见错误排查
 
