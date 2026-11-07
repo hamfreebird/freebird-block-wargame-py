@@ -108,6 +108,9 @@ class GameState:
 
         self.missiles: list[Missile] = []
         self.log: list[LogEntry] = []
+        # 读档时若做过版本迁移，这里记下给人看的说明（空表示读的就是当前版本）。
+        # 放在状态上而不是只弹一次提示：战报与结算都能把它带出来。
+        self.load_notes: list[str] = []
         self.fx: list[Fx] = []
         # 逐帧战斗动画（core 不依赖 pygame，具体绘制在 ui/mapview.py）
         self.anim = AnimTrack()

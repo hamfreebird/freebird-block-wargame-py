@@ -33,6 +33,7 @@ for _stream in (sys.stdout, sys.stderr):
 from core.engine import GameState  # noqa: E402
 from core.enums import Side  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
+from core import save as save_mod  # noqa: E402
 from core.save import (  # noqa: E402
     SAVE_VERSION, SaveError, load_game, save_game,
 )
@@ -136,7 +137,7 @@ def main() -> int:
         print(f"      实得 {[round(v, 6) for v in got]}")
 
     # ------------------------------------------------------------------ #
-    print("[2] 向后兼容：v5 旧档（无 rng）仍可读")
+    print("[2] 版本迁移链：旧档自动升级")
     old = dict(raw)
     old.pop("rng", None)
     old["version"] = 5
@@ -147,8 +148,53 @@ def main() -> int:
         check(isinstance(st_old.seed, int) and st_old.seed > 0,
               "旧档读入后仍有可用的种子")
         check(st_old.rng.calls == 0, "旧档的随机流从零开始（无状态可恢复）")
+        check(len(st_old.load_notes) == 1,
+              f"记录了迁移说明（{len(st_old.load_notes)} 条）")
+        check(any("v5" in n and "随机流" in n for n in st_old.load_notes),
+              "说明里点明「v5 旧档缺随机流」")
+        check(any("升级" in e.text for e in st_old.log),
+              "升级说明写进了战报，不只是弹一次提示")
     except Exception as exc:          # noqa: BLE001
         check(False, f"旧档读取失败：{type(exc).__name__}: {exc}")
+
+    with open(old_path, "r", encoding="utf-8") as f:
+        check(json.load(f).get("version") == 5,
+              "迁移只发生在内存里，不擅自改写磁盘上的旧档")
+
+    check(st2.load_notes == [], "当前版本的存档不产生迁移说明")
+
+    # 比链条起点更老的版本号（v1–v4 从未对外存在）按起点版本处理
+    ancient = dict(old)
+    ancient["version"] = 2
+    try:
+        st_ancient = load_game(_write(tmpdir, "legacy_v2", ancient), ARMORY)
+        check(any("v5" in n for n in st_ancient.load_notes),
+              "v2 旧档走同一条链（结构上等同于 v5）")
+    except Exception as exc:          # noqa: BLE001
+        check(False, f"v2 旧档读取失败：{type(exc).__name__}: {exc}")
+
+    # 链条结构不变量：从现在到 SAVE_VERSION 之间不能缺环。
+    # 这条会在有人把 SAVE_VERSION 改成 7 却忘了写迁移时立刻失败。
+    missing = [v for v in range(save_mod.CHAIN_START, SAVE_VERSION)
+               if v not in save_mod.MIGRATIONS]
+    check(not missing, f"迁移链逐版连续（缺 {missing}）" if missing
+          else "迁移链逐版连续")
+    check(all(v < SAVE_VERSION for v in save_mod.MIGRATIONS),
+          "没有指向当前版本之外的迁移")
+
+    # 缺环时必须明确拒绝，而不是猜结构往下走
+    saved_migrations = dict(save_mod.MIGRATIONS)
+    save_mod.MIGRATIONS.clear()
+    try:
+        load_game(old_path, ARMORY)
+    except SaveError as exc:
+        check("迁移" in str(exc), f"缺迁移时明确拒绝（{exc}）")
+    except Exception as exc:          # noqa: BLE001
+        check(False, f"缺迁移时泄漏了 {type(exc).__name__}")
+    else:
+        check(False, "缺迁移时被静默接受")
+    finally:
+        save_mod.MIGRATIONS.update(saved_migrations)
 
     # ------------------------------------------------------------------ #
     print("[3] 状态完整性：存档往返不丢关键字段")

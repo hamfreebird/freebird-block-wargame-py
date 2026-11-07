@@ -1621,7 +1621,13 @@ class App:
         self.mapview.state = st
         self.mapview.fit()
         self._select_first_unit()
-        self.set_status(tr("ui.st.loaded_slot_fmt") % (i, st.turn_count))
+        msg = tr("ui.st.loaded_slot_fmt") % (i, st.turn_count)
+        if st.load_notes:
+            # 旧档升级必须让人看见——「随机流断了」这件事悄无声息才是最糟的
+            msg += " · " + st.load_notes[0]
+            self.set_status(msg, 8)
+        else:
+            self.set_status(msg)
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Callable
 
 from .engine import GameState, LogEntry
 from .enums import Altitude, Facility, Side
@@ -30,6 +30,81 @@ SAVE_VERSION = 6
 
 class SaveError(Exception):
     """存档读写失败。"""
+
+
+# --------------------------------------------------------------------------- #
+# 版本迁移链
+# --------------------------------------------------------------------------- #
+# 存档格式改动时的规矩：**加一版就加一节链条**，不要靠在 `_restore_game` 里
+# 到处写 `d.get(key, 默认值)` 兜底。兜底的问题不是不管用，而是没人看得见——
+# 半年后翻代码，谁也说不清「v5 的 `fuel` 字段到底是什么语义」。
+#
+# 每个迁移函数就地改写存档字典，返回**一句给人看的话**，由读档流程攒起来
+# 交给界面。这样玩家知道自己读的是旧档、也知道旧档缺了什么。
+
+Migration = Callable[[dict[str, Any]], str]
+
+#: 迁移链起点：从这一版开始有正式的迁移记录。
+#: v1.0 首次公开发布就是 v5，更早的版本号从未对外存在过，
+#: 结构与 v5 一致（唯一差别是缺随机流），因此统一按 v5 入口处理。
+CHAIN_START = 5
+
+#: {源版本: 升级到「源版本 + 1」的函数}。**必须逐版连续**——
+#: 中间缺一环就无法确定存档结构，只能拒绝（见 `migrate_save`）。
+MIGRATIONS: dict[int, Migration] = {}
+
+
+def _migration(source: int):
+    """把函数登记进迁移链，并做一次「键 = 源版本」的一致性检查。"""
+    def deco(fn):
+        MIGRATIONS[source] = fn
+        return fn
+    return deco
+
+
+@_migration(5)
+def _migrate_5_to_6(data: dict[str, Any]) -> str:
+    """v5 → v6：补上随机流字段。
+
+    v5 存档里没有 ``rng``，**无法还原「已消耗 N 次」之后的序列**——这不是
+    补个种子能解决的，不同分布消耗的随机数个数不同。所以迁移只能把字段
+    显式写成 ``None``：读档流程看到它就知道该从种子重新起流，并把这个
+    事实告诉玩家，而不是假装可复现。
+    """
+    data["rng"] = None
+    return "存档从 v5 升级：旧档没有随机流，读档后从种子重新起流（此前的判定序列无法重现）"
+
+
+def migrate_save(data: dict[str, Any]) -> list[str]:
+    """把存档逐版升级到 :data:`SAVE_VERSION`，返回升级说明。
+
+    返回空列表表示存档本来就是当前版本、未做任何改动。版本高于当前程序
+    或迁移链缺环时抛 :class:`SaveError`——猜结构比明确拒绝危险得多。
+    """
+    raw = data.get("version", 0)
+    try:
+        version = int(raw)
+    except (TypeError, ValueError):
+        raise SaveError(f"存档版本号不合法：{raw!r}") from None
+
+    if version > SAVE_VERSION:
+        raise SaveError("存档版本高于当前程序，请升级后再读取")
+    if version < 0:
+        raise SaveError(f"存档版本号不合法：{version}")
+
+    notes: list[str] = []
+    if version < CHAIN_START:
+        # 早于链条起点的版本没有独立结构，按起点版本处理
+        version = CHAIN_START
+    while version < SAVE_VERSION:
+        fn = MIGRATIONS.get(version)
+        if fn is None:
+            raise SaveError(
+                f"缺少 v{version}→v{version + 1} 的迁移，无法读取该存档")
+        notes.append(fn(data))
+        version += 1
+        data["version"] = version
+    return notes
 
 
 # --------------------------------------------------------------------------- #
@@ -214,8 +289,9 @@ def load_game(path: str, default_armory: str = "") -> GameState:
 
 
 def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
-    if int(data.get("version", 0)) > SAVE_VERSION:
-        raise SaveError("存档版本高于当前程序，请升级后再读取")
+    # 版本迁移先跑：后面的恢复逻辑只面对当前版本的结构，
+    # 不必再为每一版历史差异写「缺失取默认」的分支。
+    notes = migrate_save(data)
 
     scenario_path = data.get("scenario", "")
     armory_path = data.get("armory") or default_armory
@@ -233,6 +309,8 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
     state = GameState(scenario, side, seed=_seed_from_save(data))
     state.scenario_path = scenario_path
     state.armory_path = armory_path
+    # 旧档升级说明：界面读它提示玩家「这局是从哪一版升上来的、缺了什么」
+    state.load_notes = list(notes)
 
     # 随机流状态：接着存档那一刻的序列继续走，否则「同种子可重演」在读档处断裂
     rng_state = data.get("rng")
@@ -408,6 +486,10 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
         state.log.append(LogEntry(int(e.get("turn", 1)), Side(sd) if sd else None,
                                   e.get("text", ""), e.get("kind", "info")))
     state.log_message(None, f"读取存档：第 {state.turn_count} 回合 · {state.map.name}", "system")
+    # 升级说明也进战报：玩家翻战报时能看见「这局是从旧档升上来的」，
+    # 而不是只在读档那一瞬间闪过的状态栏提示
+    for note in notes:
+        state.log_message(None, note, "system")
 
     state._ai_planner = None
     # AI 的作战决心不存档：它记的是「某支部队要去某格」，读档后单位 uid
@@ -455,6 +537,7 @@ def list_slots(root: str) -> list[dict]:
 
 
 __all__ = [
-    "SaveError", "SAVE_VERSION", "game_to_dict", "save_game", "load_game",
+    "SaveError", "SAVE_VERSION", "CHAIN_START", "MIGRATIONS", "migrate_save",
+    "game_to_dict", "save_game", "load_game",
     "save_dir", "slot_path", "list_slots",
 ]
