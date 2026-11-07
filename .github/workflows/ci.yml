@@ -129,6 +129,9 @@ jobs:
       - name: 文档自检（目录 / 锚点 / 版本号）
         run: python tools/check_docs.py
 
+      - name: SDK 文档自检（目录 / 符号可解析 / 清单全覆盖）
+        run: python tools/check_sdk.py
+
       - name: 模组 SDK 自检（manifest / 版本承诺 / 依赖 / 注入）
         env:
           SDL_VIDEODRIVER: dummy
@@ -151,6 +154,11 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_a11y.py
+
+      - name: 分享与观战自检（想定包校验和 / 回放内嵌想定 / AI 对战可复现）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_share.py
 
       - name: 存档自检（随机流往返 / 坏档不崩）
         run: python tools/test_save.py

@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pygame  # noqa: E402
 
 from core.enums import Detection, Side  # noqa: E402
+from core.i18n import tr as i18n_tr  # noqa: E402
 from core import rules  # noqa: E402
 from core.paths import armory_path  # noqa: E402
 from ui.app import App  # noqa: E402
@@ -1104,6 +1105,63 @@ def main() -> int:
         check(not _tut_logs,
               f"普通想定「{_norm['name']}」作战日志中无教学条目"
               + (f"（实际有：{_tut_logs[:2]}）" if _tut_logs else ""))
+
+    # --- v3.2：AI 对战观战 ---------------------------------------------
+    # 观战是一条新的主循环（mode == "spectate"），必须真的跑一遍：
+    # 启动、推进、控制条点击、键盘控制、导出回放、退出。
+    app.mode = "menu"
+    app.start_spectate()
+    check(app.mode == "spectate" and app.spectate is not None, "AI 观战：能启动")
+    check(app.state is not None and app.state.spectator, "AI 观战：对局处于观战态")
+    for _ in range(60):
+        if not app._spectate_step():
+            break
+    check(app.spectate.actions > 0, f"AI 观战：双方已在行动（{app.spectate.actions} 个动作）")
+    app.draw()
+    check(app._spec_btn_pause.width > 0, "AI 观战：控制条已绘制")
+
+    _click(app._spec_btn_pause.center)
+    check(app.spectate_paused, "AI 观战：点击「暂停」生效")
+    _click(app._spec_btn_pause.center)
+    check(not app.spectate_paused, "AI 观战：再次点击可继续")
+
+    _spd0 = app.spectate_speed
+    _click(app._spec_btn_speed.center)
+    check(app.spectate_speed != _spd0, "AI 观战：点击倍速可切换")
+
+    def _key(k: int) -> None:
+        app._on_key(pygame.event.Event(pygame.KEYDOWN,
+                                       {"key": k, "mod": 0, "unicode": ""}))
+
+    _p0 = app.spectate_paused
+    _key(pygame.K_SPACE)
+    check(app.spectate_paused != _p0, "AI 观战：空格可暂停 / 继续")
+    _follow0 = app.spectate_follow
+    _key(pygame.K_f)
+    check(app.spectate_follow != _follow0, "AI 观战：F 可开关镜头跟随")
+    _turn0 = app.spectate.turn
+    _key(pygame.K_n)
+    check(app.spectate.turn >= _turn0, "AI 观战：N 可跳到下一回合")
+
+    # 观战里「结束回合」必须不存在——它会替 AI 推相位
+    check(not any(b.label == i18n_tr("top.end_turn") for b in app.buttons),
+          "AI 观战：顶栏没有「结束回合」按钮")
+
+    _rdir = app._replays_dir()
+    _before = set(os.listdir(_rdir)) if os.path.isdir(_rdir) else set()
+    app.export_spectate_replay()
+    _new = ([f for f in os.listdir(_rdir)
+             if f.endswith(".bwrep") and f not in _before]
+            if os.path.isdir(_rdir) else [])
+    check(bool(_new), "AI 观战：能导出观战回放")
+    if _new:
+        from core.replay import ReplayFile as _RF
+        _rf = _RF.load(os.path.join(_rdir, _new[0]))
+        check(_rf.kind == "ai_vs_ai", "AI 观战：回放类型为观战")
+        check(_rf.scenario_data is not None, "AI 观战：回放内嵌了想定（可分享）")
+
+    _click(app._spec_btn_exit.center)
+    check(app.mode == "menu", "AI 观战：点击「退出」回到主菜单")
 
     print("冒烟测试全部通过")
     return 0

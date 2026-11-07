@@ -38,13 +38,14 @@ from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_c
                            load_campaign,
                            load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
-from core.replay import ReplayFile
+from core.replay import ReplayError, ReplayFile
 from core.enums import Detection, Domain, Facility, Side, TimeOfDay, Weather
 from core.engine import GameState
 from core.env import environment_for
 from core.loader import LoadError, list_maps, load_scenario
 from core.model import Unit
 from core.save import SaveError, list_slots, load_game, save_game, slot_path
+from core.spectate import SpectatorMatch
 from core.tutorial import Tutorial, build_tutorial
 
 from . import theme as T
@@ -211,6 +212,17 @@ class App:
         self._replay_dialog: ReplayDialog | None = None
         # 回放播放器（非 None 时处于回放模式）
         self.replay_player: ReplayPlayer | None = None
+        # -- v3.2：AI 对战观战（两个 AI 打，玩家只看）--
+        self.spectate: SpectatorMatch | None = None
+        self.spectate_paused = False
+        self.spectate_speed = 1.0
+        self.spectate_follow = True     # 镜头跟随正在行动的单位
+        self.spectate_over = False
+        self._spec_timer = 0.0
+        self._spec_btn_pause = pygame.Rect(0, 0, 0, 0)
+        self._spec_btn_speed = pygame.Rect(0, 0, 0, 0)
+        self._spec_btn_save = pygame.Rect(0, 0, 0, 0)
+        self._spec_btn_exit = pygame.Rect(0, 0, 0, 0)
         self._menu_buttons: list[Button] = []
         self._tab_rects: list[tuple[pygame.Rect, str]] = []
         self._fire_btn = pygame.Rect(0, 0, 0, 0)
@@ -479,8 +491,12 @@ class App:
     def _menu_campaign_rect(self) -> pygame.Rect:
         return pygame.Rect(T.m(718), self._menu_button_y(), T.m(130), T.m(46))
 
+    def _menu_spectate_rect(self) -> pygame.Rect:
+        """主菜单「AI 观战」按钮（v3.2）。"""
+        return pygame.Rect(T.m(864), self._menu_button_y(), T.m(140), T.m(46))
+
     def _menu_settings_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(864), self._menu_button_y(), T.m(110), T.m(46))
+        return pygame.Rect(T.m(1018), self._menu_button_y(), T.m(110), T.m(46))
 
     # ------------------------------------------------------------------ #
     # 教学想定
@@ -950,25 +966,24 @@ class App:
         self.set_status(tr("ui.st.report_exported_fmt") % (path,), 6)
 
     def _play_replay(self, path: str) -> None:
-        """播放一份回放。"""
+        """播放一份回放。
+
+        想定优先按**内容**匹配（回放里记了 sha256），其次用内嵌想定还原——
+        只看文件名会把「同名不同版」的想定当成同一张图，演出来的就不是那一局了。
+        """
         try:
             rf = ReplayFile.load(path)
-        except Exception as exc:
+        except ReplayError as exc:
             self.set_status(tr("ui.st.replay_read_failed_fmt") % (exc,), 5)
             return
-        # 想定按文件名在安装目录与用户目录里找
-        name = os.path.basename(rf.scenario)
-        found = None
-        for d in (MAP_DIR, _paths.user_maps_dir()):
-            cand = os.path.join(d, name)
-            if os.path.isfile(cand):
-                found = cand
-                break
-        if found is None:
-            self.set_status(tr("ui.st.replay_map_missing_fmt") % (name,), 5)
+        try:
+            target, note = rf.materialize_scenario(
+                [MAP_DIR, _paths.user_maps_dir()], _paths.user_maps_dir())
+        except ReplayError as exc:
+            self.set_status(tr("ui.st.replay_map_missing_fmt") % (exc,), 6)
             return
         try:
-            scenario = load_scenario(found, ARMORY)
+            scenario = load_scenario(target, ARMORY)
         except Exception as exc:
             self.set_status(tr("ui.st.replay_map_failed_fmt") % (exc,), 5)
             return
@@ -978,6 +993,7 @@ class App:
         # 回放不跑教学系统——教学提示条不该出现在重演里
         self.tutorial = None
         self.tutorial_visible = False
+        self.spectate = None
         self.side = player.state.player_side
         self.mode = "replay"
         self.show_menu = False
@@ -987,8 +1003,12 @@ class App:
         self.reachable = {}
         self.tab = "log"
         self._layout_game()
-        self.set_status(tr("ui.st.replay_started_fmt") % (
-                        os.path.basename(path), player.total, rf.seed), 6)
+        msg = tr("ui.st.replay_started_fmt") % (
+            os.path.basename(path), player.total, rf.seed)
+        for extra in (note, rf.compat_note()):
+            if extra:
+                msg += tr("ui.st.note_sep_fmt") % (extra,)
+        self.set_status(msg, 8)
 
     def stop_replay(self) -> None:
         """退出回放，回到主菜单。"""
@@ -1000,7 +1020,7 @@ class App:
         self.set_status(tr("ui.st.replay_exit"), 3)
 
     def export_replay(self) -> None:
-        """把本局导出为回放文件（想定 + 种子 + 命令流）。"""
+        """把本局导出为回放文件（想定 + 种子 + 命令流，内嵌想定可直接分享）。"""
         if self.state is None or self.cmd_log is None:
             return
         if not len(self.cmd_log):
@@ -1011,7 +1031,8 @@ class App:
             scenario = f"{self.state.map.name}.json"
         try:
             rf = ReplayFile.from_game(self.state, scenario, self.cmd_log,
-                                      note=f"{self.state.map.name} · {self.side.label}")
+                                      note=f"{self.state.map.name} · {self.side.label}",
+                                      scenario_path=getattr(self.state, "scenario_path", "") or "")
             d = _paths.replays_dir()
             stamp = time.strftime("%Y%m%d-%H%M%S")
             path = os.path.join(d, f"{os.path.splitext(scenario)[0]}-{stamp}.bwrep")
@@ -1022,6 +1043,164 @@ class App:
         self.set_status(tr("ui.st.replay_exported_fmt") % (
                         os.path.basename(path), len(self.cmd_log),
                         self.state.seed), 6)
+
+    # ------------------------------------------------------------------ #
+    # AI 对战观战（v3.2 10.3）
+    # ------------------------------------------------------------------ #
+    def start_spectate(self) -> None:
+        """用当前选中的想定开一局 AI vs AI，玩家只当观众。"""
+        if not self.scenarios:
+            self.set_status(tr("ui.st.spectate_no_map"), 4)
+            return
+        path = self.scenarios[self.menu_index]["path"]
+        try:
+            scenario = load_scenario(path, ARMORY)
+        except LoadError as exc:
+            self.error = str(exc)
+            return
+        self.spectate = SpectatorMatch(scenario, player_side=Side.BLUE)
+        self.state = self.spectate.state
+        self.state.scenario_path = path
+        self.state.armory_path = ARMORY
+        self.cmd_log = CommandLog()
+        self.side = self.state.player_side
+        self.mode = "spectate"
+        self.tab = "log"
+        # 观战没有玩家：教学、简报、战报回顾一律不参与
+        self.tutorial = None
+        self.tutorial_visible = False
+        self.briefing = None
+        self.show_briefing = False
+        self.debrief = None
+        self.replay_player = None
+        self.spectate_paused = False
+        self.spectate_over = False
+        self.spectate_speed = max(0.25, float(self.cfg.pref("spectate_speed", 1.0) or 1.0))
+        self._spec_timer = 0.0
+        self.pending_target = None
+        self.pending_facility = None
+        self.reachable = {}
+        self.path_preview = None
+        self.hover_unit = None
+        self.cursor_visible = False
+        # 上一局残留的可点区域必须清掉：观战里摸到旧按钮等于误操作
+        self.weapon_rows = []
+        self.salvo_rects = []
+        self.action_buttons = []
+        self._fire_btn = pygame.Rect(0, 0, 0, 0)
+        self.show_menu = False
+        self.show_settings = False
+        self.status = ""
+        self._layout_game()
+        self._select_first_unit()
+        self.set_status(tr("ui.st.spectate_start_fmt") % (
+                        self.state.map.name, self.state.seed), 6)
+
+    def stop_spectate(self) -> None:
+        """退出观战，回到主菜单（对局本身不存档——观战不是玩家的对局）。"""
+        self.spectate = None
+        self.spectate_over = False
+        self.mode = "menu"
+        self.state = None
+        self._scan_scenarios()
+        self.set_status(tr("ui.st.spectate_exit"), 3)
+
+    def _spectate_tick(self, dt: float) -> None:
+        """按节奏推进观战。速度越快单帧内补的动作越多。"""
+        m = self.spectate
+        if m is None or m.finished or self.spectate_paused or self.spectate_over:
+            return
+        self._spec_timer += dt * self.spectate_speed
+        # 一个动作占的时长；倍速只是缩短它，不改变动作顺序
+        per = 0.14
+        n = 0
+        while self._spec_timer >= per and n < 32:
+            self._spec_timer -= per
+            n += 1
+            if not self._spectate_step():
+                break
+
+    def _spectate_step(self) -> bool:
+        """推进一个 AI 动作；返回 False 表示这一局结束了。"""
+        m = self.spectate
+        if m is None:
+            return False
+        info = m.step()
+        self.state = m.state
+        if info is None:
+            self._spectate_finish()
+            return False
+        if self.spectate_follow and self.mapview is not None and info.get("grid"):
+            self.bring_into_view(*info["grid"])
+        # 侧栏跟着显示正在行动的单位——观战看得懂的前提是「知道是谁在动」
+        uid = int(info.get("uid") or 0)
+        if uid:
+            u = self.state.unit_by_uid(uid)
+            if u is not None and u.alive:
+                self.state.select(u)
+        return True
+
+    def _spectate_finish(self) -> None:
+        m = self.spectate
+        if m is None or self.spectate_over:
+            return
+        self.spectate_over = True
+        s = m.summary()
+        winner = ""
+        if s["winner"] == Side.BLUE.value:
+            winner = tr("ui.side_blue")
+        elif s["winner"] == Side.RED.value:
+            winner = tr("ui.side_red")
+        else:
+            winner = tr("ui.spectate.draw")
+        self.set_status(tr("ui.st.spectate_end_fmt") % (
+                        s["turn"], winner, s["vp_blue"], s["vp_red"]), 20)
+        self._sfx("victory")
+
+    def _spectate_cycle_speed(self, step: int = 1) -> None:
+        """在几档固定倍速之间循环——连续的 ±1.5 倍不好复述也不好回退。"""
+        speeds = (0.5, 1.0, 2.0, 4.0, 8.0)
+        cur = min(range(len(speeds)), key=lambda i: abs(speeds[i] - self.spectate_speed))
+        self.spectate_speed = speeds[(cur + step) % len(speeds)]
+        self.cfg.set_pref("spectate_speed", f"{self.spectate_speed:g}")
+        self.set_status(tr("ui.st.spectate_speed_fmt") % (f"{self.spectate_speed:g}",), 2)
+
+    def _spectate_skip_turn(self) -> None:
+        """跳到下一个回合开始（不是跳到终局——那会一下跳过整场）。"""
+        m = self.spectate
+        if m is None or m.finished:
+            return
+        start = m.turn
+        guard = 0
+        while guard < 4000:
+            guard += 1
+            if not self._spectate_step():
+                return
+            if self.spectate.turn != start:
+                return
+        self.set_status(tr("ui.st.spectate_end_fmt") % (
+                        m.turn, "", m.state.vp[Side.BLUE], m.state.vp[Side.RED]), 5)
+
+    def export_spectate_replay(self) -> None:
+        """把这一场 AI 对战存成回放（只存种子——AI 对局由种子唯一决定）。"""
+        m = self.spectate
+        if m is None:
+            return
+        st = m.state
+        path = getattr(st, "scenario_path", "") or ""
+        name = os.path.basename(path) or f"{st.map.name}.json"
+        try:
+            rf = ReplayFile.from_spectate(st, name, scenario_path=path,
+                                          note=f"{st.map.name} · AI 对战")
+            d = _paths.replays_dir()
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            out = os.path.join(d, f"aivai-{os.path.splitext(name)[0]}-{stamp}.bwrep")
+            rf.save(out)
+        except (OSError, ReplayError) as exc:
+            self.set_status(tr("ui.st.replay_export_failed_fmt") % (exc,), 5)
+            return
+        self.set_status(tr("ui.st.replay_exported_fmt") % (
+                        os.path.basename(out), m.actions, st.seed), 6)
 
     def _draw_menu_features(self, s: pygame.Surface, r: pygame.Rect) -> None:
         T.panel(s, r, T.PANEL, T.BORDER, radius=5)
@@ -1284,6 +1463,14 @@ class App:
         T.draw_text(s, tr("ui.campaign_title") + "  [C]", camp_r.center, 13,
                     T.button_text(T.PURPLE, hover), anchor="center")
 
+        # AI 观战入口（v3.2）：两个 AI 打一局给玩家看
+        spec_r = self._menu_spectate_rect()
+        hover = spec_r.collidepoint(self.mouse)
+        pygame.draw.rect(s, T.button_fill(T.AMBER, hover), spec_r, border_radius=4)
+        pygame.draw.rect(s, T.AMBER if hover else T.BORDER_HI, spec_r, 1, border_radius=4)
+        T.draw_text(s, tr("ui.menu.spectate") + "  [V]", spec_r.center, 13,
+                    T.button_text(T.AMBER, hover), anchor="center")
+
         # 设置入口
         set_r = self._menu_settings_rect()
         hover = set_r.collidepoint(self.mouse)
@@ -1438,8 +1625,10 @@ class App:
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()
+        # 观战要在地图下方留出控制条的高度，否则最后几行地块被压住
+        bottom = self._spectate_bar_h() if self.mode == "spectate" else bottom_h()
         map_rect = pygame.Rect(0, top_h(), self.w - side_w(),
-                               self.h - top_h() - bottom_h())
+                               self.h - top_h() - bottom)
         if self.mapview is None:
             self.mapview = MapView(map_rect, self.state)
         else:
@@ -1465,10 +1654,13 @@ class App:
         """
         self.buttons = []
         x = self.w - T.m(14)
-        specs = [
-            (i18n.tr("top.end_turn"), self.end_turn, "primary", "end_turn", 96),
-            (i18n.tr("top.help"), self.toggle_help, "ghost", "help", 62),
-        ]
+        specs = []
+        # 观战模式下「结束回合」必须消失：它会替 AI 推进相位，
+        # 把一场正在演的仗变成玩家在替某一方下命令
+        if self.mode != "spectate":
+            specs.append((i18n.tr("top.end_turn"), self.end_turn, "primary",
+                          "end_turn", 96))
+        specs.append((i18n.tr("top.help"), self.toggle_help, "ghost", "help", 62))
         bh = T.m(32)
         by = T.m(9)
         for label, cb, kind, act, width in specs:
@@ -1555,6 +1747,8 @@ class App:
         mv._clamp()
 
     def end_turn(self) -> None:
+        if self.mode == "spectate":
+            return
         if self.mode != "game" or self.state is None:
             return
         if self.state.phase != "player" or self.state.over:
@@ -1808,7 +2002,7 @@ class App:
             self.screen = pygame.display.set_mode((max(MIN_W, e.w), max(MIN_H, e.h)),
                                                   pygame.RESIZABLE)
             self.w, self.h = self.screen.get_size()
-            if self.mode == "game":
+            if self.mode in ("game", "spectate"):
                 self._layout_game()
         elif e.type == pygame.KEYDOWN:
             self._on_key(e)
@@ -1835,7 +2029,7 @@ class App:
                     self.menu_scroll = max(0, min(max_scroll,
                                                   self.menu_scroll - e.y))
                 return
-            if self.mode != "game":
+            if self.mode not in ("game", "spectate"):
                 return
             if self.mouse[0] >= self.w - side_w() and self.tab == "log" and self.logview:
                 self.logview.scroll_by(e.y * 3)
@@ -1853,6 +2047,29 @@ class App:
                     self.settings_panel.close_requested = False
                     self.close_settings()
                 return
+
+        if self.mode == "spectate":
+            # 观战模式：只认观战控制键，其余一律忽略（玩家没有可操作的东西）
+            if self.spectate is None:
+                self.stop_spectate()
+                return
+            if k == pygame.K_ESCAPE:
+                self.stop_spectate()
+            elif k == pygame.K_SPACE:
+                self.spectate_paused = not self.spectate_paused
+            elif k == pygame.K_RIGHT:
+                self._spectate_cycle_speed(1)
+            elif k == pygame.K_LEFT:
+                self._spectate_cycle_speed(-1)
+            elif k == pygame.K_n:
+                self._spectate_skip_turn()
+            elif k == pygame.K_f:
+                self.spectate_follow = not self.spectate_follow
+                self.set_status(tr("ui.st.spectate_follow_fmt") % (
+                    tr("ui.on") if self.spectate_follow else tr("ui.off"),), 2)
+            elif k == pygame.K_s:
+                self.export_spectate_replay()
+            return
 
         if self.mode == "replay":
             # 回放模式：只认播放控制键，其余一律忽略
@@ -1911,6 +2128,9 @@ class App:
                 self.open_editor()
             elif k == pygame.K_c:
                 self.show_campaign_menu = not self.show_campaign_menu
+            elif k == pygame.K_v:
+                # v3.2：AI 观战（两个 AI 打给你看）
+                self.start_spectate()
             elif k == pygame.K_o:
                 self.open_settings()
             return
@@ -2087,6 +2307,8 @@ class App:
                     self.start_tutorial()
                 elif self._menu_campaign_rect().collidepoint(pos):
                     self.show_campaign_menu = not self.show_campaign_menu
+                elif self._menu_spectate_rect().collidepoint(pos):
+                    self.start_spectate()
                 elif self._menu_settings_rect().collidepoint(pos):
                     self.open_settings()
                 elif self.show_campaign_menu:
@@ -2109,6 +2331,19 @@ class App:
                         self.mode = "menu"
                         self._scan_scenarios()
                         self._scan_campaigns()
+            return
+
+        if self.mode == "spectate":
+            if e.button == 1:
+                if self._click_spectate_bar(pos):
+                    self._sfx("click")
+                    return
+                if pos[0] >= self.w - side_w() and pos[1] > top_h():
+                    self._on_sidebar_click(pos)
+                # 地图上的左键在观战里什么都不做：玩家没有可下的命令
+                return
+            if e.button == 2:
+                self.log_drag = True
             return
 
         # 作战简报：点击「开始作战」关闭
@@ -2197,6 +2432,9 @@ class App:
             if rect.collidepoint(pos):
                 self.tab = key
                 return
+        # 观战模式下侧栏是只读的：除了切页签，没有可点的东西
+        if self.mode == "spectate":
+            return
         st = self.state
         if self.tab == "ops":
             for rect, sat in self._sat_rects:
@@ -2253,6 +2491,33 @@ class App:
                     for name in self.state.sfx_events[:6]:
                         self._sfx(name)
                     del self.state.sfx_events[:]
+            return
+        if self.mode == "spectate":
+            m = self.spectate
+            if m is None:
+                self.stop_spectate()
+                return
+            self._spectate_tick(dt)
+            self.state = m.state
+            self.state.tick_fx(dt)
+            if self.state.sfx_events:
+                for name in self.state.sfx_events[:6]:
+                    self._sfx(name)
+                del self.state.sfx_events[:]
+            # 观战只读：悬停可以看单位，但没有任何可点的操作
+            self.hover_unit = None
+            self.hover_card = False
+            if self.mapview and self.mapview.contains(self.mouse):
+                g = self.mapview.screen_to_grid(self.mouse)
+                self.hover_tile = g
+                if g:
+                    u = self._pick_unit_at(*g)
+                    if u is not None:
+                        self.hover_unit = u
+                        self.hover_card = True
+            else:
+                self.hover_tile = None
+            self.path_preview = None
             return
         if self.mode != "game" or self.state is None:
             return
@@ -2368,8 +2633,8 @@ class App:
         self._draw_bottom(s)
         self._draw_tutorial_bar(s)
         if self.hover_card and self.hover_unit is not None:
-            known = (Detection.TRACKED if self.hover_unit.side is self.side
-                     else self.state.known_level(self.side, self.hover_unit))
+            # 观战模式下全图可见；正常对局等价于「己方 TRACKED / 敌方按探测」
+            known = self.state.view_level(self.hover_unit)
             self.inspect.draw(s, self.hover_unit, self.side, known, self.state, self.mouse)
         if self.show_help:
             self._draw_help(s)
@@ -2379,6 +2644,8 @@ class App:
             self.settings_panel.draw(s)
         if self.mode == "replay":
             self._draw_replay_bar(s)
+        if self.mode == "spectate":
+            self._draw_spectate_bar(s)
         if self.mode == "over":
             self._draw_over(s)
         if self.show_briefing and self.briefing is not None:
@@ -2416,6 +2683,100 @@ class App:
         hint = tr("ui.replay.hint")
         T.draw_text(s, hint, (r.right - 16, r.y + 28), T.FS_TINY, T.TEXT_FAINT,
                     anchor="topright")
+
+    def _spectate_bar_h(self) -> int:
+        """观战控制条高度（布局与绘制共用同一份几何）。
+
+        高度按**实际行高**算出来，不写死：三行的字号不同，放大档位下
+        「固定 64px」的最后一行会掉出控制条外。
+        """
+        return T.m(52) + T.lh(T.FS_TINY)
+
+    def _draw_spectate_bar(self, s: pygame.Surface) -> None:
+        """观战控制条：回合进度 + 正在演什么 + 暂停 / 倍速 / 存回放 / 退出。"""
+        m = self.spectate
+        if m is None:
+            return
+        # 只覆盖地图那一栏：侧栏（作战日志）在观战时才是主信息源，
+        # 不能让它被控制条压掉最后几十像素
+        w = self.w - side_w()
+        h = self._spectate_bar_h()
+        r = pygame.Rect(0, self.h - h, w, h)
+        # 不透明：底栏文字若在半透明背景下透出来，会被读成「两行字重叠」
+        pygame.draw.rect(s, T.PANEL_SUNK, r)
+        pygame.draw.rect(s, T.BORDER, pygame.Rect(0, r.y, w, 1))
+
+        # 右侧按钮从右往左排，每个按钮占位后把游标左移——与顶栏同一套做法
+        btn_h = T.m(26)
+        by = r.y + (h - btn_h) // 2
+        bx = r.right - T.m(14)
+
+        def _btn(width: int, label: str, color) -> pygame.Rect:
+            nonlocal bx
+            bx -= T.m(width)
+            rect = pygame.Rect(bx, by, T.m(width), btn_h)
+            hover = rect.collidepoint(self.mouse)
+            pygame.draw.rect(s, T.button_fill(color, hover), rect, border_radius=3)
+            pygame.draw.rect(s, color, rect, 1, border_radius=3)
+            T.draw_text(s, label, rect.center, 11,
+                        T.button_text(color, hover), anchor="center")
+            bx -= T.m(6)
+            return rect
+
+        self._spec_btn_exit = _btn(70, tr("ui.spectate.exit"), T.RED)
+        self._spec_btn_save = _btn(76, tr("ui.spectate.save"), T.PURPLE)
+        self._spec_btn_speed = _btn(54, f"×{self.spectate_speed:g}", T.AMBER)
+        self._spec_btn_pause = _btn(
+            64, tr("ui.spectate.resume") if self.spectate_paused
+            else tr("ui.spectate.pause"), T.CYAN)
+
+        info_right = self._spec_btn_pause.left - T.m(12)
+        # 第一行：左「回合 + 状态」，右「正在演什么」
+        status = (tr("ui.spectate.finished") if self.spectate_over
+                  else tr("ui.spectate.paused") if self.spectate_paused
+                  else tr("ui.spectate.running"))
+        # 回合数可能比上限多 1（终局那次推进），显示上按上限截住，
+        # 否则「第 9/8 回合」看着像 bug
+        shown_turn = min(m.turn, max(1, int(self.state.turn_limit or 1)))
+        head = tr("ui.spectate.turn_fmt") % (shown_turn, self.state.turn_limit)
+        T.draw_text(s, head, (r.x + T.m(14), r.y + T.m(5)), 12, T.TEXT, bold=True)
+        head_w = T.text_width(head, 12, bold=True)
+        T.draw_text(s, f"· {status}", (r.x + T.m(14) + head_w + T.m(6), r.y + T.m(6)),
+                    11, T.AMBER if self.spectate_over else T.CYAN)
+        info = m.last
+        if info:
+            label = f"{info.get('side_label', '')}{info.get('unit', '')} · {info.get('text', '')}"
+            T.draw_text(s, T.ellipsize(label, 11, max(40, info_right - r.x - T.m(300))),
+                        (info_right, r.y + T.m(7)), 11, T.TEXT_DIM, anchor="topright")
+        # 第二行：进度条（按回合推进，跑满即结束）
+        hint_h = T.lh(T.FS_TINY)
+        bar = pygame.Rect(r.x + T.m(14), r.bottom - hint_h - T.m(16),
+                          max(40, info_right - r.x - T.m(14)), T.m(6))
+        pygame.draw.rect(s, T.PANEL, bar, border_radius=3)
+        done = pygame.Rect(bar.x, bar.y, int(bar.width * m.progress), bar.height)
+        if done.width > 0:
+            pygame.draw.rect(s, T.AMBER if self.spectate_over else T.CYAN,
+                             done, border_radius=3)
+        # 第三行：快捷键提示（贴着控制条底边，不与任何文字抢位置）
+        T.draw_text(s, tr("ui.spectate.hint"),
+                    (r.x + T.m(14), r.bottom - hint_h - T.m(2)),
+                    T.FS_TINY, T.TEXT_FAINT)
+
+    def _click_spectate_bar(self, pos: tuple[int, int]) -> bool:
+        """观战控制条的点击分发；返回是否命中。"""
+        if self._spec_btn_exit.collidepoint(pos):
+            self.stop_spectate()
+            return True
+        if self._spec_btn_save.collidepoint(pos):
+            self.export_spectate_replay()
+            return True
+        if self._spec_btn_speed.collidepoint(pos):
+            self._spectate_cycle_speed(1)
+            return True
+        if self._spec_btn_pause.collidepoint(pos):
+            self.spectate_paused = not self.spectate_paused
+            return True
+        return False
 
     # -- 教学提示条 -------------------------------------------------------
     def _draw_tutorial_bar(self, s: pygame.Surface) -> None:
@@ -2827,6 +3188,11 @@ class App:
             T.draw_text(s, tr("ui.hint_select_unit"), (body.x + 16, y + 46), 11, T.TEXT_FAINT)
             T.draw_text(s, tr("ui.hint_tab_cycle"), (body.x + 16, y + 64), 11, T.TEXT_FAINT)
             y += 104
+        elif self.mode == "spectate":
+            # 观战：只显示单位卡与武器，不画任何可点的行动按钮
+            y = self._draw_unit_card(s, body, u, y)
+            y = self._draw_weapons(s, body, u, y)
+            self.action_buttons = []
         else:
             y = self._draw_unit_card(s, body, u, y)
             y = self._draw_weapons(s, body, u, y)

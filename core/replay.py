@@ -24,8 +24,14 @@ from .commands import (
 )
 from .enums import Side
 from .rules import find_path
+from .version import GAME_VERSION, compat_note
 
-REPLAY_VERSION = 1
+REPLAY_VERSION = 2
+
+#: 玩家/AI 混编的普通对局（命令流）
+KIND_MATCH = "match"
+#: AI 对 AI 的观战（只存种子——整局由「想定 + 种子」唯一决定）
+KIND_AI_VS_AI = "ai_vs_ai"
 
 
 # --------------------------------------------------------------------------- #
@@ -197,9 +203,18 @@ def run_ai_turn(state) -> None:
 # --------------------------------------------------------------------------- #
 # 回放文件
 # --------------------------------------------------------------------------- #
+class ReplayError(Exception):
+    """回放读写 / 还原失败。"""
+
+
 @dataclass
 class ReplayFile:
-    """一份可分享的回放。"""
+    """一份可分享的回放。
+
+    **v3.2 起回放自带想定**：只记想定文件名的回放，换台机器就打不开——
+    对方没有那张图。导出时把想定 JSON 一并内嵌（并记下 sha256），
+    接收方即使没有这张图也能原样重演。
+    """
 
     scenario: str                       # 想定文件名（如 strait_shield.json）
     seed: int
@@ -207,26 +222,47 @@ class ReplayFile:
     commands: list[dict[str, Any]] = field(default_factory=list)
     version: int = REPLAY_VERSION
     note: str = ""
+    #: 回放类型：match（命令流）/ ai_vs_ai（观战，只有种子）
+    kind: str = KIND_MATCH
+    #: 制作该回放的程序版本
+    game_version: str = ""
+    #: 想定指纹——判断本地同名想定是否就是当初那一份
+    scenario_sha256: str = ""
+    #: 内嵌想定（分享时为字典；旧文件 / 未内嵌为 None）
+    scenario_data: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "version": self.version,
+            "kind": self.kind,
             "scenario": self.scenario,
+            "scenario_sha256": self.scenario_sha256,
+            "game_version": self.game_version,
             "seed": self.seed,
             "player_side": self.player_side,
             "note": self.note,
             "commands": list(self.commands),
+            "scenario_data": self.scenario_data,
         }
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ReplayFile":
+        if not isinstance(data, dict):
+            raise ReplayError("回放文件格式错误：顶层应为对象")
+        embedded = data.get("scenario_data")
+        if embedded is not None and not isinstance(embedded, dict):
+            embedded = None
         return ReplayFile(
             scenario=str(data.get("scenario", "")),
             seed=int(data.get("seed", 0)),
             player_side=str(data.get("player_side", "BLUE")),
             commands=list(data.get("commands") or []),
-            version=int(data.get("version", REPLAY_VERSION)),
+            version=int(data.get("version", 1)),
             note=str(data.get("note", "")),
+            kind=str(data.get("kind", KIND_MATCH)),
+            game_version=str(data.get("game_version", "")),
+            scenario_sha256=str(data.get("scenario_sha256", "")),
+            scenario_data=embedded,
         )
 
     def save(self, path: str) -> None:
@@ -234,22 +270,145 @@ class ReplayFile:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
 
-    @staticmethod
-    def load(path: str) -> "ReplayFile":
-        with open(path, "r", encoding="utf-8") as f:
-            return ReplayFile.from_dict(json.load(f))
+    def save_shared(self, path: str) -> None:
+        """导出为**可直接分享**的文件（缺想定时自动内嵌）。
+
+        与 :meth:`save` 的差别只是「想定在不在包里」。分成两个方法，
+        是为了让「本地存档」与「发给别人」这两种意图在代码里也分得清。
+        """
+        if self.scenario_data is None:
+            raise ReplayError(
+                "该回放没有内嵌想定数据，无法独立分享；"
+                "请从对局中重新导出（导出时会自动内嵌）")
+        self.save(path)
 
     @staticmethod
+    def load(path: str) -> "ReplayFile":
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ReplayError(f"读取回放失败：{exc}") from None
+        rf = ReplayFile.from_dict(data)
+        if rf.version > REPLAY_VERSION:
+            raise ReplayError(
+                f"回放格式版本 {rf.version} 高于当前程序支持的 {REPLAY_VERSION}，"
+                f"请更新游戏")
+        return rf
+
+    # -- 内嵌想定 -------------------------------------------------------
+    def embed_scenario(self, path: str) -> None:
+        """把想定文件读进回放（含指纹），失败时保持原样。"""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(raw, dict):
+            return
+        self.scenario_data = raw
+        self.scenario_sha256 = _sha256_json(raw)
+
+    def materialize_scenario(self, search_dirs, writable_dir: str
+                             ) -> tuple[str, str]:
+        """找到（或还原）本回放所需的想定，返回 ``(路径, 提示)``。
+
+        优先级：**内容一致**的本地文件 → 内嵌想定 → 同名的本地文件（带告警）。
+        只按文件名匹配是危险的：同名不同版的想定会让回放演出另一局。
+        """
+        from .pkg import sha256_file
+
+        name = os.path.basename(self.scenario or "")
+        if not name:
+            raise ReplayError("回放没有记录想定名称")
+
+        found: str | None = None
+        for d in list(search_dirs) + [writable_dir]:
+            if not d:
+                continue
+            cand = os.path.join(d, name)
+            if os.path.isfile(cand):
+                found = cand
+                break
+
+        if found is not None:
+            if not self.scenario_sha256:
+                return found, ""
+            try:
+                same = sha256_file(found) == self.scenario_sha256
+            except OSError:
+                same = False
+            if same:
+                return found, ""
+            if self.scenario_data is not None:
+                path = self._restore_scenario(writable_dir, name)
+                return path, "本地同名想定与录制时不一致，已改用回放内嵌的想定重演"
+            return found, "本地同名想定与录制时不一致，观演结果可能与当初不同"
+
+        if self.scenario_data is not None:
+            path = self._restore_scenario(writable_dir, name)
+            return path, "本机没有该想定，已从回放内嵌数据还原"
+        raise ReplayError(f"本机没有回放所需的想定「{name}」，且该回放未内嵌想定数据")
+
+    def _restore_scenario(self, writable_dir: str, name: str) -> str:
+        """把内嵌想定写盘。文件名带上指纹前缀，避免覆盖玩家自己的同名想定。"""
+        os.makedirs(writable_dir, exist_ok=True)
+        stem, ext = os.path.splitext(name)
+        tag = (self.scenario_sha256 or "replay")[:8]
+        path = os.path.join(writable_dir, f"{stem}.{tag}{ext or '.json'}")
+        if not os.path.isfile(path):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.scenario_data, f, ensure_ascii=False, indent=1)
+        return path
+
+    # -- 构造 -----------------------------------------------------------
+    @staticmethod
     def from_game(state, scenario_name: str, log: CommandLog,
-                  note: str = "") -> "ReplayFile":
-        """从进行中的对局导出回放。"""
-        return ReplayFile(
+                  note: str = "", scenario_path: str = "") -> "ReplayFile":
+        """从进行中的对局导出回放（默认内嵌想定，可直接分享）。"""
+        rf = ReplayFile(
             scenario=scenario_name,
             seed=int(getattr(state, "seed", 0)),
             player_side=state.player_side.value,
             commands=log.to_list(),
             note=note,
+            game_version=GAME_VERSION,
         )
+        if scenario_path:
+            rf.embed_scenario(scenario_path)
+        return rf
+
+    @staticmethod
+    def from_spectate(state, scenario_name: str,
+                      scenario_path: str = "", note: str = "") -> "ReplayFile":
+        """观战回放：不存动作流，只存种子——AI 对局由种子唯一决定。"""
+        rf = ReplayFile(
+            scenario=scenario_name,
+            seed=int(getattr(state, "seed", 0)),
+            player_side=state.player_side.value,
+            commands=[],
+            note=note,
+            kind=KIND_AI_VS_AI,
+            game_version=GAME_VERSION,
+        )
+        rf.embed_scenario(scenario_path)
+        return rf
+
+    def compat_note(self) -> str:
+        """版本差异提示（同版本 / 未记录时为空串）。"""
+        return compat_note(self.game_version)
+
+
+def _sha256_json(raw: dict) -> str:
+    """对想定内容取指纹。
+
+    按**规范化后的 JSON** 计算：同一份想定经编辑器另存后键序 / 缩进会变，
+    直接对文件字节取哈希会把「同一张图」判成两份。
+    """
+    import hashlib
+    blob = json.dumps(raw, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
 
 
 # --------------------------------------------------------------------------- #
@@ -353,6 +512,7 @@ def compare(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
 
 
 __all__ = [
-    "ReplayFile", "Replayer", "REPLAY_VERSION",
+    "ReplayFile", "Replayer", "ReplayError", "REPLAY_VERSION",
+    "KIND_MATCH", "KIND_AI_VS_AI",
     "apply_command", "run_ai_turn", "snapshot", "compare",
 ]

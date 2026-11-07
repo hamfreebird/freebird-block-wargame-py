@@ -79,6 +79,14 @@ def _collect(app: App, include_overlay: bool = True) -> list[tuple[str, pygame.R
     if app._fire_btn.width > 0:
         out.append(("交战/确认开火", app._fire_btn))
 
+    # -- 观战控制条（v3.2）--
+    # 只在观战模式下收集：那几个矩形是上一帧留下的，别的界面里已经失效
+    if app.mode == "spectate":
+        for name, rect in (("暂停", app._spec_btn_pause), ("倍速", app._spec_btn_speed),
+                           ("存回放", app._spec_btn_save), ("退出", app._spec_btn_exit)):
+            if rect.width > 0:
+                out.append((f"观战/{name}", rect))
+
     # -- 系统菜单（浮层）--
     if include_overlay:
         for rect, action, _ in app.menu_rects:
@@ -184,6 +192,28 @@ def _check_all_screens(app: App) -> list[str]:
     _scan_overlay("系统菜单")
     app.show_menu = False
 
+    # -- 观战界面（v3.2）--
+    # 观战是独立模式：顶栏少了「结束回合」、多了一条控制条，
+    # 元素集合与对局界面不同，必须单独扫一遍
+    app.mode = "menu"
+    app.start_spectate()
+    if app.spectate is not None:
+        for _ in range(30):
+            if not app._spectate_step():
+                break
+        _scan("观战")
+        app.spectate_paused = True
+        _scan("观战/暂停")
+        app.spectate_paused = False
+        # 控制条不能压住地图：地图可视区底边必须在控制条之上
+        bar_top = app.h - app._spectate_bar_h()
+        if app.mapview.rect.bottom > bar_top:
+            problems.append(
+                f"[观战] 地图被控制条压住：地图底边 {app.mapview.rect.bottom} > {bar_top}")
+        app.stop_spectate()
+    else:
+        problems.append("[观战] 启动失败（spectate 为 None）")
+
     # -- 简报 --
     app.mode = "menu"
     app.menu_index = 0
@@ -224,6 +254,7 @@ def _check_all_screens(app: App) -> list[str]:
         ("菜单/编辑器", app._menu_edit_rect()),
         ("菜单/快速上手", app._menu_tutorial_rect()),
         ("菜单/战役", app._menu_campaign_rect()),
+        ("菜单/AI 观战", app._menu_spectate_rect()),
         ("菜单/设置", app._menu_settings_rect()),
     ]
     for i in range(len(menu_rects)):
@@ -273,6 +304,32 @@ def _check_min_size(app: App) -> list[str]:
             if _overlaps(r1, r2):
                 problems.append(f"[最小窗口] 元素重叠：{n1} {r1} ↔ {n2} {r2}")
     problems.extend(f"[最小窗口] {p}" for p in _check_bounds(app, elements))
+
+    # 观战控制条在最小窗口下最挤（四个按钮 + 三段文字挤一行），单独扫一遍
+    # 观战会顶掉当前对局，扫完要把原来的对局放回去
+    saved_state, saved_side = app.state, app.side
+    app.start_spectate()
+    if app.spectate is not None:
+        for _ in range(20):
+            if not app._spectate_step():
+                break
+        app.draw()
+        spec_els = _collect(app, include_overlay=False)
+        for i in range(len(spec_els)):
+            for j in range(i + 1, len(spec_els)):
+                n1, r1 = spec_els[i]
+                n2, r2 = spec_els[j]
+                if _overlaps(r1, r2):
+                    problems.append(f"[最小窗口/观战] 元素重叠：{n1} {r1} ↔ {n2} {r2}")
+        problems.extend(f"[最小窗口/观战] {p}" for p in _check_bounds(app, spec_els))
+    app.stop_spectate()
+    app.state, app.side = saved_state, saved_side
+    app.mode = "game"
+    app._layout_game()
+    app.draw()
+    # 顶栏按钮已被重建（新对象），元素表必须跟着重收——否则下面的
+    # 「按钮被自己遮挡」检查会因为对象身份对不上而误报
+    elements = _collect(app, include_overlay=False)
 
     # 顶栏关键按钮仍必须可点
     def _covered(target: pygame.Rect, others) -> str | None:

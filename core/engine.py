@@ -71,7 +71,10 @@ class GameState:
     def __init__(self, scenario, player_side: Side = Side.BLUE,
                  seed: int | None = None):
         self.scenario = scenario
-        self.map = scenario.map
+        # 地图**必须复制**：对局会往地块上写目标点归属、烟幕、工事与设施耐久。
+        # 沿用想定里的那一份，第二局就会继承第一局的战场——同一想定同一种子
+        # 重跑的结果不同，回放与观战的可复现性都会断。
+        self.map = scenario.map.clone()
         # 对局随机流：同一个种子 + 同一串命令，重跑结果逐项一致
         # （回放的前提，见 core/rng.py）
         self.rng = GameRng(seed)
@@ -95,6 +98,10 @@ class GameState:
         self.turn_count = 1
         self.turn_limit = scenario.turn_limit
         self.phase = "player"          # player / ai / over
+        # 观战模式（v3.2）：界面不再按某一方的探测结果裁剪视野。
+        # **只影响显示**——AI 与规则仍然按各自阵营的探测结果判定，
+        # 否则「观战看到的信息」会反过来改变 AI 的决策。
+        self.spectator = False
         self.over = False
         self.winner: Side | None = None
         self.win_reason = ""
@@ -274,6 +281,16 @@ class GameState:
 
     def known_level(self, side: Side, target: Unit) -> Detection:
         return self.detection.get(side, {}).get(target.uid, Detection.NONE)
+
+    def view_level(self, target: Unit) -> Detection:
+        """界面显示用的探测等级。
+
+        观战模式下全图可见——「看两个人下棋」不该被其中一方的视野限制。
+        注意这**只是显示**：`known_level()` 仍是规则与 AI 的唯一依据。
+        """
+        if self.spectator or target.side is self.player_side:
+            return Detection.TRACKED
+        return self.known_level(self.player_side, target)
 
     def is_visible_to_player(self, u: Unit) -> bool:
         if u.side is self.player_side:
@@ -1297,7 +1314,8 @@ class GameState:
         if self._check_end():
             return
         self.phase = "ai"
-        self.log_message(None, f"—— 第 {self.turn_count} 回合 · 红方行动 ——", "system")
+        self.log_message(None, f"—— 第 {self.turn_count} 回合 · {self.ai_side.label}行动 ——",
+                        "system")
 
     def finish_ai_turn(self) -> None:
         if self.phase != "ai":
@@ -1710,7 +1728,8 @@ class GameState:
         self.phase = "player"
         if self._check_end():
             return
-        self.log_message(None, f"—— 第 {self.turn_count} 回合 · 蓝方行动 ——", "system")
+        self.log_message(None, f"—— 第 {self.turn_count} 回合 · {self.player_side.label}行动 ——",
+                        "system")
 
     def _run_events(self) -> None:
         """结算当前回合的想定脚本事件。"""
@@ -1788,7 +1807,7 @@ class GameState:
             return
         self._ai_planner = AIPlanner(self, self.ai_side)
         self.phase = "ai"
-        self.log_message(self.ai_side, "红方开始行动", "system")
+        self.log_message(self.ai_side, f"{self.ai_side.label}开始行动", "system")
 
     def ai_pending(self) -> bool:
         planner = getattr(self, "_ai_planner", None)

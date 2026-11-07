@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 from dataclasses import dataclass, field
@@ -275,6 +276,26 @@ class MapData:
         for y in range(self.height):
             for x in range(self.width):
                 yield self.tiles[(x, y)]
+
+    def clone(self) -> "MapData":
+        """复制一份地图，供对局使用。
+
+        **为什么必须复制**：`GameState` 会往地块上写状态——目标点归属、
+        烟幕剩余回合、工事等级、设施耐久。直接沿用想定里那一份，第二局
+        就继承了第一局的战场，同一想定 + 同一种子重跑出来的结果会不同，
+        「可复现」这条基本约束就断了。
+
+        不用 `copy.deepcopy`：128×128 的地图要 240ms，而逐字段重建只要
+        30ms（地块的字段全是不可变标量，没有嵌套对象要递归）。`vars(t)`
+        而不是位置参数，是为了字段增删时不会悄悄错位。
+        """
+        tiles = {k: Tile(**vars(t)) for k, t in self.tiles.items()}
+        return MapData(
+            id=self.id, name=self.name, width=self.width, height=self.height,
+            tile_km=self.tile_km, tiles=tiles,
+            objectives=[copy.copy(o) for o in self.objectives],
+            meta=dict(self.meta), landmass=dict(self.landmass),
+        )
 
 
 def _compute_landmass(tiles: dict[tuple[int, int], Tile], w: int, h: int) -> dict[tuple[int, int], int]:
