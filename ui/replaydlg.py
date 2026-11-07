@@ -32,6 +32,9 @@ class ReplayItem:
     size_kb: int = 0
     mtime: str = ""
     error: str = ""
+    kind: str = "match"
+    #: 回放是否内嵌了想定（换机器也能放）
+    self_contained: bool = False
 
     @property
     def readable(self) -> bool:
@@ -61,6 +64,8 @@ def scan_replays(directory: str) -> list[ReplayItem]:
             item.scenario = rf.scenario
             item.seed = rf.seed
             item.commands = len(rf.commands)
+            item.kind = rf.kind
+            item.self_contained = rf.scenario_data is not None
         except Exception as exc:
             item.error = str(exc)
         items.append(item)
@@ -187,11 +192,15 @@ class ReplayDialog:
                     pygame.draw.rect(s, T.mix(T.PANEL, T.CYAN, 0.16), row, border_radius=3)
                     pygame.draw.rect(s, T.CYAN, row, 1, border_radius=3)
                 name_col = T.TEXT if item.readable else T.TEXT_FAINT
-                T.draw_text(s, item.name[:30], (row.x + 10, row.y + 4), 12, name_col,
-                            bold=active)
+                T.draw_text(s, T.ellipsize(item.name, 12, row.width - 120),
+                            (row.x + 10, row.y + 4), 12, name_col, bold=active)
                 if item.readable:
-                    sub = (f"{item.scenario or '未知想定'} · {item.commands} 条操作"
-                           f" · 种子 {item.seed}")
+                    # 观战回放没有命令流，写成「0 条操作」会让人以为文件坏了
+                    detail = ("AI 对战 · 种子" if item.kind == "ai_vs_ai"
+                              else f"{item.commands} 条操作 · 种子")
+                    sub = f"{item.scenario or '未知想定'} · {detail} {item.seed}"
+                    if item.self_contained:
+                        sub += " · 含想定"
                 else:
                     sub = f"无法读取：{item.error[:30]}"
                 T.draw_text(s, sub, (row.x + 10, row.y + 22), 11,

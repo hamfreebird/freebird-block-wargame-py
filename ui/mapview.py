@@ -756,12 +756,11 @@ class MapView:
                 continue
             if u.domain is Domain.SPACE:
                 continue
-            if u.side is st.player_side:
-                lvl = Detection.TRACKED
-            else:
-                lvl = st.known_level(st.player_side, u)
-                if lvl is Detection.NONE:
-                    continue
+            # 显示等级走 state.view_level()：观战模式下全图可见，
+            # 正常对局等价于「己方 = TRACKED，敌方按探测结果」
+            lvl = st.view_level(u)
+            if lvl is Detection.NONE:
+                continue
             visible.append((u, lvl))
 
         visible.sort(key=lambda p: (p[0].domain is Domain.AIR, p[0].side is not st.player_side))
@@ -1163,8 +1162,7 @@ class MapView:
         for u in self.state.units:
             if not u.alive or u.domain is Domain.SPACE:
                 continue
-            if u.side is not self.state.player_side and \
-                    self.state.known_level(self.state.player_side, u) is Detection.NONE:
+            if self.state.view_level(u) is Detection.NONE:
                 continue
             pygame.draw.rect(surf, T.side_color(u.side),
                              pygame.Rect(int(ox + u.x * cell), int(oy + u.y * cell),

@@ -1,10 +1,13 @@
 """回放播放器。
 
-把一份回放（想定 + 种子 + 命令流）重新演一遍：逐条应用命令，
-地图、态势、日志随之为动——就像当初打的那一局又活过来一次。
+把一份回放重新演一遍：
 
-播放器只负责**推进命令**；渲染复用对局界面的那一套（App 把
-``player.state`` 挂到 ``self.state`` 上，界面代码完全不用改）。
+* **普通对局**（`.kind == "match"`）——按命令流逐条重演；
+* **观战回放**（`.kind == "ai_vs_ai"`）——没有命令流，只有种子，
+  用 :class:`core.spectate.SpectatorMatch` 把两个 AI 重新跑一遍。
+
+两种回放共用同一个播放器与同一套渲染（App 把 ``player.state`` 挂到
+``self.state`` 上，界面代码完全不用改），区别只在「怎么推进」。
 """
 from __future__ import annotations
 
@@ -14,11 +17,12 @@ from typing import Any
 from core.commands import CommandLog
 from core.engine import GameState
 from core.enums import Side
-from core.replay import ReplayFile, apply_command
+from core.replay import KIND_AI_VS_AI, ReplayFile, ReplayError, apply_command
+from core.spectate import SpectatorMatch
 
 
 class ReplayPlayer:
-    """按固定节奏重放命令流。"""
+    """按固定节奏重放命令流 / AI 对局。"""
 
     #: 每条命令之间的间隔（秒）
     STEP_INTERVAL = 0.75
@@ -26,9 +30,7 @@ class ReplayPlayer:
     def __init__(self, scenario, replay: ReplayFile):
         self.scenario = scenario
         self.replay = replay
-        self.commands = CommandLog.from_list(replay.commands)
-        self.state = GameState(scenario, Side(replay.player_side),
-                               seed=replay.seed)
+        self.match: SpectatorMatch | None = None
         self.index = 0
         self.acc = 0.0
         self.speed = 1.0
@@ -37,6 +39,18 @@ class ReplayPlayer:
         #: 本次播放实际执行的命令数（用于核对）
         self.executed = 0
         self.failed = 0
+        if replay.kind == KIND_AI_VS_AI:
+            # 观战回放：整局由「想定 + 种子」唯一决定，所以什么都不用存
+            self.commands = CommandLog()
+            self.match = SpectatorMatch(scenario, seed=replay.seed,
+                                        player_side=Side(replay.player_side))
+            self.state = self.match.state
+            self._last: dict[str, Any] = {}
+        else:
+            self.commands = CommandLog.from_list(replay.commands)
+            self.state = GameState(scenario, Side(replay.player_side),
+                                   seed=replay.seed)
+            self._last = {}
 
     # -- 推进 -------------------------------------------------------------
     def update(self, dt: float) -> None:
@@ -49,7 +63,15 @@ class ReplayPlayer:
                 break
 
     def step(self) -> bool:
-        """执行下一条命令；返回 False 表示已播完。"""
+        """执行下一步；返回 False 表示已播完。"""
+        if self.match is not None:
+            info = self.match.step()
+            if info is None:
+                self.finished = True
+                return False
+            self.executed += 1
+            self._last = info
+            return True
         if self.index >= len(self.commands):
             self.finished = True
             return False
@@ -69,7 +91,7 @@ class ReplayPlayer:
     def skip_to_end(self) -> None:
         """直接跳到结尾（快进）。"""
         guard = 0
-        while not self.finished and guard < 20000:
+        while not self.finished and guard < 60000:
             self.step()
             guard += 1
 
@@ -80,12 +102,30 @@ class ReplayPlayer:
 
     @property
     def progress(self) -> float:
+        if self.match is not None:
+            return self.match.progress
         if not self.total:
             return 1.0
         return min(1.0, self.index / self.total)
 
+    def status_line(self) -> str:
+        """进度文本（左侧）。"""
+        if self.match is not None:
+            st = self.state
+            # 终局那次推进会让回合数比上限多 1，显示上截住，避免「第 19/18 回合」
+            turn = min(st.turn_count, max(1, int(st.turn_limit or 1)))
+            return (f"第 {turn}/{st.turn_limit} 回合"
+                    f" · 已演 {self.executed} 个动作")
+        return f"{self.index}/{self.total}"
+
     def current_label(self) -> str:
-        """当前这条命令的可读描述——用于在界面上说明「正在演什么」。"""
+        """当前正在演什么——用于在界面上说明。"""
+        if self.match is not None:
+            info = self._last
+            if not info:
+                return "准备就绪"
+            side = info.get("side_label") or ""
+            return f"{side}{info.get('unit', '')}· {info.get('text', '')}"[:64]
         if self.index == 0 or self.index > len(self.commands):
             return "准备就绪"
         cmd = self.commands[self.index - 1]
@@ -142,6 +182,8 @@ def list_replays(directory: str) -> list[dict[str, Any]]:
             "seed": 0,
             "commands": 0,
             "note": "",
+            "kind": "match",
+            "game_version": "",
             "mtime": 0,
             "readable": False,
             "size_kb": 0,
@@ -157,6 +199,8 @@ def list_replays(directory: str) -> list[dict[str, Any]]:
             item["seed"] = rf.seed
             item["commands"] = len(rf.commands)
             item["note"] = rf.note
+            item["kind"] = rf.kind
+            item["game_version"] = rf.game_version
             item["readable"] = True
         except Exception:
             pass

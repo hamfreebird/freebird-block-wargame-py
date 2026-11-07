@@ -60,6 +60,7 @@
  "menu.resume": "继续作战",
  "menu.select_scenario": "选择想定",
  "menu.settings": "设置",
+ "menu.spectate": "AI 观战",
  "menu.start": "开始作战",
  "menu.system": "系统菜单",
  "menu.tip_controls": "左键选择/移动，右键下达机动指令，滚轮缩放，中键拖动平移，空格结束回合，F1 查看规则",
