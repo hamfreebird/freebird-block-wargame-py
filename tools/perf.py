@@ -44,9 +44,9 @@ def main() -> None:
     armory = os.path.join(data_root(), "data", "units", "armory.json")
     t0 = time.perf_counter()
     if map_id in ("big256", "big", "256"):
-        # 合成 256×256：不往仓库里塞一张 4MB 的地图 JSON，见 tools/bigmap.py
-        from tools import bigmap
-        scenario = bigmap.build(256)
+        # 合成 256×256：不往仓库里塞一张 4MB 的地图 JSON，见 tools/synth_map.py
+        from tools import synth_map
+        scenario = synth_map.build(256)
         label = "big256（合成）"
     else:
         path = _find_map(map_id)

@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.2.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.3.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -125,6 +125,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v3.1.0** | 深度 | **机制边界收敛**（烟幕随风 / 工时制工事 / 多段拦截）、**兵种相克函数化**（破甲 / 爆破双通道连续匹配）、**消耗与补给链**（油弹备件实数库存，断粮三档降火力）、**想定战术体检**（目标点谁也打不到会点名）、**AI 战术深化**（改派 / 分档撤退 / 集火 / 交叉火力 / 佯攻） |
 | **v3.1.1** | 无障碍 | **字号三档缩放**（标准 / 大 / 特大，行高与控件尺寸同步换算）、**色盲形状标识**（敌方棋子切角表示阵营、7 种兵种家族角标）；修掉三处放大后才暴露的布局缺陷 |
 | **v3.2.0** | 生态 | **想定分享格式**（`.bwscn` v2：逐文件 sha256 + 制作版本，先校验后落盘）、**回放分享**（内嵌想定，换台机器也能重演）、**AI 对战观战**（主菜单一键双 AI 推演：暂停 / 倍速 / 跳回合 / 镜头跟随 / 存回放）、**官方 SDK 文档**（[`SDK.md`](SDK.md)，900 行 API 参考 + `check_sdk` 双向对齐校验） |
+| **v3.3.0** | 打磨 | **规则层拆分**（2091 行单体 → 九个域模块 + 104 行门面，50 多处调用点零改动）、**规则层单元测试**（104 条断言直测纯函数，40 项关键函数清单漏一项即失败）、**存档迁移链**（`MIGRATIONS` 逐版升级，升级说明进状态栏与战报）、**事件总线**（10 个事件、五条阵亡路径统一走 `kill_unit`、`API_VERSION` 1.1.0）、**性能余量**（256×256 / 412 单位整帧 3.2ms） |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -187,7 +188,7 @@ python tools/test_save.py        # 存档自检（随机流往返 / 坏档不崩
 python tools/test_share.py       # 分享与观战自检（校验和 / 内嵌想定 / AI 对战可复现）
 python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
 python tools/check_sdk.py       # SDK 文档自检（符号可解析 / 清单全覆盖 / 版本一致）
-python tools/perf.py            # 性能基准（可加 --map 参数指定想定）
+python tools/perf.py big256     # 性能基准（big256 = 合成 256×256；也可 --map <想定>）
 ```
 
 CI 在 Python 3.10–3.13 × Ubuntu/Windows 矩阵上跑完整校验（3.9 未纳入矩阵，故不作支持承诺）；布局自检与冒烟测试

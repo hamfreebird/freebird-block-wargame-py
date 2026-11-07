@@ -178,8 +178,8 @@ def main() -> int:
 
     # -- 256×256 性能余量（v3.3 11.5）--
     print("  -- 256×256 合成大地图 --")
-    from tools import bigmap
-    big_scenario = bigmap.build(256)
+    from tools import synth_map
+    big_scenario = synth_map.build(256)
     big_state = GameState(big_scenario, Side.BLUE)
     big_view = MapView(pygame.Rect(0, 0, 1600, 900), big_state)
     big_view.fit()
