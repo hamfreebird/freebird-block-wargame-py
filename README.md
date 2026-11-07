@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.3.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.3.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -35,7 +35,7 @@ python main.py
 ```bash
 python main.py --check                     # 校验全部地图与武器库数据
 python main.py --sim 16 --map strait_shield # 无界面双 AI 推演 16 回合
-python tools/diag.py                       # 作战逻辑自检（25 条不变量）
+python tools/diag.py                       # 作战逻辑自检（26 条不变量）
 ```
 
 环境：Python 3.10+ / pygame 2.5+。窗口可自由缩放（最小 1180×740）。
@@ -126,6 +126,7 @@ python tools/diag.py                       # 作战逻辑自检（25 条不变�
 | **v3.1.1** | 无障碍 | **字号三档缩放**（标准 / 大 / 特大，行高与控件尺寸同步换算）、**色盲形状标识**（敌方棋子切角表示阵营、7 种兵种家族角标）；修掉三处放大后才暴露的布局缺陷 |
 | **v3.2.0** | 生态 | **想定分享格式**（`.bwscn` v2：逐文件 sha256 + 制作版本，先校验后落盘）、**回放分享**（内嵌想定，换台机器也能重演）、**AI 对战观战**（主菜单一键双 AI 推演：暂停 / 倍速 / 跳回合 / 镜头跟随 / 存回放）、**官方 SDK 文档**（[`SDK.md`](SDK.md)，900 行 API 参考 + `check_sdk` 双向对齐校验） |
 | **v3.3.0** | 打磨 | **规则层拆分**（2091 行单体 → 九个域模块 + 104 行门面，50 多处调用点零改动）、**规则层单元测试**（104 条断言直测纯函数，40 项关键函数清单漏一项即失败）、**存档迁移链**（`MIGRATIONS` 逐版升级，升级说明进状态栏与战报）、**事件总线**（10 个事件、五条阵亡路径统一走 `kill_unit`、`API_VERSION` 1.1.0）、**性能余量**（256×256 / 412 单位整帧 3.2ms） |
+| **v3.3.1** | 技术债 | **随机流兜底可观测**（缺 `rng` 记账，严格模式报错，`diag` L26 守门）、**索引自动失效**（`Unit` / `Tile` 写入即递增版本号，位置索引与地块索引自己重建，不再靠「记得调」）、**探测指纹覆盖模板**（模组换雷达不再沿用旧结论）、**文档目录可自动重写**（`check_docs.py --fix`）；新增 `tools/test_debt.py` 守这几条 |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -164,7 +165,7 @@ data/
 ```bash
 python main.py --check          # 数据校验（地图 + 武器库）
 python main.py --sim 16         # 无界面双 AI 推演
-python tools/diag.py 20         # 作战逻辑自检（25 条不变量 + 存档往返）
+python tools/diag.py 20         # 作战逻辑自检（26 条不变量 + 存档往返）
 python tools/test_units.py      # 规则层单元测试（纯函数 / 40 项覆盖清单，--trace 看行覆盖）
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
 python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
@@ -178,6 +179,7 @@ python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动
 python tools/test_ai_deep.py     # AI 深化自检（改派 / 撤退 / 集火 / 交叉火力 / 佯攻 / A/B）
 python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
 python tools/test_bus.py         # 事件总线自检（五条阵亡路径 / 订阅分发 / 错误隔离）
+python tools/test_debt.py        # 技术债守卫（随机兜底 / 位置索引 / 地块索引 / 探测指纹）
 python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
 python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）
 python tools/test_sdk.py         # 模组 SDK 自检（manifest / 版本 / 依赖 / 注入）

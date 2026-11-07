@@ -1,6 +1,6 @@
 # 方块兵棋 · 扩展开发手册（SDK API 参考）
 
-> 适用版本：**v3.3.0** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.1.0**
+> 适用版本：**v3.3.1** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.1.0**
 >
 > 本文面向三类读者：**想定作者**（只写 JSON）、**模组作者**（写 Python）、
 > **引擎改造者**（改核心代码）。三条路线的稳定性承诺不同，见 §1.2。
@@ -55,7 +55,7 @@
 - [10. 核心模块地图](#10-核心模块地图)
   - [10.1 规则层的九个模块](#101-规则层的九个模块)
   - [10.2 加新机制该放哪](#102-加新机制该放哪)
-  - [10.3 两条必须守住的约定](#103-两条必须守住的约定)
+  - [10.3 三条必须守住的约定](#103-三条必须守住的约定)
   - [10.4 门面的约束](#104-门面的约束)
 - [附录 A. 常见错误排查](#附录-a-常见错误排查)
 - [附录 B. 版本历史](#附录-b-版本历史)
@@ -98,7 +98,7 @@
 
 | 常量 | 当前值 | 管什么 | 升级时的行为 |
 |---|---|---|---|
-| `core.version.GAME_VERSION` | `3.3.0` | 程序版本 | 提示「文件由更新/更早版本制作」 |
+| `core.version.GAME_VERSION` | `3.3.1` | 程序版本 | 提示「文件由更新/更早版本制作」 |
 | `core.mods.API_VERSION` | `1.1.0` | 模组 SDK 接口 | 范围不匹配 → 拒绝加载 |
 | `core.mod_manifest.MANIFEST_SCHEMA` | `1` | `mod.json` 结构 | 预留 |
 | `core.pkg.PACKAGE_VERSION` | `2` | 想定包 `.bwscn` | 高于程序支持 → 拒绝导入 |
@@ -979,7 +979,7 @@ pathfind → facility → combat → adn → detect → ew → geo → dice
 | 新的地形影响 | `geo.py`（通视）+ `pathfind.py`（代价） | 两件事本来就分开 |
 | 新的电子战频段 | `ew.py` 的 `jam_band_weights` 与 `jam_field` | 频段是「场」的属性，不是单个单位的 |
 
-### 10.3 两条必须守住的约定
+### 10.3 三条必须守住的约定
 
 **一、跨模块的「环境依赖」走属性访问。** 下面这几处刻意写成
 `ew.jam_strength_at(...)` 而不是 `from .ew import jam_strength_at`：
@@ -999,6 +999,13 @@ dice.roll · geo.has_los · ew.jam_strength_at · ew.gps_integrity · detect.own
 - 用 `id(state)` → CPython 回收旧对局后会复用地址，新对局命中上一局的场。
 
 两条都实测踩过，都会让「同种子重跑」悄悄失效。
+
+**三、随机判定必须传 `state.rng`。** `dice.roll(p)` 不给 rng 也能跑，
+但那条路径用的是全局 `random`，**不受对局种子控制**——同一份回放重演会
+得到不同结果，而且它不会报错，只有在「同种子两次跑不一致」时才暴露。
+v3.3.1 起兜底会计数（`dice.FALLBACK_CALLS`），`diag` 的 L26 要求一局
+跑完仍为 0。模组想立刻暴露问题，可以在自己的测试里打开
+`dice.set_strict(True)`——那之后缺 rng 直接抛 `RuntimeError`。
 
 ### 10.4 门面的约束
 
