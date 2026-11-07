@@ -176,6 +176,7 @@ python tools/test_perf.py       # 性能回归自检（渲染 / 探测 / 结论�
 python tools/test_ai_tactics.py  # AI 战术库自检（可达性 / 保底移动 / 战术规则）
 python tools/test_ai_deep.py     # AI 深化自检（改派 / 撤退 / 集火 / 交叉火力 / 佯攻 / A/B）
 python tools/test_hooks.py       # 规则钩子自检（条件 / 效果 / 容错）
+python tools/test_bus.py         # 事件总线自检（五条阵亡路径 / 订阅分发 / 错误隔离）
 python tools/balance_check.py    # 平衡体检（射程断层 / 造价倒挂 / 部署陷阱）
 python tools/test_theme.py       # 主题与教学自检（浅色适配 / 教学触发边界）
 python tools/test_sdk.py         # 模组 SDK 自检（manifest / 版本 / 依赖 / 注入）

@@ -433,6 +433,10 @@ def _do_area_damage(state, eff: Effect, label: str) -> str:
             u.hp = max(0.0, u.hp - eff.damage)
             if u.hp <= 0.0:
                 u.destroyed = True
+                # 统计与广播交给引擎的统一出口；脚本层只管改状态。
+                # （场景事件里的状态可能是测试用的哑对象，所以先探一下）
+                if hasattr(state, "kill_unit"):
+                    state.kill_unit(u, "scenario_event")
             hit += 1
     if hasattr(state, "invalidate_pos_index"):
         state.invalidate_pos_index()

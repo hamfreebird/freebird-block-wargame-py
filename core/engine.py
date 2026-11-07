@@ -21,6 +21,7 @@ from .hooks import Rule, evaluate_rules, parse_rules
 from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
                     ensure_uid_above)
 from . import mods as _mods
+from . import bus as _bus
 from .rng import GameRng
 from .anim import AnimTrack
 from . import dice, rules
@@ -81,6 +82,9 @@ class GameState:
         self.seed = self.rng.seed
         # 模组注册表：规则钩子的来源（默认取全局）
         self.mods = _mods.default_registry()
+        # 事件总线：引擎在「状态真的变了」处投递，模组 / 界面 / 教学订阅。
+        # 与 mods 的 modify_* 钩子分工明确——那类改结果，这类只播报结果。
+        self.bus = _bus.EventBus(mods=self.mods)
         # 深拷贝：同一想定可反复开局，互不污染
         self.units: list[Unit] = [copy.deepcopy(u) for u in scenario.units]
         # 单位 uid 重新编号为 1..N（按想定顺序）。原先 uid 来自模块级
@@ -478,9 +482,8 @@ class GameState:
                              f"{unit.name} 穿越 {mines} 处敌方工事，触雷/障碍伤亡 {mine_dmg:.0f}"
                              f"（剩余 {unit.hp:.0f}）", "combat")
             if not unit.alive:
-                self.casualties[unit.side] += 1
+                self.kill_unit(unit, "mines")
                 self.log_message(unit.side, f"{unit.name} 在障碍地带被摧毁", "combat")
-                self._check_elimination()
                 self.refresh_detection()
                 return True
         self._handle_capture(unit)
@@ -507,6 +510,8 @@ class GameState:
             self.add_fx("ping", (t.x, t.y), None, ttl=1.2, color=(140, 255, 190))
             # 逐帧动画：夺取设施的绿色脉冲
             self.anim.add("ping", (t.x, t.y), None, ttl=1.0, color=(140, 255, 190))
+            self.bus.emit("facility_captured", self, side=unit.side,
+                          x=t.x, y=t.y, by=unit)
             self.log_message(unit.side,
                              f"{unit.name} 夺取 {t.facility.label} ({t.x},{t.y})，原属{old.label}", "combat")
         if t.objective and t.owner is not unit.side:
@@ -514,6 +519,8 @@ class GameState:
             self.add_fx("ping", (unit.x, unit.y), None, ttl=1.2, color=(255, 230, 140))
             # 逐帧动画：占领目标点的金色脉冲
             self.anim.add("ping", (unit.x, unit.y), None, ttl=1.0, color=(255, 230, 140))
+            self.bus.emit("objective_captured", self, side=unit.side,
+                          x=t.x, y=t.y, by=unit)
             self.log_message(unit.side, f"{unit.name} 占领 {t.objective_name or '目标点'} ({t.x},{t.y})", "combat")
 
     # -- 传感器开关 -------------------------------------------------------
@@ -844,11 +851,12 @@ class GameState:
                                      "combat")
 
         killed = target.destroyed
+        self.bus.emit("unit_damaged", self, unit=target,
+                      damage=round(total_damage, 1), by=attacker)
         prep_note = f"（{prof.notes[0]}）" if prof.notes else ""
         if killed:
-            self.casualties[target.side] += 1
             st_att["kills"] += 1
-            self.mods.fire(_mods.EV_UNIT_DESTROYED, self, target)
+            self.kill_unit(target, "direct_fire", attacker)
             self.add_fx("explosion", (target.x, target.y), None, ttl=1.6, color=(255, 90, 60))
             # 逐帧动画：更大的爆炸 + 击毁飘字
             self.anim.add("burst", (target.x, target.y), None, ttl=1.1,
@@ -864,8 +872,6 @@ class GameState:
                              f"伤害 {total_damage:.0f}（剩余 {target.hp:.0f}/{target.template.hp:.0f}）"
                              f"{prep_note}", "combat")
 
-        if killed:
-            self._check_elimination()
         self.refresh_detection()
         return FireResult(True, "命中" if not killed else "击毁", hits=hits,
                           damage=total_damage, destroyed=killed)
@@ -933,6 +939,9 @@ class GameState:
             self.log_message(attacker.side,
                              f"{attacker.name} 对 {name} 的打击未奏效（Pk {prof.pk * 100:.0f}%）", "combat")
             return FireResult(True, "未命中")
+
+        self.bus.emit("facility_struck", self, tile=tile,
+                      damage=round(total, 1), by=attacker)
 
         if weapon.anti_fort > 0 and tile.fort > 0 and tile.fort_owner is not attacker.side:
             before = tile.fort
@@ -1409,10 +1418,9 @@ class GameState:
                 if u.fuel <= 0:
                     u.fuel = 0.0
                     u.destroyed = True
-                    self.casualties[u.side] += 1
+                    self.kill_unit(u, "fuel")
                     self.add_fx("explosion", (u.x, u.y), None, ttl=1.0, color=(255, 120, 60))
                     self.log_message(u.side, f"{u.name} 燃油耗尽坠毁", "combat")
-                    self._check_elimination()
             else:
                 # 地面/水面部队：通过补给线补充（不必站在枢纽上）
                 self._resupply_by_line(u)
@@ -1633,6 +1641,8 @@ class GameState:
             u.decoy_ttl -= 1
             if u.decoy_ttl <= 0:
                 u.destroyed = True
+                # 诱饵不是编制：不计伤亡，但照样广播——玩家看到的是一次「击毁」
+                self.kill_unit(u, "decoy_expired", count_casualty=False)
                 self.log_message(u.side, f"{u.name} 的诱饵信号消失", "ew")
         # 清理已失效的诱饵，避免列表膨胀
         self.units = [u for u in self.units if not (u.is_decoy and u.destroyed)]
@@ -1683,6 +1693,9 @@ class GameState:
                                      f"识别 {got} 个目标，覆盖半径 {self.SAT_FOOTPRINT:.0f} 格", "detect")
 
     def _advance_turn(self) -> None:
+        # 「第 N 回合结束」在清理动作之前发出：接下来的补给结算、燃油坠毁
+        # 都属于这次交接，订阅者按事件顺序就能还原出完整的一回合
+        self.bus.emit("turn_end", self, turn=self.turn_count)
         self._tick_entrench()
         self._tick_fortifications()
         self._tick_decoys()
@@ -1699,8 +1712,8 @@ class GameState:
 
         self._tick_satellites()
 
-        # 回合开始钩子：模组可以在这时做全局调整
-        self.mods.fire(_mods.EV_TURN_START, self, self.turn_count)
+        # 回合开始：既广播给订阅者，也照旧转发给模组的 turn_start 钩子
+        self.bus.emit("turn_start", self, turn=self.turn_count)
 
         self.gps = {s: self._compute_gps(s) for s in (Side.BLUE, Side.RED)}
 
@@ -1769,6 +1782,24 @@ class GameState:
         else:
             self.log_message(None,
                              f"进入{env.time_of_day.label}（{env.clock}）｜{desc}", "detect")
+
+    def kill_unit(self, unit: Unit, cause: str, by: Unit | None = None,
+                  count_casualty: bool = True) -> None:
+        """登记一次阵亡——**所有「单位从存活变成摧毁」的路径都走这里**。
+
+        为什么要有这个统一出口：摧毁标志原先在五处被直接置位（直射命中、
+        触雷、燃油耗尽、诱饵到期、想定区域伤害），每处各记各的账，结果是
+        「区域伤害打死的单位不进伤亡统计、不广播事件、也不判歼灭」。收拢到
+        一处之后，计伤亡 / 广播 / 判歼灭三件事不会再漏。
+
+        ``count_casualty=False`` 给诱饵这类「不算编制」的目标用。
+        调用前 ``unit.destroyed`` 应当已为 True——本方法不负责扣血。
+        """
+        if count_casualty and not unit.is_decoy:
+            self.casualties[unit.side] += 1
+        self.invalidate_pos_index()
+        self.bus.emit("unit_destroyed", self, unit=unit, cause=cause, by=by)
+        self._check_elimination()
 
     def _check_elimination(self) -> None:
         for side in (Side.BLUE, Side.RED):

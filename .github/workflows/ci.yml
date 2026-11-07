@@ -121,6 +121,11 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_hooks.py
 
+      - name: 事件总线自检（五条阵亡路径 / 订阅分发 / 错误隔离）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_bus.py
+
       - name: 平衡体检（兵种树 / 想定部署）
         env:
           SDL_VIDEODRIVER: dummy

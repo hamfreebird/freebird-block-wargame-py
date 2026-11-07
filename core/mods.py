@@ -67,17 +67,32 @@ EV_AFTER_FIRE = "after_fire"
 EV_MODIFY_DAMAGE = "modify_damage"
 #: 回合开始
 EV_TURN_START = "turn_start"
-#: 单位被摧毁
+#: 单位被摧毁（任何路径：直射、触雷、燃油、诱饵到期、想定脚本）
 EV_UNIT_DESTROYED = "unit_destroyed"
+
+# ---- v3.3 事件总线新增的通知型事件 -------------------------------------- #
+#: 回合结束（在清理动作之前）
+EV_TURN_END = "turn_end"
+#: 单位受损（未摧毁也发）
+EV_UNIT_DAMAGED = "unit_damaged"
+#: 固定设施被打击
+EV_FACILITY_STRUCK = "facility_struck"
+#: 设施易手
+EV_FACILITY_CAPTURED = "facility_captured"
+#: 目标点易手
+EV_OBJECTIVE_CAPTURED = "objective_captured"
 
 HOOK_EVENTS = (
     EV_BEFORE_FIRE, EV_AFTER_FIRE, EV_MODIFY_DAMAGE,
     EV_TURN_START, EV_UNIT_DESTROYED,
+    EV_TURN_END, EV_UNIT_DAMAGED,
+    EV_FACILITY_STRUCK, EV_FACILITY_CAPTURED, EV_OBJECTIVE_CAPTURED,
 )
 
 #: **SDK API 版本**。任何不兼容的接口变更都必须递增它。
 #: 模组可在 manifest 里用 ``"api": ">=1.0.0,<2.0.0"`` 声明兼容范围。
-API_VERSION = "1.0.0"
+#: 1.1.0（v3.3）：新增五个通知型事件。纯增量——1.0.0 的模组不用改。
+API_VERSION = "1.1.0"
 
 #: 模组可以调用的公开 API（白名单）。
 #: 白名单之外的方法不算承诺——内部实现可随时调整。
@@ -97,6 +112,11 @@ HOOK_SIGNATURES = {
     EV_MODIFY_DAMAGE: "(state, attacker, target, weapon, damage)",
     EV_TURN_START: "(state, turn)",
     EV_UNIT_DESTROYED: "(state, unit)",
+    EV_TURN_END: "(state, turn)",
+    EV_UNIT_DAMAGED: "(state, unit, damage, by)",
+    EV_FACILITY_STRUCK: "(state, tile, damage, by)",
+    EV_FACILITY_CAPTURED: "(state, side, x, y, by)",
+    EV_OBJECTIVE_CAPTURED: "(state, side, x, y, by)",
 }
 
 
@@ -712,7 +732,10 @@ def mod_report(registry: ModRegistry | None = None) -> list[str]:
 __all__ = [
     "ModAPI", "ModRegistry", "ModError", "LoadedMod",
     "EV_BEFORE_FIRE", "EV_AFTER_FIRE", "EV_MODIFY_DAMAGE",
-    "EV_TURN_START", "EV_UNIT_DESTROYED", "HOOK_EVENTS", "HOOK_SIGNATURES",
+    "EV_TURN_START", "EV_UNIT_DESTROYED",
+    "EV_TURN_END", "EV_UNIT_DAMAGED", "EV_FACILITY_STRUCK",
+    "EV_FACILITY_CAPTURED", "EV_OBJECTIVE_CAPTURED",
+    "HOOK_EVENTS", "HOOK_SIGNATURES",
     "API_VERSION", "PUBLIC_API", "DEPRECATED",
     "default_registry", "set_default_registry", "default_mod_dirs", "load_all",
     "apply_localization", "mod_report", "resolve_entry",

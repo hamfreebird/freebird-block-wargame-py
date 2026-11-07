@@ -135,6 +135,7 @@
    - [`python tools/test_mods.py`](#python-toolstestmodspy)
    - [`python tools/test_ai_tactics.py`](#python-toolstestaitacticspy)
    - [`python tools/test_hooks.py`](#python-toolstesthookspy)
+   - [`python tools/test_bus.py`](#python-toolstestbuspy)
    - [`python tools/balance_check.py`](#python-toolsbalancecheckpy)
    - [`python tools/test_theme.py`](#python-toolstestthemepy)
    - [`python tools/test_sdk.py`](#python-toolstestsdkpy)
@@ -2655,6 +2656,22 @@ tile=60 时需要一张 15360×15360 的表面（约 900MB）——不可行。�
 条件求值（含 all / any / not 组合）、效果执行（增援 / 空袭 / 修复 /
 暴露 / 目标点 / 标记）、`once` 语义，以及**容错**——单条规则出错不影响
 其它规则，含坏规则的想定仍能加载。
+
+### `python tools/test_bus.py`
+
+**事件总线自检**（v3.3）。守住四件事：
+
+1. **目录三处一致**——`core/bus.py` 的 `CATALOGUE`、`core/mods.py` 的
+   `HOOK_SIGNATURES`、`SDK.md` 的事件表说的是同一批事件、同样的参数顺序；
+2. **每条阵亡路径都广播**——直射、触雷、燃油耗尽、诱饵到期、想定脚本的
+   区域伤害。v3.3 之前只有直射那一条发 `unit_destroyed`，其余四条一声不响，
+   模组只能轮询状态去猜；
+3. **订阅者写错不能带崩对局**——抛异常的回调收进 `state.bus.errors`，
+   引擎照常推进；
+4. **伤亡只记一次**——收拢到 `state.kill_unit()` 之后不会重复计数。
+
+> 顺带修掉的缺陷：想定脚本的**区域伤害**以前打死单位不计伤亡、不判歼灭，
+> 因为那条路径绕过了所有记账。
 
 ### `python tools/balance_check.py`
 

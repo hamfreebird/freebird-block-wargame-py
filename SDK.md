@@ -1,6 +1,6 @@
 # 方块兵棋 · 扩展开发手册（SDK API 参考）
 
-> 适用版本：**v3.2.0** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.0.0**
+> 适用版本：**v3.2.0** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.1.0**
 >
 > 本文面向三类读者：**想定作者**（只写 JSON）、**模组作者**（写 Python）、
 > **引擎改造者**（改核心代码）。三条路线的稳定性承诺不同，见 §1.2。
@@ -99,11 +99,11 @@
 | 常量 | 当前值 | 管什么 | 升级时的行为 |
 |---|---|---|---|
 | `core.version.GAME_VERSION` | `3.2.0` | 程序版本 | 提示「文件由更新/更早版本制作」 |
-| `core.mods.API_VERSION` | `1.0.0` | 模组 SDK 接口 | 范围不匹配 → 拒绝加载 |
+| `core.mods.API_VERSION` | `1.1.0` | 模组 SDK 接口 | 范围不匹配 → 拒绝加载 |
 | `core.mod_manifest.MANIFEST_SCHEMA` | `1` | `mod.json` 结构 | 预留 |
 | `core.pkg.PACKAGE_VERSION` | `2` | 想定包 `.bwscn` | 高于程序支持 → 拒绝导入 |
 | `core.replay.REPLAY_VERSION` | `2` | 回放 `.bwrep` | 高于程序支持 → 拒绝播放 |
-| `core.save.SAVE_VERSION` | `6` | 存档 | 新增字段一律「缺失取默认」 |
+| `core.save.SAVE_VERSION` | `6` | 存档 | 低于当前版逐版迁移（`core.save.MIGRATIONS`），高于当前版拒绝 |
 | `core.config.CONFIG_VERSION` | 见源码 | 用户配置 | 结构变化时迁移 |
 
 **通用规则：读旧文件必须成功，读新文件必须报错。**
@@ -591,22 +591,59 @@ def boost(state, attacker, target, weapon, damage):
 
 ### 5.4 规则钩子
 
-五个事件（`core.mods.HOOK_EVENTS`），签名以 `core.mods.HOOK_SIGNATURES` 为准：
+十个事件（`core.mods.HOOK_EVENTS`），签名以 `core.mods.HOOK_SIGNATURES` 为准。
+按用途分两类——**能改结果的**只有前三个：
 
-| 事件 | 回调签名 | 返回值 |
+| 事件 | 回调签名 | 返回值 | 何时触发 |
+|---|---|---|---|
+| `before_fire` | `(state, attacker, target, weapon)` | 忽略 | 解算前（可改状态） |
+| `after_fire` | `(state, attacker, target, weapon, result)` | 忽略 | 一次射击结算完 |
+| `modify_damage` | `(state, attacker, target, weapon, damage)` | **新伤害值**或 `None` | 伤害应用前 |
+
+通知型（v3.3 新增，**只播报既成事实，改不了它**）：
+
+| 事件 | 回调签名 | 何时触发 |
 |---|---|---|
-| `before_fire` | `(state, attacker, target, weapon)` | 忽略 |
-| `after_fire` | `(state, attacker, target, weapon, result)` | 忽略 |
-| `modify_damage` | `(state, attacker, target, weapon, damage)` | **新伤害值**或 `None` |
-| `turn_start` | `(state, turn)` | 忽略 |
-| `unit_destroyed` | `(state, unit)` | 忽略 |
+| `turn_start` | `(state, turn)` | 回合物资结算完成、玩家可操作之前 |
+| `turn_end` | `(state, turn)` | 本回合结束、清理动作之前 |
+| `unit_destroyed` | `(state, unit)` | 单位被摧毁（任何原因） |
+| `unit_damaged` | `(state, unit, damage, by)` | 单位受损（未必摧毁） |
+| `facility_struck` | `(state, tile, damage, by)` | 机场 / 港口 / 枢纽被打 |
+| `facility_captured` | `(state, side, x, y, by)` | 设施易手 |
+| `objective_captured` | `(state, side, x, y, by)` | 目标点易手 |
 
-`result` 是 `core.engine.FireResult`，含 `ok` / `hits` / `damage` /
+`result` 是 `core.engine.FireResult`，含 `ok` / `message` / `hits` / `damage` /
 `destroyed` / `intercepted` / `flight` 等字段。
 
 钩子里的 `state` 是 `core.engine.GameState`——**可以读取任何字段，但改状态
 请走它自己的方法**（`fire` / `move_unit` / `deploy_decoy` …），
 直接改内部字段会让回放与原局分叉。
+
+#### 事件总线怎么工作的
+
+所有通知型事件走同一条总线（`core.bus.EventBus`，挂在 `state.bus` 上）：
+
+```
+引擎状态改变处 ──emit(name, state, **fields)──▶ 总线
+                                                ├─▶ 历史（最近 96 条，state.bus.recent()）
+                                                ├─▶ 模组钩子（本节表格的签名）
+                                                └─▶ 本地订阅者 (state, event)
+```
+
+三条要记住的性质：
+
+* **顺序即因果**。`turn_end` 一定在清理动作之前、`turn_start` 在之后；
+  `unit_damaged` 一定在同一个单位的 `unit_destroyed` 之前。
+  靠这个顺序就能把一回合还原成一条时间线；
+* **有一条统一出口**。单位阵亡走 `state.kill_unit()`，所以直射、触雷、
+  燃油耗尽、诱饵到期、想定脚本的区域伤害——五条路径都发同一个事件，
+  带 `cause` 区分原因（`direct_fire` / `mines` / `fuel` /
+  `decoy_expired` / `scenario_event`）。**不要**自己置 `unit.destroyed`；
+* **订阅者写错不会带崩对局**。回调抛异常会被收进 `state.bus.errors`，
+  引擎照常往下走；但**别依赖这一点**，`tools/test_bus.py` 会把异常打出来。
+
+要「看」事件而不用改引擎的场合（战报增强、成就、外部日志），订阅总线即可；
+要「改」结果的场合，用上面三个 `modify_*` / `before_*` 钩子。两类接口不要混用。
 
 ### 5.5 本地化注入
 
