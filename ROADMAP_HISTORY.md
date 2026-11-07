@@ -720,7 +720,7 @@ v3.3 把明显的粗糙处磨平之后，`ROADMAP` 的技术债表里还剩五�
 | # | 事项 | 做法 | 回归 |
 |---|---|---|---|
 | 1 | 随机流兜底 | `dice.roll` / `jitter` 缺 `rng` 时会计入 `FALLBACK_CALLS`；`set_strict(True)` 直接抛 `RuntimeError`；`diag` 新增 L26 | `test_debt` 6 条断言 + L26 每局校验 |
-| 2 | 位置索引 | `Unit.__setattr__` 在坐标 / 存活状态被写入时递增 `model.pos_epoch()`；`units_at()` 比对版本号自动重建 | `test_debt` 5 条（改坐标、置摧毁、无关字段不误触发） |
+| 2 | 位置索引 | `Unit.__setattr__` 在坐标 / 存活状态被写入时递增 `model.pos_epoch()`；`units_at()` 比对版本号与单位数量自动重建 | `test_debt` 6 条（改坐标、置摧毁、增援追加、无关字段不误触发） |
 | 3 | 地块索引 | `Tile.__setattr__` 在其 6 个索引相关字段被写入时递增 `model.tile_epoch()`；渲染层索引自校验 | `test_debt` 6 条（目标点增/删、工事、设施） |
 | 4 | 探测指纹 | 指纹加入 `id(template)` + 隐身/干扰标量 + 传感器几何 | `test_debt` 3 条（换模板后世代号递增） |
 | 5 | 文档目录 | `check_docs.py --fix` 按正文重写「## 目录」，锚点与缩进全自动 | `check_docs --fix` 幂等（连跑两次无差异） |

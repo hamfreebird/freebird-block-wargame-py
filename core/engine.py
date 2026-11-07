@@ -125,6 +125,9 @@ class GameState:
         # 单位的坐标/存活状态被写入时递增，这里只需比对版本号。
         self._pos_index: dict[tuple[int, int], list[Unit]] | None = None
         self._pos_epoch_seen = -1
+        # 单位数量：兜住「往 units 里塞了一个没挪过位置的单位」这种情形
+        # （增援、诱饵、想定事件都这么干），版本号抓不到它
+        self._pos_count_seen = -1
         # 地块版本号：目标点 / 工事 / 设施发生变化时递增。
         # 渲染层据此判断自己的地块索引是否过期——这样 UI 不必每帧全图扫描，
         # 而大地图（256×256 = 65536 格）的渲染开销与地图大小基本脱钩。
@@ -265,9 +268,12 @@ class GameState:
         """
         idx = self._pos_index
         epoch = pos_epoch()
-        if idx is None or self._pos_epoch_seen != epoch:
+        count = len(self.units)
+        if (idx is None or self._pos_epoch_seen != epoch
+                or self._pos_count_seen != count):
             idx = self._pos_index = self._build_pos_index()
             self._pos_epoch_seen = epoch
+            self._pos_count_seen = count
         lst = idx.get((x, y))
         if not lst:
             return []

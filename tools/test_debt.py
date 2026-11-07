@@ -42,7 +42,7 @@ from core import detect, dice  # noqa: E402
 from core.engine import GameState  # noqa: E402
 from core.enums import Facility, Side  # noqa: E402
 from core.loader import load_armory, load_scenario  # noqa: E402
-from core.model import pos_epoch, tile_epoch  # noqa: E402
+from core.model import Unit, pos_epoch, tile_epoch  # noqa: E402
 from core.rng import GameRng  # noqa: E402
 from ui.mapview import MapView  # noqa: E402
 
@@ -126,6 +126,15 @@ def test_pos_index() -> None:
     before = pos_epoch()
     next(x for x in st.units).hp += 0.0   # 不相关字段不应影响位置索引
     check(pos_epoch() == before, "无关字段的写入不会误触发位置索引重建")
+
+    # 增援 / 诱饵 / 想定事件都是「先造好再 append」的：位置没变过，
+    # 版本号抓不到，索引得靠**单位数量**判废
+    st3 = new_state()
+    spot3 = first_empty_tile(st3)         # 这一次查询就把索引建好了
+    late = Unit(template=next(iter(ARM.templates.values())), side=Side.RED,
+                x=spot3[0], y=spot3[1], uid=st3.alloc_uid())
+    st3.units.append(late)                # 只 append，不动坐标
+    check(late in st3.units_at(*spot3), "追加进 units 的单位不必改坐标也能被索引发现")
 
 
 # --------------------------------------------------------------------------- #
