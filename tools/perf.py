@@ -41,10 +41,18 @@ def _find_map(map_id: str) -> str:
 
 def main() -> None:
     map_id = sys.argv[1] if len(sys.argv) > 1 else "strait_confrontation"
-    path = _find_map(map_id)
+    armory = os.path.join(data_root(), "data", "units", "armory.json")
     t0 = time.perf_counter()
-    scenario = load_scenario(path, os.path.join(data_root(), "data", "units", "armory.json"))
-    print(f"地图 {os.path.basename(path)}  {scenario.map.width}×{scenario.map.height}  "
+    if map_id in ("big256", "big", "256"):
+        # 合成 256×256：不往仓库里塞一张 4MB 的地图 JSON，见 tools/bigmap.py
+        from tools import bigmap
+        scenario = bigmap.build(256)
+        label = "big256（合成）"
+    else:
+        path = _find_map(map_id)
+        scenario = load_scenario(path, armory)
+        label = os.path.basename(path)
+    print(f"地图 {label}  {scenario.map.width}×{scenario.map.height}  "
           f"单位 {len(scenario.units)}  载入 {time.perf_counter() - t0:.2f}s")
 
     pygame.init()

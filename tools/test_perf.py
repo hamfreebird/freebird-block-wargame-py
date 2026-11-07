@@ -45,6 +45,14 @@ FAILS: list[str] = []
 RENDER_LIMIT_MS = 12.0
 DETECT_LIMIT_MS = 6.0
 
+# 256×256 的验收线（v3.3 11.5）。绝对线用 roadmap 的目标值，
+# 但它对慢机器偏严——所以同时给一条**机器无关**的相对线：
+# 面积翻 4 倍，耗时不应当涨过 2.2 倍。两条满足其一即可。
+BIG_RENDER_LIMIT_MS = 4.0
+BIG_RATIO_LIMIT = 2.2
+# 探测是「每个动作一次」而不是每帧一次，给宽一些，只抓灾难性回归
+BIG_DETECT_LIMIT_MS = 40.0
+
 
 def check(cond: bool, msg: str) -> None:
     if cond:
@@ -167,6 +175,42 @@ def main() -> int:
         changed = any(state.detection[Side.BLUE].get(k) is not v
                       for k, v in before.items())
         check(True, f"单位移动后重新解算（{changed} = 相关结论有变化）")
+
+    # -- 256×256 性能余量（v3.3 11.5）--
+    print("  -- 256×256 合成大地图 --")
+    from tools import bigmap
+    big_scenario = bigmap.build(256)
+    big_state = GameState(big_scenario, Side.BLUE)
+    big_view = MapView(pygame.Rect(0, 0, 1600, 900), big_state)
+    big_view.fit()
+    big_view.draw(screen)              # 预热：建地形块
+    big_state.refresh_detection()
+    for _ in range(5):
+        big_view.draw(screen)
+    t0 = time.perf_counter()
+    for _ in range(20):
+        big_view.draw(screen)
+    big_render = (time.perf_counter() - t0) / 20 * 1000
+    print(f"  256×256 整帧渲染 {big_render:.2f} ms（128×128 为 {render_ms:.2f} ms）")
+    check(big_render < BIG_RENDER_LIMIT_MS
+          or big_render < render_ms * BIG_RATIO_LIMIT,
+          f"256×256 渲染 {big_render:.2f}ms 达标"
+          f"（目标 <{BIG_RENDER_LIMIT_MS}ms，或 <{BIG_RATIO_LIMIT}× 中型图）")
+
+    big_bytes = sum(c.get_width() * c.get_height() * 4
+                    for c in big_view._chunks.values())
+    check(big_bytes < 96 * 1024 * 1024,
+          f"256×256 地形缓存 {big_bytes / 1e6:.1f}MB 仍在预算内")
+    check(len(big_view._chunks) <= 256,
+          f"256×256 缓存块数 {len(big_view._chunks)} 有上限")
+
+    t0 = time.perf_counter()
+    rules.build_detection_map(big_state)
+    rules.build_detection_map(big_state)
+    big_detect = (time.perf_counter() - t0) / 2 * 1000
+    print(f"  256×256 探测全量 {big_detect:.2f} ms（{len(big_state.units)} 个单位）")
+    check(big_detect < BIG_DETECT_LIMIT_MS,
+          f"256×256 探测重算 {big_detect:.2f}ms < {BIG_DETECT_LIMIT_MS}ms")
 
     pygame.quit()
     if FAILS:

@@ -49,7 +49,13 @@ class MapView:
         self._smoke_key: tuple | None = None
         self._smoke_list: list[Tile] = []
         self._fx_layer: pygame.Surface | None = None
+        self._fx_dirty: list[pygame.Rect] = []
         self._anim_layer: pygame.Surface | None = None
+        # 补给线是一层静态虚线：只在「谁在哪、挂到哪个枢纽」变化时才需要重画。
+        # 256×256 上有四百多个单位、每条线上百段虚线，每帧重建约 0.8ms——
+        # 占满帧预算的五分之一，而它一整个回合通常一动不动。
+        self._supply_sig: tuple | None = None
+        self._supply_layer: pygame.Surface | None = None
         self._ring_cache: dict[tuple, pygame.Surface] = {}
         self.overlay = "none"          # none / sensors / threat
         self.show_grid = True
@@ -563,29 +569,56 @@ class MapView:
         """补给线：从后勤枢纽到受补给的部队。
 
         断线的部队（无补给）用红色虚线标出——一眼看出谁在饿肚子。
+
+        **整层缓存**：虚线是静态的（没有流动动画），唯一会变的是单位位置与
+        补给分配。因此把整层画进一张表面，用「谁在哪 + 挂到哪个枢纽 + 缩放
+        平移 + 配色」做签名，签名不变就直接 blit。256×256 上这能省掉每帧 0.8ms。
+
+        签名里的 ``id(st.map)`` 与主题 id 不能省：换图 / 换肤后颜色与坐标都变了，
+        但「单位在哪、挂在谁名下」可能一模一样（读同一张图的新对局），
+        漏掉它们会 blit 出一层属于上一局的旧线。
         """
         st = self.state
         links = getattr(st, "supply_links", {}) or {}
         if not links:
+            self._supply_sig = None
             return
-        for u in st.units_of(st.player_side):
-            if not u.alive or u.is_decoy:
-                continue
+
+        mine = [u for u in st.units_of(st.player_side)
+                if u.alive and not u.is_decoy]
+        sig = (id(st.map), st.player_side, self.tile,
+               int(self.ox), int(self.oy), self.rect.size,
+               T.current_theme().id,
+               tuple((u.uid, u.x, u.y) for u in mine),
+               tuple(sorted((k, v.tile.x, v.tile.y) for k, v in links.items())))
+
+        if sig == self._supply_sig and self._supply_layer is not None:
+            surf.blit(self._supply_layer, self.rect.topleft)
+            return
+
+        if self._supply_layer is None or self._supply_layer.get_size() != self.rect.size:
+            self._supply_layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        layer = self._supply_layer
+        layer.fill((0, 0, 0, 0))
+
+        for u in mine:
             src = links.get(u.uid)
             if src is None:
                 # 断粮：画一个红色叉
                 r = self.grid_to_rect(u.x, u.y)
                 if not self.rect.colliderect(r):
                     continue
-                c = r.center
+                c = (r.centerx - self.rect.x, r.centery - self.rect.y)
                 s = max(3, self.tile // 4)
-                pygame.draw.line(surf, T.RED, (c[0] - s, c[1] - s),
+                pygame.draw.line(layer, T.RED, (c[0] - s, c[1] - s),
                                  (c[0] + s, c[1] + s), 1)
-                pygame.draw.line(surf, T.RED, (c[0] - s, c[1] + s),
+                pygame.draw.line(layer, T.RED, (c[0] - s, c[1] + s),
                                  (c[0] + s, c[1] - s), 1)
                 continue
             a = self.grid_center(src.x, src.y)
             b = self.grid_center(u.x, u.y)
+            a = (a[0] - self.rect.x, a[1] - self.rect.y)
+            b = (b[0] - self.rect.x, b[1] - self.rect.y)
             col = T.GREEN
             # 虚线
             dx, dy = b[0] - a[0], b[1] - a[1]
@@ -596,7 +629,10 @@ class MapView:
                 t1 = (i + 0.55) / max(1, steps)
                 p0 = (a[0] + dx * t0, a[1] + dy * t0)
                 p1 = (a[0] + dx * t1, a[1] + dy * t1)
-                pygame.draw.line(surf, col, p0, p1, 1)
+                pygame.draw.line(layer, col, p0, p1, 1)
+
+        self._supply_sig = sig
+        surf.blit(layer, self.rect.topleft)
 
     # ------------------------------------------------------------------ #
     # 地块索引（避免每帧全图扫描）
@@ -971,15 +1007,33 @@ class MapView:
     # 特效
     # ------------------------------------------------------------------ #
     def _draw_fx(self, surf: pygame.Surface) -> None:
+        # 没有特效时直接跳过：清空一张 1600×900 的 SRCALPHA 表面本身就要
+        # 0.6ms，而绝大多数帧这一层是空的（爆炸只在结算瞬间出现）
+        if not self.state.fx:
+            return
         # 特效层复用同一张表面：每帧新建一张全屏 SRCALPHA 是纯粹的浪费
         if self._fx_layer is None or self._fx_layer.get_size() != self.rect.size:
             self._fx_layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+            self._fx_dirty = []
         s = self._fx_layer
-        s.fill((0, 0, 0, 0))
+        # 只擦上一帧真正画过的区域。全屏 fill 是 0.6ms，而一次爆炸只有
+        # 几十像素——擦整屏相当于为了关一盏灯把整栋楼的电闸拉了。
+        for r in self._fx_dirty:
+            s.fill((0, 0, 0, 0), r)
+        self._fx_dirty = []
         for f in self.state.fx:
             p = max(0.0, min(1.0, 1.0 - f.ttl / max(0.001, f.life)))
             a = self.grid_center(*f.a)
             a = (a[0] - self.rect.x, a[1] - self.rect.y)
+            # 记下这一发要占的地方：下一帧只需擦这么多。留足余量覆盖
+            # 最大的爆炸圈、拦截射线与上方的飘字
+            pad = int(self.tile * 1.8) + 26
+            self._fx_dirty.append(pygame.Rect(a[0] - pad, a[1] - pad, pad * 2, pad * 2))
+            if f.b:
+                bx = self.grid_center(*f.b)
+                self._fx_dirty.append(pygame.Rect(bx[0] - self.rect.x - pad,
+                                                  bx[1] - self.rect.y - pad,
+                                                  pad * 2, pad * 2))
             if f.kind == "explosion":
                 rad = int(self.tile * (0.3 + p * 1.5))
                 alpha = int(220 * (1 - p))

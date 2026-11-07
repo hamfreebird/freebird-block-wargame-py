@@ -83,18 +83,66 @@ def check_bat(path: str, problems: list[str]) -> None:
                 break
 
 
+def _docstrings(tree: ast.AST) -> set[int]:
+    """收集所有**文档字符串**节点的 ``id``。
+
+    文档字符串在 AST 里也是一个 ``ast.Constant``，但它只进 ``__doc__``，
+    永远不会写到 stdout。早年没排除它，导致纯库文件（如 ``tools/bigmap.py``）
+    因为中文模块说明被判「会输出中文」——逼着库文件去改全局 stdout 编码，
+    那是比误报更糟的副作用。
+    """
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                and isinstance(first.value.value, str):
+            out.add(id(first.value))
+    return out
+
+
+def _emits_output(tree: ast.AST) -> bool:
+    """模块里有没有「往标准输出写东西」的调用。
+
+    纯库模块（如 ``tools/bigmap.py``）不该被要求改全局编码——在 import 时
+    重设 stdout 是比误报更糟的副作用，而且它本来也不输出。真正兜底的是
+    CI 实跑：真漏了仍会 ``UnicodeEncodeError``，只是晚一步发现。
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        if isinstance(fn, ast.Name) and fn.id == "print":
+            return True
+        if isinstance(fn, ast.Attribute) and fn.attr in ("write", "writelines") \
+                and isinstance(fn.value, ast.Attribute) \
+                and fn.value.attr in ("stdout", "stderr"):
+            return True
+    return False
+
+
 def check_python_utf8_guard(path: str, problems: list[str]) -> None:
     """脚本会向标准输出写中文时，必须把 stdout 切到 UTF-8。
 
-    只看**字符串字面量**（含 f-string 的片段），注释里的中文不算——
-    否则会把仅有中文注释的库文件误报。
+    只看**字符串字面量**（含 f-string 的片段），注释与文档字符串里的中文不算；
+    没有输出调用的纯库模块整个跳过——否则会把仅有中文说明的库文件误报。
     """
     rel = os.path.relpath(path, ROOT)
     src = open(path, encoding="utf-8").read()
     tree = ast.parse(src, rel)
+    if not _emits_output(tree):
+        return
+    docs = _docstrings(tree)
     has_cn_output = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if id(node) in docs:
+                continue
             if any(ord(c) > 127 for c in node.value):
                 has_cn_output = True
                 break
