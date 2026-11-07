@@ -133,6 +133,9 @@ def play_turn(st: GameState, side: Side, ck: Checker, fired_pairs: list) -> None
 
 def run(map_name: str, turns: int) -> Checker:
     ck = Checker()
+    # 兜底计数按「每局」清零：L26 只关心这一局有没有走全局 random
+    from core import dice as _dice
+    _dice.reset_counters()
     path = os.path.join(ROOT, "data", "maps", f"{map_name}.json")
     sc = load_scenario(path, ARMORY)
     st = GameState(sc, Side.BLUE)
@@ -382,6 +385,13 @@ def run(map_name: str, turns: int) -> Checker:
                 ck.fail("L25", f"中文独有词条：{sorted(only_zh)[:5]}")
         except Exception as exc:
             ck.fail("L25", f"语言包检查异常：{exc}")
+
+        # L26 随机判定必须全部走对局随机流：任何一次「未传 rng」都会让
+        #     同种子重跑失去意义，而它本身不会报错——只能靠计数器兜住
+        from core import dice as _dice
+        if _dice.FALLBACK_CALLS:
+            ck.fail("L26", f"{_dice.FALLBACK_CALLS} 次随机判定走了全局 random 兜底"
+                            f"（不受对局种子控制）")
 
         # L7 存档往返
         from core.save import load_game, save_game

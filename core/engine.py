@@ -19,7 +19,7 @@ from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponK
 from .events import ScenarioEvent, apply_events, parse_events
 from .hooks import Rule, evaluate_rules, parse_rules
 from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
-                    ensure_uid_above)
+                    ensure_uid_above, pos_epoch)
 from . import mods as _mods
 from . import bus as _bus
 from .rng import GameRng
@@ -120,8 +120,11 @@ class GameState:
         self.anim = AnimTrack()
         # 音效信号队列（由 UI 层消费）
         self.sfx_events: list[str] = []
-        # 位置索引（格坐标 → 单位列表），惰性重建
+        # 位置索引（格坐标 → 单位列表），惰性重建。
+        # 重建时机不再靠调用方记得调 invalidate：`model.pos_epoch()` 会在任何
+        # 单位的坐标/存活状态被写入时递增，这里只需比对版本号。
         self._pos_index: dict[tuple[int, int], list[Unit]] | None = None
+        self._pos_epoch_seen = -1
         # 地块版本号：目标点 / 工事 / 设施发生变化时递增。
         # 渲染层据此判断自己的地块索引是否过期——这样 UI 不必每帧全图扫描，
         # 而大地图（256×256 = 65536 格）的渲染开销与地图大小基本脱钩。
@@ -244,11 +247,12 @@ class GameState:
         return idx
 
     def invalidate_pos_index(self) -> None:
-        """单位位置变化后调用——下次查询时重建索引。
+        """强制位置索引失效。
 
-        **约定**：任何改动 `unit.x` / `unit.y` 的地方都要调用它。
-        引擎内部的三处（单位机动、卫星漂移、增援部署）已覆盖；
-        外部代码（编辑器、测试）直接改坐标后也必须调用。
+        **已不再需要调用**：`model.pos_epoch()` 会在任何单位的坐标或
+        存活状态被写入时递增，`units_at()` 比对版本号后自动重建。
+        保留这个名字是给外部代码（模组、旧测试）一个显式的「我现在就想
+        让它重算」入口——它仍然有效，只是不再是唯一正确的做法。
         """
         self._pos_index = None
 
@@ -256,11 +260,14 @@ class GameState:
         """该格的全部单位（地面 + 空中）。
 
         走位置索引而不是全表扫描——寻路会调用它上百万次。
-        索引在单位位置变化时失效并惰性重建。
+        索引靠 ``model.pos_epoch()`` 自校验：任何单位挪过（或被摧毁），
+        版本号就变了，这里重建后再查。
         """
         idx = self._pos_index
-        if idx is None:
+        epoch = pos_epoch()
+        if idx is None or self._pos_epoch_seen != epoch:
             idx = self._pos_index = self._build_pos_index()
+            self._pos_epoch_seen = epoch
         lst = idx.get((x, y))
         if not lst:
             return []

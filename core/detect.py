@@ -21,6 +21,7 @@ from .model import Unit
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import GameState
+    from .model import UnitTemplate
 
 # --------------------------------------------------------------------------- #
 # 探测
@@ -346,11 +347,25 @@ def _build_detection_index(state: "GameState", viewer_side) -> DetectionIndex | 
 # 这样**不需要在引擎各处挂失效钩子**——移动、开火、开关雷达、
 # 被压制、工事建成……无论从哪条路径改的状态，都会被指纹捕获。
 
+def _template_sig(t: "UnitTemplate") -> tuple:
+    """模板中会影响探测判定的部分。
+
+    模板在一局内本应不变，但模组会做两件事：**整套替换**（``u.template = x``）
+    与**就地改**（换雷达、调隐身）。前者只有 ``id()`` 能抓到，后者只有标量能
+    抓到，所以两个都取。传感器的几何参数直接决定探测距离，逐项列出。
+
+    （v3.3.1 前指纹不含模板，于是「模组中途换了雷达」会沿用旧结论。）
+    """
+    return (id(t), t.stealth, t.unit_class, t.jam_strength, t.jam_bands,
+            tuple((s.kind, s.range_max, s.strength, s.counter_stealth)
+                  for s in t.sensors))
+
+
 def _unit_fingerprint(u: Unit) -> tuple:
     """单位状态指纹：覆盖所有影响「能否被探测到」的字段。"""
     return (u.x, u.y, u.radar_on, u.jam_on, u.suppressed, u.mission,
             u.altitude, u.alive, u.is_decoy, u.decoy_kind, u.entrench,
-            u.revealed_until)
+            u.revealed_until, _template_sig(u.template))
 
 
 def _sync_generations(state: "GameState") -> None:

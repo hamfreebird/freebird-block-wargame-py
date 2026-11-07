@@ -20,7 +20,7 @@ import os
 from typing import Any
 
 from core.loader import MapData, Scenario, load_scenario
-from core.model import Objective, Tile
+from core.model import Objective, Tile, clone_tile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -39,8 +39,7 @@ def build(size: int = 256, source: str = "strait_confrontation",
     for y in range(size):
         for x in range(size):
             sx, sy = x % sw, y % sh
-            t = Tile(**vars(src.map.tiles[(sx, sy)]))
-            t.x, t.y = x, y
+            t = clone_tile(src.map.tiles[(sx, sy)], x, y)
             tiles[(x, y)] = t
             lid = src.map.landmass.get((sx, sy))
             if lid is not None:

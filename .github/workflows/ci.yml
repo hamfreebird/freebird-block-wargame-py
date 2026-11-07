@@ -73,13 +73,18 @@ jobs:
       - name: 数据校验（地图 + 武器库）
         run: python main.py --check
 
-      - name: 作战逻辑自检（25 条不变量）
+      - name: 作战逻辑自检（26 条不变量）
         run: python tools/diag.py 20
 
       - name: 规则层单元测试（纯函数输入输出 / 覆盖清单）
         env:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_units.py
+
+      - name: 技术债守卫（随机兜底 / 位置索引 / 地块索引 / 探测指纹）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_debt.py
 
       - name: 同格共存规则自检（空地同格 / 敌我判定 / 机动落点）
         env:

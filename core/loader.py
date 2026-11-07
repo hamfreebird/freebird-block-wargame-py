@@ -17,7 +17,8 @@ from .enums import (
     Altitude, Detection, Domain, Facility, Guidance, ObjectiveKind, SensorKind,
     Side, TERRAIN_CHARS, Terrain, UnitClass, WeaponKind,
 )
-from .model import Objective, Sensor, Tile, Unit, UnitTemplate, Weapon
+from .model import (Objective, Sensor, Tile, Unit, UnitTemplate, Weapon,
+                    clone_tile)
 
 
 class LoadError(Exception):
@@ -289,7 +290,7 @@ class MapData:
         30ms（地块的字段全是不可变标量，没有嵌套对象要递归）。`vars(t)`
         而不是位置参数，是为了字段增删时不会悄悄错位。
         """
-        tiles = {k: Tile(**vars(t)) for k, t in self.tiles.items()}
+        tiles = {k: clone_tile(t) for k, t in self.tiles.items()}
         return MapData(
             id=self.id, name=self.name, width=self.width, height=self.height,
             tile_km=self.tile_km, tiles=tiles,

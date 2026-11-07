@@ -24,6 +24,60 @@ def ensure_uid_above(n: int) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# 变更版本号：把「必须手动失效」的约定变成机制
+# --------------------------------------------------------------------------- #
+# 有没有单位挪过、有没有目标点/工事/设施变过——这类问题的答案决定了
+# 位置索引与地块索引要不要重建。原来的做法是「谁改谁负责调 invalidate」，
+# 靠约定维持；漏一处就是错误的战术结论（比慢更糟）。
+#
+# 现在改成：**写这些字段本身就会留下痕迹**。数据对象不知道自己被谁持有
+# （Unit 不持有 state，Tile 更是每张图几万个），所以版本号放在模块级；
+# 索引构建时记下版本号，访问时比对，不一致就重建。
+#
+# 为什么不用 weakref 指回 GameState：Unit / Tile 会被 deepcopy（合成地图、
+# 回放、存档往返），克隆出来的对象若带着指回原状态的弱引用会更危险。
+# 模块级计数器被 deepcopy 天然跳过，正好。
+
+#: 位置版本号：任何 ``Unit`` 的坐标（或存活状态）被写入都会 +1
+_POS_EPOCH = [0]
+#: 地块索引版本号：目标点 / 工事 / 设施的存在与归属被写入都会 +1
+_TILE_EPOCH = [0]
+
+#: 会让「地块索引」失效的字段。**只列会影响索引条目本身的**：
+#: 设施血量、烟幕、工事工时都读的是同一个 Tile 对象，不需要重建索引。
+_TILE_INDEX_FIELDS = frozenset({
+    "objective", "objective_name", "owner", "fort", "fort_owner", "facility",
+})
+
+
+def clone_tile(t: "Tile", x: int | None = None, y: int | None = None) -> "Tile":
+    """复制一块地，**不经过** ``__setattr__``，因此不递增地块版本号。
+
+    克隆出来的地块属于另一张地图（对局开局复制想定、合成大地图），
+    它不改变任何已有索引指向的对象，所以不该让渲染层重建索引。
+    更需要它的是**速度**：``Tile(**vars(t))`` 每个字段都会过一次
+    ``__setattr__``，256×256 是 120 万次调用，载入会因此翻倍。
+    """
+    new = Tile.__new__(Tile)
+    new.__dict__.update(t.__dict__)
+    if x is not None:
+        new.__dict__["x"] = x
+    if y is not None:
+        new.__dict__["y"] = y
+    return new
+
+
+def pos_epoch() -> int:
+    """当前位置版本号（见上方说明）。"""
+    return _POS_EPOCH[0]
+
+
+def tile_epoch() -> int:
+    """当前地块索引版本号（见上方说明）。"""
+    return _TILE_EPOCH[0]
+
+
+# --------------------------------------------------------------------------- #
 # 武器
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -172,6 +226,11 @@ class Tile:
     fort_build: int = 0              # 当前等级已投入的工时，攒够才涨级（v3.1）
     fort_rubble: bool = False        # 被打塌后的废墟：在原地重建要多花工时
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
+        if name in _TILE_INDEX_FIELDS:
+            _TILE_EPOCH[0] += 1
+
     @property
     def is_water(self) -> bool:
         return self.terrain in (Terrain.WATER,)
@@ -261,6 +320,17 @@ class Unit:
     # 探测世代号：单位状态一变就递增。探测缓存的键包含它，
     # 状态一变旧结论自动作废，不必逐一维护失效清单。
     detect_gen: int = field(default=0, repr=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """坐标或存活状态一变，位置索引自己就知道该重建（见 `_POS_EPOCH`）。
+
+        用 ``__setattr__`` 而不是 property 是为了不打断 ``Unit(x=..., y=...)``
+        的构造签名与 ``vars(unit)`` 的字段名——那两样被存档、合成地图与
+        编辑器依赖着。
+        """
+        object.__setattr__(self, name, value)
+        if name == "x" or name == "y" or name == "destroyed":
+            _POS_EPOCH[0] += 1
 
     @property
     def has_fire_mission(self) -> bool:
@@ -514,4 +584,5 @@ class Objective:
 
 
 __all__ = ["Weapon", "Sensor", "UnitTemplate", "Tile", "Unit", "Missile", "Objective",
-           "FireMission", "Order", "ensure_uid_above"]
+           "FireMission", "Order", "ensure_uid_above", "pos_epoch", "tile_epoch",
+           "clone_tile"]

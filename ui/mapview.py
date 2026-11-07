@@ -11,7 +11,7 @@ import pygame
 
 from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
 from core.env import env_tint, environment_for
-from core.model import Tile, Unit
+from core.model import Tile, Unit, tile_epoch
 from core import anim as anim_mod
 from core.icons import icon_bitmap
 
@@ -658,11 +658,15 @@ class MapView:
         self._obj_list = obj
         self._fort_list = fort
         self._fac_list = fac
-        self._tile_index_epoch = self.state.map_epoch
+        self._tile_index_epoch = tile_epoch()
 
     def _ensure_tile_index(self) -> None:
-        """确保索引是最新的。"""
-        if getattr(self, "_tile_index_epoch", None) != self.state.map_epoch:
+        """确保索引是最新的。
+
+        判据是 ``model.tile_epoch()``——**任何**目标点 / 工事 / 设施的归属或
+        存在被写入都会让它 +1，所以不再依赖「改完记得递增 map_epoch」这条约定。
+        """
+        if getattr(self, "_tile_index_epoch", None) != tile_epoch():
             self._scan_tiles()
 
     def _objective_tiles(self) -> list[Tile]:

@@ -11,7 +11,9 @@
 3. **版本号自洽**——README 徽章、ROADMAP 基线、git tag 三处的版本号
    指向同一个版本。
 
-用法：python tools/check_docs.py
+用法：
+    python tools/check_docs.py         # 只检查
+    python tools/check_docs.py --fix   # 先按正文重写目录，再检查
 """
 from __future__ import annotations
 
@@ -78,19 +80,72 @@ def _all_slugs(headings: list[str]) -> set[str]:
 
 
 
+def _toc_bounds(lines: list[str]) -> tuple[int, int] | None:
+    """定位「## 目录」这一段的起止行号（end 指向下一章的标题）。"""
+    try:
+        start = lines.index("## 目录")
+    except ValueError:
+        return None
+    end = start + 1
+    while end < len(lines) and not lines[end].startswith("## "):
+        end += 1
+    return start, end
+
+
+def generate_toc(lines: list[str], end: int) -> list[str]:
+    """按正文标题生成目录条目。
+
+    缩进与历史排布一致：二级 0 空格、三级 3 空格、四级 6 空格。
+    锚点用 :func:`_slug`——和 GitHub 的规则一致，所以生成的行可以直接用。
+    """
+    out: list[str] = []
+    for ln in lines[end:]:
+        m = re.match(r"^(#{2,4})\s+(.+?)\s*$", ln)
+        if not m:
+            continue
+        level = len(m.group(1))
+        title = m.group(2)
+        out.append({2: "", 3: "   ", 4: "      "}[level]
+                   + f"- [{title}](#{_slug(title)})")
+    return out
+
+
+def rewrite_toc() -> int:
+    """按正文重写「## 目录」，返回条目数。
+
+    **为什么要有这个开关**：目录过去靠手工维护，历史上多次与正文脱节。
+    `check_docs` 只能事后报错，补目录时最费时间的是**算锚点**（中文标点、
+    反引号、括号都要按 GitHub 的规则处理）。既然校验器已经会算，就让它
+    顺手把正确的那几行写回去。
+    """
+    path = os.path.join(ROOT, "GAME_GUIDE.md")
+    lines = _read("GAME_GUIDE.md").split("\n")
+    bounds = _toc_bounds(lines)
+    if bounds is None:
+        fail("GAME_GUIDE.md 找不到「## 目录」标题")
+        return 0
+    start, end = bounds
+    entries = generate_toc(lines, end)
+    # 原目录尾部有一条 `---` 分隔线，保留它（没有就不强加）
+    tail = ["", "---", ""] if any(l.strip() == "---"
+                                  for l in lines[start + 1:end]) else [""]
+    new_lines = lines[:start + 1] + [""] + entries + tail + lines[end:]
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(new_lines))
+    print(f"  [fix] 目录已按正文重写：{len(entries)} 条")
+    return len(entries)
+
+
 def check_toc() -> None:
     print("--- GAME_GUIDE 目录自洽 ---")
     text = _read("GAME_GUIDE.md")
     lines = text.split("\n")
 
-    try:
-        start = lines.index("## 目录")
-    except ValueError:
+    bounds = _toc_bounds(lines)
+    if bounds is None:
         fail("GAME_GUIDE.md 找不到「## 目录」标题")
         return
-    end = start + 1
-    while end < len(lines) and not lines[end].startswith("## "):
-        end += 1
+    start, end = bounds
     toc_lines = lines[start + 1:end]
 
     # 目录条目分两类：
@@ -255,6 +310,8 @@ def check_links() -> None:
 
 def main() -> int:
     print("=== 文档自检 ===")
+    if "--fix" in sys.argv:
+        rewrite_toc()
     check_toc()
     check_versions()
     check_links()
