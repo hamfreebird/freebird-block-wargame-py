@@ -8,7 +8,7 @@
 1. **目录 ↔ 标题一致**——GAME_GUIDE 目录里列出的每一节都真实存在，
    且正文里的每一节（到指定层级）都在目录里出现；
 2. **锚点链接有效**——目录中的 `#xxx` 链接都能找到对应标题；
-3. **版本号自洽**——README 徽章、ROADMAP 基线、git tag 三处的版本号
+3. **版本号自洽**——README 徽章、AUDIT 基线、git tag 三处的版本号
    指向同一个版本。
 
 用法：
@@ -246,7 +246,7 @@ def check_toc() -> None:
 def check_versions() -> None:
     print("--- 版本号自洽 ---")
     readme = _read("README.md")
-    roadmap = _read("ROADMAP.md")
+    audit = _read("AUDIT.md")
 
     # README 徽章
     m = re.search(r"release-v(\d+\.\d+\.\d+)-", readme)
@@ -256,19 +256,19 @@ def check_versions() -> None:
     else:
         badge = m.group(1)
 
-    # ROADMAP 基线
-    m2 = re.search(r"## 当前基线（v(\d+\.\d+\.\d+)）", roadmap)
+    # AUDIT 基线
+    m2 = re.search(r"## 当前基线（v(\d+\.\d+\.\d+)）", audit)
     if not m2:
-        fail("ROADMAP.md 找不到「## 当前基线（vX.Y.Z）」")
+        fail("AUDIT.md 找不到「## 当前基线（vX.Y.Z）」")
         base = None
     else:
         base = m2.group(1)
 
     if badge and base:
         if badge == base:
-            ok(f"README 徽章与 ROADMAP 基线一致（v{badge}）")
+            ok(f"README 徽章与 AUDIT 基线一致（v{badge}）")
         else:
-            fail(f"版本号不一致：README 徽章 v{badge} vs ROADMAP 基线 v{base}")
+            fail(f"版本号不一致：README 徽章 v{badge} vs AUDIT 基线 v{base}")
 
     # git tag
     try:
@@ -298,7 +298,7 @@ def check_versions() -> None:
 # --------------------------------------------------------------------------- #
 def check_links() -> None:
     print("--- 文档内部链接 ---")
-    for name in ("README.md", "GAME_GUIDE.md", "ROADMAP.md"):
+    for name in ("README.md", "GAME_GUIDE.md", "AUDIT.md"):
         text = _read(name)
         # 只查指向其它 md 文件的相对链接
         for target in re.findall(r"\]\((?!https?://|#)([^)#]+\.md)(?:#[^)]*)?\)", text):
