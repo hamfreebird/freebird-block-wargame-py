@@ -55,6 +55,83 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
+#: Windows Job Object 的「最后一个句柄关闭时杀掉组内所有进程」标志。
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+
+
+def _kill_with_parent(pid: int):
+    """把子进程放进一个「随父进程消亡」的 Job Object（仅 Windows）。
+
+    **为什么需要它**：正常退出时 `App.run()` 会调 `stop()`，但如果是崩溃、
+    任务管理器结束进程、或者任何没走到那行代码的退出，`llama-server`
+    会继续占着 1.4GB 内存——玩家只会看到「关了游戏内存没降」。
+    放进 Job Object 之后，父进程一消失，操作系统直接回收整组进程，
+    与我们有没有写完清理代码无关。
+
+    失败（例如本进程已被别的启动器放进某个 Job）时静默返回 None：
+    宁可退化到「可能残留」，也不要因为清理机制装不上就拒绝启动。
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [("ReadOperationCount", ctypes.c_ulonglong),
+                        ("WriteOperationCount", ctypes.c_ulonglong),
+                        ("OtherOperationCount", ctypes.c_ulonglong),
+                        ("ReadTransferCount", ctypes.c_ulonglong),
+                        ("WriteTransferCount", ctypes.c_ulonglong),
+                        ("OtherTransferCount", ctypes.c_ulonglong)]
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong),
+                        ("PerJobUserTimeLimit", ctypes.c_longlong),
+                        ("LimitFlags", wintypes.DWORD),
+                        ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t),
+                        ("ActiveProcessLimit", wintypes.DWORD),
+                        ("Affinity", ctypes.c_size_t),
+                        ("PriorityClass", wintypes.DWORD),
+                        ("SchedulingClass", wintypes.DWORD)]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                        ("IoInfo", IO_COUNTERS),
+                        ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t),
+                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(
+                job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                ctypes.byref(info), ctypes.sizeof(info)):
+            kernel32.CloseHandle(job)
+            return None
+        # PROCESS_SET_QUOTA | PROCESS_TERMINATE 足够做归属，不用 ALL_ACCESS
+        handle = kernel32.OpenProcess(0x0100 | 0x0001, False, pid)
+        if not handle:
+            kernel32.CloseHandle(job)
+            return None
+        ok = kernel32.AssignProcessToJobObject(job, handle)
+        kernel32.CloseHandle(handle)
+        if not ok:
+            kernel32.CloseHandle(job)
+            return None
+        return job          # 句柄必须由调用方持有：句柄一关，组内进程就被杀
+    except Exception:        # noqa: BLE001 - 清理机制装不上不该阻断功能
+        return None
+
+
 def _candidate_dirs() -> list[str]:
     """按优先级列出可能存放 ``ai/`` 的目录。
 
@@ -161,7 +238,13 @@ class LLMClient:
         self.server_path = self.cfg.server_path
         self.port = 0
         self._proc: subprocess.Popen | None = None
-        self._lock = threading.Lock()
+        # RLock 而不是 Lock：start() 在异常路径里会调用 _kill()，
+        # 那时锁还在自己手上——普通 Lock 在这里会自锁死。
+        self._lock = threading.RLock()
+        #: 关游戏时置位，让还在等健康检查的线程立刻收手
+        self._stopping = threading.Event()
+        #: Windows Job Object 句柄（见 `_kill_with_parent`）；非 Windows 为 None
+        self._job = None
         self._log_path = log_path or os.path.join(paths.user_writable_dir(),
                                                   "llm-server.log")
         self._log_fh = None
@@ -193,21 +276,23 @@ class LLMClient:
     # ------------------------------------------------------------------ #
     def start(self) -> bool:
         """启动（或连上）服务。幂等；失败返回 False 并把原因记进 ``last_error``。"""
-        with self._lock:
+        # 用非阻塞抢锁而不是 `with`：另一个线程正在起服务时，调用方
+        # （主线程的 prefetch）应当立刻返回「还没好」，而不是排队等 90 秒。
+        if not self._lock.acquire(blocking=False):
+            return False
+        try:
             if self.status == STATUS_READY:
                 return True
             if self.status == STATUS_BOOTING:
                 return False
             self.status = STATUS_BOOTING
+            self._stopping.clear()
             self.last_error = ""
             try:
                 if self.cfg.server_url:
                     self._base = self.cfg.server_url.rstrip("/")
-                    self._wait_health(self.cfg.boot_timeout)
                 else:
                     self._spawn()
-                self.status = STATUS_READY
-                return True
             except LLMError as exc:
                 self.last_error = str(exc)
                 self.status = STATUS_ERROR
@@ -218,6 +303,20 @@ class LLMClient:
                 self.status = STATUS_ERROR
                 self._kill()
                 return False
+        finally:
+            self._lock.release()
+
+        # 等就绪放在锁外：起服务要几秒到几十秒，握着锁等会让「关游戏」
+        # 卡在 stop() 上——玩家点了退出却要等模型加载完，这不能接受。
+        try:
+            self._wait_health(self.cfg.boot_timeout)
+        except LLMError as exc:
+            self.last_error = str(exc)
+            self.status = STATUS_ERROR
+            self._kill()
+            return False
+        self.status = STATUS_READY
+        return True
 
     def _spawn(self) -> None:
         self.model_path = discover_model(self.cfg.model_path)
@@ -254,11 +353,17 @@ class LLMClient:
             )
         except OSError as exc:
             raise LLMError(f"启动推理服务失败：{exc}") from None
-        self._wait_health(self.cfg.boot_timeout)
+        # 即使本进程被强杀，也让操作系统回收这个子进程
+        self._job = _kill_with_parent(self._proc.pid)
+        if self._stopping.is_set():        # 起进程的同时玩家已经退出
+            self._kill()
+            raise LLMError("启动过程被取消")
 
     def _wait_health(self, timeout: float) -> None:
         deadline = time.time() + max(5.0, timeout)
         while time.time() < deadline:
+            if self._stopping.is_set():
+                raise LLMError("启动过程被取消")
             if self._proc is not None and self._proc.poll() is not None:
                 raise LLMError("推理服务启动后立即退出：" + self._log_tail())
             try:
@@ -281,12 +386,17 @@ class LLMClient:
             return "（无日志）"
 
     def stop(self) -> None:
-        with self._lock:
-            self._kill()
-            self.status = STATUS_OFF
+        # 先置位再夺锁：若另一线程正卡在健康检查里（锁已释放），
+        # 它会立刻看到这个标志并退出循环。
+        self._stopping.set()
+        self._kill()
+        self.status = STATUS_OFF
 
     def _kill(self) -> None:
-        proc, self._proc = self._proc, None
+        with self._lock:
+            proc, self._proc = self._proc, None
+            fh, self._log_fh = self._log_fh, None
+            job, self._job = self._job, None
         if proc is not None and proc.poll() is None:
             try:
                 proc.terminate()
@@ -296,12 +406,19 @@ class LLMClient:
                     proc.kill()
                 except OSError:
                     pass
-        if self._log_fh is not None:
+        if job is not None:
+            # 关掉 Job 句柄 = 组内进程一并结束。放在 terminate 之后是保险：
+            # 万一 terminate 卡住，关句柄也能兜底。
             try:
-                self._log_fh.close()
+                import ctypes
+                ctypes.WinDLL("kernel32").CloseHandle(job)
+            except Exception:              # noqa: BLE001
+                pass
+        if fh is not None:
+            try:
+                fh.close()
             except OSError:
                 pass
-            self._log_fh = None
 
     # ------------------------------------------------------------------ #
     # 请求
