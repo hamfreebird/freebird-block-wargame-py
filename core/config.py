@@ -29,6 +29,11 @@ DEFAULT_FONT_SCALE = "standard"
 SHAPE_MODE_IDS = ("auto", "on", "off")
 DEFAULT_SHAPE_MODE = "auto"
 
+#: 对手 AI 的驱动方式：``rules`` 纯规则启发式，``llm`` 本地大模型给决心。
+#: 默认关：它要额外的 1.1GB 模型与一个推理进程，不能替玩家做主。
+AI_MODES = ("rules", "llm")
+DEFAULT_AI_MODE = "rules"
+
 
 # --------------------------------------------------------------------------- #
 # 键位定义
@@ -257,6 +262,23 @@ class UserConfig:
             return False
         self.prefs["shape_cues"] = mode
         return True
+
+    @property
+    def ai_mode(self) -> str:
+        """对手 AI 的驱动方式（rules / llm）。"""
+        v = str(self.prefs.get("ai_mode", DEFAULT_AI_MODE))
+        return v if v in AI_MODES else DEFAULT_AI_MODE
+
+    def set_ai_mode(self, mode: str) -> bool:
+        if mode not in AI_MODES:
+            return False
+        self.prefs["ai_mode"] = mode
+        return True
+
+    @property
+    def llm_dir(self) -> str:
+        """模型目录覆盖（空 = 自动探测 ai/）。给把模型放在别处的玩家用。"""
+        return str(self.prefs.get("llm_dir", "") or "")
 
     @property
     def first_run(self) -> bool:

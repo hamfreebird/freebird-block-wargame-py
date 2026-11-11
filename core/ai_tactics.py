@@ -134,8 +134,20 @@ def _objective_weight(side: Side, tile: Tile, n_def: int) -> float:
     return 0.35 if n_def < 2 else 0.12
 
 
+#: 大模型指定主攻方向时，该目标点在评分里获得的倍率。
+#: 用**倍率**而不是加绝对值：粗筛与精确排序必须同公式（见
+#: `rough_objective_scores` 的注释），倍率对两者等价，也不会因为
+#: 地图变大、分值尺度变化而失效。
+#:
+#: 2.5 是实测出来的：1.6 只挪动 1 个营（等于没下令），4.0 以上与 6.0
+#: 的结果一样（都只有 4 个营能脱离当前任务），2.5 拿到 3 个营、
+#: 且不会让全军丢下眼前的防御去长途奔袭。
+EFFORT_GAIN = 2.5
+
+
 def rough_objective_scores(state: "GameState", side: Side, unit: Unit,
                            defenders: dict[tuple[int, int], int] | None = None,
+                           effort: tuple[int, int] | None = None,
                            ) -> list[tuple[float, Tile]]:
     """粗筛打分：直线距离 + 胜利点，**不算路径**。
 
@@ -145,6 +157,9 @@ def rough_objective_scores(state: "GameState", side: Side, unit: Unit,
 
     粗筛与最终排序**必须同公式**（只差可达性因子）。若两套排序不一致，
     会把最终最优解在粗筛阶段就提前淘汰——实测平衡因此从 3:7 掉到 2:8。
+
+    `effort` 是「指挥官钦定的主攻方向」：命中它的点乘 :data:`EFFORT_GAIN`。
+    放在这个公式里而不是事后重排，正是为了不破坏上面那条一致性。
     """
     defenders = defenders or {}
     out: list[tuple[float, Tile]] = []
@@ -157,6 +172,8 @@ def rough_objective_scores(state: "GameState", side: Side, unit: Unit,
         n_def = defenders.get((t.x, t.y), 0)
         rough = _objective_weight(side, t, n_def) \
             * (1.0 + t.victory_points * 0.2) / (1.0 + d / 8.0)
+        if effort is not None and (t.x, t.y) == effort:
+            rough *= EFFORT_GAIN
         out.append((rough, t))
     out.sort(key=lambda c: -c[0])
     return out
@@ -164,6 +181,7 @@ def rough_objective_scores(state: "GameState", side: Side, unit: Unit,
 
 def evaluate_objectives(state: "GameState", side: Side, unit: Unit,
                         defenders: dict[tuple[int, int], int] | None = None,
+                        effort: tuple[int, int] | None = None,
                         ) -> list[ObjectivePlan]:
     """评估所有目标点对该单位的价值，按得分排序。
 
@@ -174,7 +192,7 @@ def evaluate_objectives(state: "GameState", side: Side, unit: Unit,
     涨到 6 秒——而其中绝大多数从来不会被选中。
     """
     defenders = defenders or {}
-    rough = rough_objective_scores(state, side, unit, defenders)
+    rough = rough_objective_scores(state, side, unit, defenders, effort)
     cands = rough[:MAX_REACH_CANDIDATES]
 
     plans: list[ObjectivePlan] = []
@@ -262,6 +280,7 @@ def reassess_objective(state: "GameState", side: Side, unit: Unit,
                        goal: tuple[int, int] | None,
                        plans: list[ObjectivePlan] | None = None,
                        defenders: dict[tuple[int, int], int] | None = None,
+                       effort: tuple[int, int] | None = None,
                        ) -> Reassign:
     """比较当前目标与重新评估后的首选，决定要不要转移。
 
@@ -281,7 +300,7 @@ def reassess_objective(state: "GameState", side: Side, unit: Unit,
             return Reassign(False, "")
         pairs = [(p.score, p.tile) for p in plans]
     else:
-        pairs = rough_objective_scores(state, side, unit, defenders)
+        pairs = rough_objective_scores(state, side, unit, defenders, effort)
     if not pairs:
         return Reassign(False, "")
     cur = next((sc for sc, t in pairs if (t.x, t.y) == goal), None)

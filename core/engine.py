@@ -166,6 +166,11 @@ class GameState:
             Side.BLUE: {}, Side.RED: {}}
         self.ai_assign_turn: dict[Side, dict[int, int]] = {
             Side.BLUE: {}, Side.RED: {}}
+        #: 上一回合的作战决心（仅用于「上回合你选了什么」的连续性与战报回看）。
+        #: **不入存档**：读档后重算一次即可，存进去只会多一份要迁移的字段。
+        self.ai_last_directive: dict[Side, object] = {}
+        #: 本次 AI 相位要用的决心，由调用方（UI / 回放）在 `begin_ai_phase` 前放好。
+        self.pending_directive: object | None = None
         self.selected_uid: int | None = None
         self.selected_weapon: str | None = None
         self.hover_tile: tuple[int, int] | None = None
@@ -1848,12 +1853,18 @@ class GameState:
         return self.winner is self.player_side
 
     # -- AI 队列（由 core.ai 生成，逐条执行以便渲染动画） -----------------
-    def begin_ai_phase(self) -> None:
+    def begin_ai_phase(self, directive=None) -> None:
         from .ai import AIPlanner
         if self.over:
             return
-        self._ai_planner = AIPlanner(self, self.ai_side)
+        d = directive if directive is not None else self.pending_directive
+        self.pending_directive = None
+        self._ai_planner = AIPlanner(self, self.ai_side, directive=d)
         self.phase = "ai"
+        if d is not None and getattr(d, "source", "") == "llm":
+            # 让玩家看得见 AI 在想什么——一个只在后台生效的「智能」等于没有
+            self.ai_last_directive[self.ai_side] = d
+            self.log_message(self.ai_side, d.describe(), "system")
         self.log_message(self.ai_side, f"{self.ai_side.label}开始行动", "system")
 
     def ai_pending(self) -> bool:

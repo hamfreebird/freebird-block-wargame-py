@@ -27,14 +27,14 @@ class SettingsPanel:
     ROW_H = 26
     HEADER_H = 92
     FOOTER_H = 62
-    # 主题 / 字号 / 形状标识 / 图标包 / 音效 / 语言 六个区块，每块 34px。
-    # 高度必须跟着字号档位走（`T.m`），否则放大后最后一块会压到键位列表上。
-    OPTIONS_ROWS = 6
+    # 主题 / 字号 / 形状标识 / 图标包 / 音效 / 语言 / AI 指挥官 七个区块，
+    # 每块 34px。高度必须跟着字号档位走（`T.m`），否则放大后最后一块会压到键位列表上。
+    OPTIONS_ROWS = 7
     OPTIONS_ROW_H = 34
     OPTIONS_H = OPTIONS_ROWS * OPTIONS_ROW_H
 
     def __init__(self, cfg: UserConfig, on_theme=None, on_sound=None, on_language=None,
-                 on_icons=None, on_font_scale=None, on_shape_cues=None):
+                 on_icons=None, on_font_scale=None, on_shape_cues=None, on_ai_mode=None):
         self.cfg = cfg
         self.capturing: str = ""        # 正在等待按键的动作 ID
         self.scroll = 0
@@ -46,6 +46,9 @@ class SettingsPanel:
         self.close_requested = False
         self.rect = pygame.Rect(0, 0, 640, 560)
         self.rows: list[tuple[pygame.Rect, str, str]] = []
+        #: 键位列表的滚动行数（按「行」滚，不是像素）
+        self._max_scroll = 0
+        self._max_rows = 0
         self._btn_reset = pygame.Rect(0, 0, 0, 0)
         self._btn_close = pygame.Rect(0, 0, 0, 0)
         # 回调：主题 / 音效 / 语言 / 图标包 / 字号 / 形状标识的即时应用
@@ -55,12 +58,14 @@ class SettingsPanel:
         self.on_icons = on_icons
         self.on_font_scale = on_font_scale
         self.on_shape_cues = on_shape_cues
+        self.on_ai_mode = on_ai_mode
         # 选项控件
         self._theme_buttons: list[tuple[pygame.Rect, str]] = []
         self._lang_buttons: list[tuple[pygame.Rect, str]] = []
         self._icon_buttons: list[tuple[pygame.Rect, str]] = []
         self._scale_buttons: list[tuple[pygame.Rect, str]] = []
         self._shape_buttons: list[tuple[pygame.Rect, str]] = []
+        self._ai_buttons: list[tuple[pygame.Rect, str]] = []
         self._sound_btn = pygame.Rect(0, 0, 0, 0)
         self._vol_left = pygame.Rect(0, 0, 0, 0)
         self._vol_right = pygame.Rect(0, 0, 0, 0)
@@ -133,6 +138,10 @@ class SettingsPanel:
             if self._sound_btn.collidepoint(e.pos):
                 self._toggle_sound()
                 return True
+            for rect, mode in self._ai_buttons:
+                if rect.collidepoint(e.pos):
+                    self._select_ai_mode(mode)
+                    return True
             if self._vol_left.collidepoint(e.pos):
                 self._change_volume(-0.1)
                 return True
@@ -155,7 +164,12 @@ class SettingsPanel:
             return True
         # 设置面板是模态：其余鼠标事件（移动、抬起、滚轮）也一并吞掉，
         # 避免穿透到底下的地图与侧栏。
-        if e.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP, pygame.MOUSEWHEEL):
+        if e.type == pygame.MOUSEWHEEL:
+            # 键位列表在大字号下放不下全部条目（12 个动作 + 9 个武器槽），
+            # 以前是直接截断——玩家看不到「快速保存」绑的是什么键。
+            self.scroll = max(0, min(self._max_scroll, self.scroll - e.y))
+            return True
+        if e.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
             return True
         return False
 
@@ -207,6 +221,14 @@ class SettingsPanel:
         self.message = f"单位图标包：{name}"
         self.message_color = T.GREEN
 
+    def _select_ai_mode(self, mode: str) -> None:
+        if self.cfg.set_ai_mode(mode):
+            if self.on_ai_mode:
+                self.on_ai_mode(mode)
+            self.message = (tr("settings.ai_commander") + "："
+                            + tr(f"ui.ai.mode_{mode}"))
+            self.message_color = T.GREEN
+
     def _toggle_sound(self) -> None:
         self.cfg.set_sound(not self.cfg.sound_enabled)
         if self.on_sound:
@@ -242,7 +264,8 @@ class SettingsPanel:
         顶部 5 行各算一项，值用 ←→ 调；键位列表每项算一项，Enter 进入重绑定。
         """
         items = [("theme", ""), ("font_scale", ""), ("shape", ""),
-                 ("icons", ""), ("sound", ""), ("volume", ""), ("language", "")]
+                 ("icons", ""), ("sound", ""), ("volume", ""), ("language", ""),
+                 ("ai_mode", "")]
         # 与 draw() 里的分栏顺序一致：左栏常规操作，右栏武器槽
         for a in ALL_ACTIONS:
             if a not in SLOT_ACTIONS:
@@ -286,12 +309,37 @@ class SettingsPanel:
             codes = available_languages()
             cur = codes.index(self.cfg.language) if self.cfg.language in codes else 0
             self._select_language(codes[(cur + delta) % len(codes)])
+        elif kind == "ai_mode":
+            modes = ["rules", "llm"]
+            cur = modes.index(self.cfg.ai_mode) if self.cfg.ai_mode in modes else 0
+            self._select_ai_mode(modes[(cur + delta) % len(modes)])
+        self._ensure_visible()
+
+    def _ensure_visible(self) -> None:
+        """键盘焦点移到屏幕外的键位行时，把列表滚动到能看见它。
+
+        没有这一步的话，Tab 会把焦点移到「看不见的行」上——键盘用户
+        按 Enter 触发了一次重绑定，却完全不知道自己改的是哪一项。
+        """
+        kind, arg = self._focus()
+        if kind != "key" or self._max_rows <= 0:
+            return
+        actions = (list(SLOT_ACTIONS) if arg in SLOT_ACTIONS
+                   else [a for a in ALL_ACTIONS if a not in SLOT_ACTIONS])
+        if arg not in actions:
+            return
+        idx = actions.index(arg)
+        if idx < self.scroll:
+            self.scroll = idx
+        elif idx >= self.scroll + self._max_rows:
+            self.scroll = idx - self._max_rows + 1
 
     def _focus_activate(self) -> None:
         """Enter / Space 触发当前焦点项。"""
         kind, arg = self._focus()
         if kind == "key":
             self._begin_capture(arg)
+            self._ensure_visible()
         elif kind == "sound":
             self._toggle_sound()
         elif kind == "reset":
@@ -311,7 +359,8 @@ class SettingsPanel:
         而写死更窄的话短标签又白留一大截。
         """
         labels = [tr("settings.theme"), tr("settings.font_scale"), tr("settings.shape_cues"),
-                  tr("ui.settings_icon_pack"), tr("settings.sound"), tr("settings.language")]
+                  tr("ui.settings_icon_pack"), tr("settings.sound"), tr("settings.language"),
+                  tr("settings.ai_commander")]
         lx = r.x + T.m(22)
         widest = max(T.text_width(lb, 11, bold=True) for lb in labels)
         return lx, max(r.x + T.m(100), lx + widest + T.m(14))
@@ -435,6 +484,22 @@ class SettingsPanel:
             b, lx = self._draw_choice(s, lx, y, language_name(code),
                                       code == self.cfg.language, width=bw)
             self._lang_buttons.append((b, code))
+        y += step
+
+        # -- AI 指挥官（规则启发式 / 本地大模型）--
+        ax = self._option_row(s, r, y, tr("settings.ai_commander"))
+        self._ai_buttons = []
+        for mode in ("rules", "llm"):
+            b, ax = self._draw_choice(s, ax, y, tr(f"ui.ai.mode_{mode}"),
+                                      mode == self.cfg.ai_mode)
+            self._ai_buttons.append((b, mode))
+        # 提示右对齐并按剩余宽度省略：标准字号下它会顶到面板边框外面
+        hint = tr("ui.ai.hint")
+        avail = r.right - T.m(22) - ax - T.m(8)
+        if avail >= T.m(60):
+            T.draw_text(s, T.ellipsize(hint, 10, avail),
+                        (r.right - T.m(22), y + T.m(2)), 10, T.TEXT_FAINT,
+                        anchor="topright")
 
         T.hline(s, r.x + T.m(20), r.right - T.m(20),
                 r.y + T.m(self.HEADER_H + self.OPTIONS_H - 26), T.BORDER)
@@ -485,12 +550,19 @@ class SettingsPanel:
             ("常规操作", [a for a in ALL_ACTIONS if a not in SLOT_ACTIONS]),
             ("武器快捷槽", list(SLOT_ACTIONS)),
         ]
+        # 一屏能放几行：标题占一行高的空间，其余按行高均分。
+        # 放不下就滚动——**不能静默截断**：玩家看不到「快速保存」绑了什么键，
+        # 只会以为是配置文件坏了。
+        self._max_rows = max(1, (list_r.height - T.m(18)) // rh)
+        need = max(len(a) for _t, a in groups)
+        self._max_scroll = max(0, need - self._max_rows)
+        self.scroll = max(0, min(self.scroll, self._max_scroll))
         for ci, (title_g, actions) in enumerate(groups):
             cx = list_r.x + ci * (col_w + T.m(12))
             y = list_r.y
             T.draw_text(s, title_g, (cx, y), 11, T.CYAN, bold=True)
             y += T.m(18)
-            for action in actions:
+            for action in actions[self.scroll:self.scroll + self._max_rows]:
                 row = pygame.Rect(cx, y, col_w, rh - T.m(4))
                 if row.bottom > list_r.bottom:
                     break
@@ -517,6 +589,18 @@ class SettingsPanel:
                             anchor="topright", mono=True)
                 self.rows.append((pygame.Rect(row), action, key))
                 y += rh
+
+        # 滚动条：只在真的放不下时出现，否则右侧会多一条没意义的竖线
+        if self._max_scroll > 0:
+            track = pygame.Rect(list_r.right - T.m(4), list_r.y + T.m(18),
+                                T.m(3), list_r.height - T.m(18))
+            pygame.draw.rect(s, T.PANEL_SUNK, track, border_radius=2)
+            total = self._max_scroll + self._max_rows
+            thumb_h = max(T.m(16), track.height * self._max_rows // total)
+            off = (track.height - thumb_h) * self.scroll // max(1, self._max_scroll)
+            pygame.draw.rect(s, T.BORDER_HI,
+                             pygame.Rect(track.x, track.y + off, track.width, thumb_h),
+                             border_radius=2)
 
         # 底部按钮
         by = r.bottom - fh + T.m(8)
@@ -578,6 +662,11 @@ class SettingsPanel:
         elif kind == "language":
             for b, code in self._lang_buttons:
                 if code == self.cfg.language:
+                    rect = b
+                    break
+        elif kind == "ai_mode":
+            for b, mode in self._ai_buttons:
+                if mode == self.cfg.ai_mode:
                     rect = b
                     break
         elif kind == "key":

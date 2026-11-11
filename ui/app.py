@@ -43,6 +43,8 @@ from core.enums import Detection, Domain, Facility, Side, TimeOfDay, Weather
 from core.engine import GameState
 from core.env import environment_for
 from core.loader import LoadError, list_maps, load_scenario
+from core.llm_client import LLMClient, LLMConfig
+from core.llm_commander import Directive, LLMCommander
 from core.model import Unit
 from core.save import SaveError, list_slots, load_game, save_game, slot_path
 from core.spectate import SpectatorMatch
@@ -234,6 +236,11 @@ class App:
         self.keymap = build_reverse(self.cfg)
         self.settings_panel: SettingsPanel | None = None
         self.show_settings = False
+        # -- v3.4：本地大模型指挥官 --
+        # 只在玩家显式选了「大模型」之后才创建：`probe()` 要扫目录，
+        # 而绝大多数玩家根本不会开这个功能。
+        self.commander: LLMCommander | None = None
+        self._llm_noted = ""            # 已提示过的降级原因，避免每回合刷屏
         # -- v2.1：单位图标包（用户目录优先，空 = 内置矢量图形）--
         icons.set_current_pack(str(self.cfg.pref("icon_pack", "") or ""))
 
@@ -652,6 +659,7 @@ class App:
                 on_icons=self._apply_icon_pack,
                 on_font_scale=self._apply_font_scale,
                 on_shape_cues=self._apply_shape_cues,
+                on_ai_mode=self._apply_ai_mode,
             )
         self.show_settings = True
 
@@ -664,6 +672,24 @@ class App:
             self.set_status(tr("ui.st.keymap_saved"), 3)
         except ConfigError as exc:
             self.set_status(str(exc), 5)
+
+    def _apply_ai_mode(self, mode: str) -> None:
+        """切换对手 AI 的驱动方式。
+
+        切到「大模型」但不满足条件时**不阻止玩家选**——只如实提示，
+        让玩家自己去补模型文件。选择器把玩家挡在门外、却不解释原因，
+        比降级运行更糟。
+        """
+        if mode != "llm":
+            return
+        cmd = self._llm()
+        cmd.enabled = True
+        if not cmd.available:
+            self.set_status(tr("ui.st.llm_missing"), 6)
+            return
+        self.set_status(tr("ui.st.llm_loading"), 4)
+        if self.state is not None and not self.state.over:
+            cmd.prefetch(self.state, self.state.ai_side)
 
     def _game_over(self) -> None:
         """对局结束：战役模式下结算本关并准备进入下一关。"""
@@ -778,6 +804,7 @@ class App:
         # 每关都给出作战简报——战役同样需要让玩家知道这一关怎么打
         self.briefing = build_briefing(self.state)
         self.show_briefing = True
+        self._prefetch_directive()
 
     def _campaign_step_complete(self) -> None:
         """一关结束：累计胜负点、收集幸存部队、推进到下一关。"""
@@ -1539,6 +1566,9 @@ class App:
         # 作战简报：开局前先给玩家看敌情与胜利条件
         self.briefing = build_briefing(self.state)
         self.show_briefing = True
+        # 大模型这时开始加载（约 5 秒）——玩家读简报的时间正好用来起服务
+        self._llm_noted = ""
+        self._prefetch_directive()
 
     def _close_briefing(self) -> None:
         """关闭作战简报，正式进入战斗。"""
@@ -1628,6 +1658,8 @@ class App:
             self.set_status(msg, 8)
         else:
             self.set_status(msg)
+        self._llm_noted = ""
+        self._prefetch_directive()
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()
@@ -1761,8 +1793,13 @@ class App:
             return
         self.pending_target = None
         self.reachable = {}
+        # 指挥官决心必须在**记录命令之前**取好：回放要能照着同一份决心重演
+        directive = self._take_directive()
         # 命令先记录再推进——回放时按同一条命令重演整个回合（含 AI）
-        self._record(CMD_END_TURN)
+        self._record(CMD_END_TURN,
+                     directive=(directive.to_dict() if directive is not None
+                                and directive.source == "llm" else None))
+        self.state.pending_directive = directive
         self.state.end_player_turn()
         self._tutorial_note("turn_end")
         if self.state.over:          # 末回合/全歼可能在结算时直接结束对局
@@ -1770,6 +1807,51 @@ class App:
             return
         self.state.begin_ai_phase()
         self.ai_timer = 0.0
+
+    # -- 本地大模型指挥官 ------------------------------------------------ #
+    def _llm(self) -> LLMCommander:
+        """惰性创建；模型目录可在配置里覆盖（`llm_dir`）。"""
+        if self.commander is None:
+            d = self.cfg.llm_dir
+            cfg = LLMConfig(model_path=d or "", server_path=d or "")
+            self.commander = LLMCommander(LLMClient(cfg))
+        return self.commander
+
+    def _llm_on(self) -> bool:
+        return self.cfg.ai_mode == "llm" and self.state is not None
+
+    def _prefetch_directive(self) -> None:
+        """在玩家思考的时间里先算 AI 的决心（推理要 9 秒左右）。"""
+        if not self._llm_on() or self.state is None or self.state.over:
+            return
+        cmd = self._llm()
+        cmd.enabled = True
+        if not cmd.available:
+            self._note_llm_fallback(tr("ui.log.llm_missing"))
+            return
+        cmd.prefetch(self.state, self.state.ai_side)
+
+    def _take_directive(self) -> Directive | None:
+        if not self._llm_on():
+            return None
+        cmd = self._llm()
+        if not cmd.available:
+            self._note_llm_fallback(tr("ui.log.llm_missing"))
+            return None
+        d = cmd.take(self.state, self.state.ai_side, timeout=1.5)
+        if d.source != "llm":
+            reason = cmd.last_error or tr("ui.log.llm_timeout")
+            self._note_llm_fallback(reason)
+            return None
+        return d
+
+    def _note_llm_fallback(self, reason: str) -> None:
+        """降级只提示一次——每回合重复同一句会把战报淹掉。"""
+        if reason == self._llm_noted:
+            return
+        self._llm_noted = reason
+        if self.state is not None:
+            self.state.log_message(None, tr("ui.log.llm_fallback_fmt") % reason, "system")
 
     def toggle_help(self) -> None:
         self.show_help = not self.show_help
@@ -2559,6 +2641,8 @@ class App:
                     if st.over:
                         self._game_over()
                     self._after_turn()
+                    # 新回合开始：趁玩家思考时把下一份决心算出来
+                    self._prefetch_directive()
         self.hover_unit = None
         self.hover_card = False
         if self.mapview and self.mapview.contains(self.mouse) and self.mode == "game":
@@ -4240,6 +4324,9 @@ class App:
                 self.handle_event(e)
             self.update(dt)
             self.draw()
+        # 推理进程是我们起的，就得由我们收——不然关掉游戏后它还占着 1.4GB 内存
+        if self.commander is not None:
+            self.commander.stop()
         pygame.quit()
 
 

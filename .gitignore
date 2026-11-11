@@ -18,6 +18,10 @@ saves/
 *.bak
 *.log
 
+# 本地大模型（模型 1.1GB + 运行时 25MB，绝不入库；说明见 ai/README.md）
+ai/*
+!ai/README.md
+
 # 打包中间产物
 packaging/build/
 packaging/dist/

@@ -1,6 +1,6 @@
 # 方块兵棋 · 扩展开发手册（SDK API 参考）
 
-> 适用版本：**v3.3.1** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.1.0**
+> 适用版本：**v3.4.0** ｜ SDK API 版本：**`core.mods.API_VERSION` = 1.1.0**
 >
 > 本文面向三类读者：**想定作者**（只写 JSON）、**模组作者**（写 Python）、
 > **引擎改造者**（改核心代码）。三条路线的稳定性承诺不同，见 §1.2。
@@ -98,7 +98,7 @@
 
 | 常量 | 当前值 | 管什么 | 升级时的行为 |
 |---|---|---|---|
-| `core.version.GAME_VERSION` | `3.3.1` | 程序版本 | 提示「文件由更新/更早版本制作」 |
+| `core.version.GAME_VERSION` | `3.4.0` | 程序版本 | 提示「文件由更新/更早版本制作」 |
 | `core.mods.API_VERSION` | `1.1.0` | 模组 SDK 接口 | 范围不匹配 → 拒绝加载 |
 | `core.mod_manifest.MANIFEST_SCHEMA` | `1` | `mod.json` 结构 | 预留 |
 | `core.pkg.PACKAGE_VERSION` | `2` | 想定包 `.bwscn` | 高于程序支持 → 拒绝导入 |

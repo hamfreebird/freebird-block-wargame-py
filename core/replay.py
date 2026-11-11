@@ -26,7 +26,11 @@ from .enums import Side
 from .rules import find_path
 from .version import GAME_VERSION, compat_note
 
-REPLAY_VERSION = 2
+#: v3：结束回合命令里可带 ``directive``（大模型指挥官给的作战决心）。
+#: 为什么必须升版本：旧程序读到 v3 文件会**静默换一套 AI 行为**重演
+#: （它不认识 directive，退回启发式），玩家看到的回放与当时的对局不同。
+#: 宁可让它明确拒绝，也不要给一份「看起来能放、其实不一样」的回放。
+REPLAY_VERSION = 3
 
 #: 玩家/AI 混编的普通对局（命令流）
 KIND_MATCH = "match"
@@ -95,6 +99,12 @@ def apply_command(state, cmd: Command) -> bool:
         return bool(res.ok)
 
     if kind == CMD_END_TURN:
+        # 大模型给的决心随命令一起回放：AI 的决策是「外部输入」，
+        # 不记下来就没法复现那一回合。（旧回放没有这个字段，退回启发式）
+        raw = a.get("directive")
+        if isinstance(raw, dict):
+            from .llm_commander import Directive
+            state.pending_directive = Directive.from_dict(raw)
         run_ai_turn(state)
         return True
 
