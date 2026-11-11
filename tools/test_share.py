@@ -189,8 +189,8 @@ def _spectate_match(seed: int = 424242) -> SpectatorMatch:
 
 
 def test_replay_share() -> None:
-    section("回放分享（.bwrep v2）")
-    check(REPLAY_VERSION == 2, f"回放格式版本为 2（实际 {REPLAY_VERSION}）")
+    section("回放分享（.bwrep v3）")
+    check(REPLAY_VERSION == 3, f"回放格式版本为 3（实际 {REPLAY_VERSION}）")
 
     m = _spectate_match()
     rf = ReplayFile.from_spectate(m.state, os.path.basename(MAP),

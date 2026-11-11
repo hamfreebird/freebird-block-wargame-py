@@ -15,6 +15,7 @@ from . import rules
 from . import ai_tactics as tactics
 from .enums import Detection, Domain, Facility, SensorKind, Side, UnitClass, WeaponKind
 from .env import environment_for
+from .llm_commander import Directive
 from .model import Unit, Weapon
 
 FACILITY_VALUE = {
@@ -47,14 +48,20 @@ class AIAction:
 
 
 class AIPlanner:
-    def __init__(self, state: "GameState", side: Side, deep: bool = True):
+    def __init__(self, state: "GameState", side: Side, deep: bool = True,
+                 directive: Directive | None = None):
         """`deep=False` 退回 v2.2 的行为，作为 A/B 对比的基线。
 
         保留它的理由不是兼容，而是**可证伪**：新战术到底有没有用，
         得能拿同一张想定、同一个种子跑两遍比出来（tools/test_ai_deep.py）。
+
+        `directive` 是「作战决心」（可由本地大模型给出，见 core/llm_commander）。
+        **它只调权重，不改变任何规则**：没有决心时用中性值，行为与引入
+        这一层之前逐位一致（`tools/test_llm.py` 有回归断言）。
         """
         self.side = side
         self.deep = deep
+        self.dir = directive or Directive()
         order = sorted(
             [u for u in state.units_of(side)],
             key=lambda u: (-u.template.cost, u.domain is Domain.SPACE),
@@ -332,6 +339,10 @@ class AIPlanner:
                 # 敌方据点的守卫、能压制我方的防空。
                 # 否则 AI 会把弹药浪费在无关紧要的目标上。
                 val += tactics.strike_priority(state, self.side, enemy) * 0.9
+                # 指挥官把某一类目标列为优先：同类目标的估值整体上浮。
+                # 用乘数不用加数——加数会被「目标造价 / 血量」这些大项淹掉。
+                if self.dir.focus and enemy.template.unit_class.value in self.dir.focus:
+                    val *= 1.45
                 # 集中火力：指定目标获得显著加成
                 if focus is not None and enemy is focus:
                     val *= 2.2
@@ -560,12 +571,22 @@ class AIPlanner:
         tile = state.map.at(unit.x, unit.y)
         if tile is None or tile.terrain.value == "water":
             return False
+        # 强攻决心下不挖工事：挖工事要耗掉整回合的机动，而强攻的全部意义
+        # 就是「这回合往前走」。要点上的工事仍然照挖——那是守住战果的底线。
+        if self.dir.stance == "assault" and not tile.objective:
+            return False
         engineer = unit.template.fort_power >= 2
-        if not engineer and not (tile.objective or tile.facility.value in ("depot", "hq", "sam_site")):
+        cover = tile.terrain.value in ("hills", "urban", "forest", "mountain")
+        # 固守决心：只要地形站得住就挖——防守的全部意义就是把地形变成工事。
+        # 不加这一条的话，「hold」与「balanced」在工事上完全一样，
+        # 模型选的姿态就只剩下一个标签。
+        dig_in = self.dir.stance == "hold" and cover
+        if not engineer and not (tile.objective or dig_in
+                                 or tile.facility.value in ("depot", "hq", "sam_site")):
             return False
         if engineer and tile.fort <= 0 and not tile.objective:
             # 工兵只在能形成阻击线的地形上构筑（丘陵/城区/渡口附近）
-            if tile.terrain.value not in ("hills", "urban", "forest", "mountain"):
+            if not cover:
                 return False
         if tile.fort >= 3 and tile.fort_owner is self.side:
             return False
@@ -614,7 +635,9 @@ class AIPlanner:
         else:
             decision = tactics.RetreatDecision(
                 tactics.should_retreat(state, self.side, unit), 2)
-        if decision.retreat:
+        # 强攻决心压住撤退冲动，但压不住「打残了」——血掉到四成以下，
+        # 任何指挥官都会把这支部队撤下来，否则下一回合就是白送。
+        if decision.retreat and (self.dir.stance != "assault" or unit.hp_ratio < 0.40):
             spot = self._retreat_spot(state, unit)
             if spot is not None:
                 path = rules.find_path(state, unit, spot)
@@ -622,7 +645,10 @@ class AIPlanner:
                     return path
 
         # 固守指令：不脱离当前阵位，只在原地附近择优（不前出）
-        if ordered is not None and ordered.kind == "hold":
+        # 「固守 / 游走」姿态走同一条分支：这两种决心的共同点就是**不推进**，
+        # 区别只在敢不敢靠近敌人（由 `_score_tile` 的风险权重体现）。
+        if (ordered is not None and ordered.kind == "hold") \
+                or self.dir.stance in ("hold", "screen"):
             base = self._score_tile(state, unit, here, 0.0, xmap)
             best_pos, best_score = None, base + 0.4
             for pos, cost in reach.items():
@@ -849,7 +875,8 @@ class AIPlanner:
         for uid, g in self.assign.items():
             if g is not None:
                 defenders[g] = defenders.get(g, 0) + 1
-        plans = tactics.evaluate_objectives(state, self.side, unit, defenders)
+        plans = tactics.evaluate_objectives(state, self.side, unit, defenders,
+                                            self.dir.main_effort)
         if plans and plans[0].score >= tactics.FEINT_WEAK_PLAN:
             best = plans[0]
             self.assign[unit.uid] = (best.tile.x, best.tile.y)
@@ -905,7 +932,7 @@ class AIPlanner:
         if turn - self.assign_turn.get(unit.uid, -99) < tactics.REASSIGN_COOLDOWN:
             return False
         dec = tactics.reassess_objective(state, self.side, unit, cur, None,
-                                         self._defender_map())
+                                         self._defender_map(), self.dir.main_effort)
         self.assign_turn[unit.uid] = turn
         if dec.switch:
             self.switch_note[unit.uid] = dec.reason
@@ -967,11 +994,20 @@ class AIPlanner:
             if cand:
                 main = (cand[0].x, cand[0].y)
                 support = counts.get(main, 0)
+        # 指挥官已经点了主攻方向：佯动就该为它服务——把守军从那上面引开。
+        # 只有主攻方向上确实已经有人（support ≥ 1）才这么改，否则
+        # 「为一场没人打的进攻做佯动」纯属浪费一支部队。
+        if self.dir.main_effort is not None:
+            eff = self.dir.main_effort
+            if counts.get(eff, 0) >= 1:
+                main, support = eff, counts.get(eff, 0)
         self.feint = tactics.plan_feint(state, self.side, main, support)
         return self.feint
 
     def _feint_for(self, state: "GameState", unit: Unit) -> tuple[int, int] | None:
         """这支部队是不是本回合的佯动部队；是就给出佯攻点。"""
+        if not self.dir.feint:
+            return None          # 指挥官这回合不打算分兵
         plan = self._feint_plan(state)
         if not plan.active or plan.unit_uid != unit.uid:
             return None
@@ -1024,7 +1060,8 @@ class AIPlanner:
         goal = self._assign_for(state, unit)
         if goal is not None:
             gain = rules.dist(cur, goal) - rules.dist(pos, goal)
-            score += gain * 3.2
+            # 推进倾向：强攻时「靠近目标」更值钱，固守时反过来
+            score += gain * 3.2 * self.dir.advance
             if pos == goal and unit.template.can_capture and tile.owner is not self.side:
                 score += 4.5
 
@@ -1045,7 +1082,8 @@ class AIPlanner:
                     threat += w.pk * (1.0 - w.evasion) * w.damage / hp
             if own_range and d <= own_range:
                 score += 1.2
-        score -= min(2.8, threat * 1.5)
+        # 风险规避：游走姿态把「进包线」的代价放大，强攻姿态则压小
+        score -= min(2.8, threat * 1.5 * self.dir.caution)
 
         # 3) 空中平台主动寻敌
         if unit.domain is Domain.AIR:

@@ -178,6 +178,13 @@ jobs:
       - name: 存档自检（随机流往返 / 坏档不崩）
         run: python tools/test_save.py
 
+      - name: 大模型指挥官自检（接线 / 校验 / 降级 / 回放携带决心）
+        # 不需要模型：全程用替身客户端。跑一次真实推理要 10 秒且要 1.1GB
+        # 权重，CI 里既没有也不该有。
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_llm.py
+
       - name: 机制边界自检（风与烟幕 / 工事工期 / 多段拦截）
         env:
           SDL_VIDEODRIVER: dummy

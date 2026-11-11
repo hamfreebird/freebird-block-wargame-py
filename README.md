@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.3.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.4.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -17,6 +17,9 @@
 >
 > 🧩 **要做模组或想定？见 [`SDK.md`](SDK.md)** —— 数据模型、规则钩子、命令流与回放 API
 > 的逐项参考，附最小可跑示例。文档与代码的清单一致性由 `tools/check_sdk.py` 强制校验。
+>
+> 🤖 **想让对手 AI 用本地大模型指挥？见 [`ai/README.md`](ai/README.md)** —— 可选功能，
+> 需要自己放一份 GGUF 权重；不开则完全是原来的规则 AI。
 
 ---
 
@@ -101,6 +104,18 @@ python tools/diag.py                       # 作战逻辑自检（26 条不变�
 | **分块渲染** | 大地图只渲染视口内的地形块，内存与地图尺寸脱钩 |
 | **增量探测** | 空间索引 + 世代号缓存，只重算状态真正变化的目标 |
 
+### 对手 AI（v3.4）
+
+| 机制 | 一句话 |
+|---|---|
+| **本地大模型指挥官** | LFM3 1.7B 每回合给一条作战决心（主攻方向 / 姿态 / 优先目标 / 是否佯动），规则层负责执行 |
+| **意图与执行分离** | 模型只调权重、不产生动作：输出再离谱也只是「更莽」或「更保守」，不会作弊、不会看见迷雾里的东西 |
+| **失败即降级** | 模型缺失、启动失败、研判超时都退回规则 AI，只提示一次，不阻断对局 |
+| **决心入命令流** | 决心随「结束回合」记进回放，同一份决心重演出同一局；观战模式不启用 |
+
+准备：`python tools/get_llm_runtime.py` 取运行时，把 GGUF 放进 `ai/`，
+再进 **设置 → AI 指挥官 → 大模型**。详见 [GAME_GUIDE 第 20 章](GAME_GUIDE.md#20-大模型指挥官可选)。
+
 ---
 
 ## 版本历程
@@ -127,6 +142,7 @@ python tools/diag.py                       # 作战逻辑自检（26 条不变�
 | **v3.2.0** | 生态 | **想定分享格式**（`.bwscn` v2：逐文件 sha256 + 制作版本，先校验后落盘）、**回放分享**（内嵌想定，换台机器也能重演）、**AI 对战观战**（主菜单一键双 AI 推演：暂停 / 倍速 / 跳回合 / 镜头跟随 / 存回放）、**官方 SDK 文档**（[`SDK.md`](SDK.md)，900 行 API 参考 + `check_sdk` 双向对齐校验） |
 | **v3.3.0** | 打磨 | **规则层拆分**（2091 行单体 → 九个域模块 + 104 行门面，50 多处调用点零改动）、**规则层单元测试**（104 条断言直测纯函数，40 项关键函数清单漏一项即失败）、**存档迁移链**（`MIGRATIONS` 逐版升级，升级说明进状态栏与战报）、**事件总线**（10 个事件、五条阵亡路径统一走 `kill_unit`、`API_VERSION` 1.1.0）、**性能余量**（256×256 / 412 单位整帧 3.2ms） |
 | **v3.3.1** | 技术债 | **随机流兜底可观测**（缺 `rng` 记账，严格模式报错，`diag` L26 守门）、**索引自动失效**（`Unit` / `Tile` 写入即递增版本号，位置索引与地块索引自己重建，不再靠「记得调」）、**探测指纹覆盖模板**（模组换雷达不再沿用旧结论）、**文档目录可自动重写**（`check_docs.py --fix`）；新增 `tools/test_debt.py` 守这几条 |
+| **v3.4.0** | 大模型对手 | **本地大模型指挥官**（LFM3 1.7B 每回合给作战决心：主攻方向 / 姿态 / 优先目标 / 是否佯动，规则层负责执行）、**后台预取**（玩家回合内算完，推理不占帧时间）、**失败即降级**（缺失 / 启动失败 / 超时都退回规则 AI）、**决心入命令流**（回放格式 v3，同一份决心重演同一局） |
 
 > 每个版本的详细机制说明都在 [GAME_GUIDE](GAME_GUIDE.md) 里，按章节号检索即可。
 
@@ -188,6 +204,8 @@ python tools/test_i18n.py        # 本地化运行时自检（分层包 / 回退
 python tools/test_keyboard.py    # 键盘导航自检（设置 / 主菜单 / 系统菜单 / 实战地图光标）
 python tools/test_save.py        # 存档自检（随机流往返 / 坏档不崩）
 python tools/test_share.py       # 分享与观战自检（校验和 / 内嵌想定 / AI 对战可复现）
+python tools/test_llm.py         # 大模型指挥官自检（接线 / 输出校验 / 降级 / 回放）
+python tools/get_llm_runtime.py --check   # 本地推理运行时与模型是否就位
 python tools/check_docs.py      # 文档自检（目录 / 锚点 / 版本号自洽）
 python tools/check_sdk.py       # SDK 文档自检（符号可解析 / 清单全覆盖 / 版本一致）
 python tools/perf.py big256     # 性能基准（big256 = 合成 256×256；也可 --map <想定>）
@@ -237,6 +255,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v3.2**（已发布）—— 想定分享格式 · 回放分享 · AI 对战观战 · SDK 文档
 - **v3.3**（已发布）—— 规则层拆分 · 单元测试层 · 存档格式迁移 · 事件总线 · 256×256 性能余量
 - **v3.3.1**（已发布）—— 随机流兜底可观测 · 索引写入即留痕 · 探测指纹含模板 · 文档目录可自动重写
+- **v3.4.0**（已发布）—— 本地大模型指挥官 · 后台预取 · 失败即降级 · 决心入命令流
 
 ---
 
