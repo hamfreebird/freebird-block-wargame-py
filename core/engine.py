@@ -19,7 +19,7 @@ from .enums import Altitude, Detection, Domain, Facility, Side, Terrain, WeaponK
 from .events import ScenarioEvent, apply_events, parse_events
 from .hooks import Rule, evaluate_rules, parse_rules
 from .model import (FireMission, Missile, Order, Tile, Unit, Weapon,
-                    ensure_uid_above, pos_epoch)
+                    ensure_uid_above, pos_epoch, tile_epoch)
 from . import mods as _mods
 from . import bus as _bus
 from .rng import GameRng
@@ -141,6 +141,9 @@ class GameState:
         self._detect_gen = 0            # 全局世代号：环境/干扰等全局变化时递增
         self._detect_fp: dict[int, tuple] = {}   # 单位状态指纹 → 世代号
         self._detect_global_fp: tuple = ()       # 全局指纹
+        #: 上次重建探测表时的便宜指纹（见 detect.detection_signature）；
+        #: 一致就说明「这次刷新什么都不会变」，直接早退。
+        self._detect_sig: tuple | None = None
         # 寻路距离场缓存（纯地形，随 map_epoch 失效）——见 rules.field_to_goal
         self._field_cache: dict[tuple, dict] = {}
         self.sat_recon: dict[Side, set[int]] = {Side.BLUE: set(), Side.RED: set()}
@@ -209,7 +212,25 @@ class GameState:
     # -- 基础查询 ---------------------------------------------------------
     @property
     def objective_tiles(self) -> list[Tile]:
-        return [t for t in self.map.iter_tiles() if t.objective]
+        """目标点列表（按 ``tile_epoch`` 缓存）。
+
+        以前这里是 `[t for t in iter_tiles() if t.objective]`——名字像廉价
+        访问器，实际每次扫全图：128×128 是 16,384 次迭代，256×256 是 65,536 次。
+        AI 每回合调用 340–369 次，实测占一回合的 14%（128×128）/ 22%（256×256）。
+
+        缓存判据用 v3.3.1 的 ``tile_epoch()``：目标点的存在、归属、名称、
+        工事、设施任一被写入都会递增它，所以「编辑器里加了个目标点」
+        这类改动不会给出过期列表。
+
+        返回的列表**由缓存持有**，调用方只读；原地修改会污染后续调用。
+        """
+        epoch = tile_epoch()
+        cached = getattr(self, "_obj_tiles_cache", None)
+        if cached is not None and cached[0] == epoch:
+            return cached[1]
+        tiles = [t for t in self.map.iter_tiles() if t.objective]
+        self._obj_tiles_cache = (epoch, tiles)
+        return tiles
 
     @property
     def meta(self):
@@ -350,12 +371,22 @@ class GameState:
         顺带检测「新发现」——某个敌方目标从不可见变为可见时发出探测提示音，
         这样玩家能第一时间注意到战场变化。
 
-        这里会**重建位置索引**：每回合一次 O(N)，代价可忽略，
-        但能兜住外部代码直接改 `unit.x/y` 造成的索引失效。
+        **先比指纹再重算**：AI 每回合会调这里近 200 次，其中约一半是
+        「什么都没变」（结算后、日志后各刷一次）。全量重建一次 2–3ms，
+        早退只要 50µs。指纹覆盖了 ``_detection_level`` 缓存键的全部维度，
+        不会漏判；无变化时也不可能出现「新发现」，所以音效一并跳过。
+
+        （位置索引不再在这里手动重建：v3.3.1 起 ``Unit`` 写入坐标会递增
+        ``pos_epoch``，``units_at`` 自己比对重建。）
         """
-        self.invalidate_pos_index()
+        from . import detect as _detect
+        _detect._sync_generations(self)
+        sig = _detect.detection_signature(self)
+        if sig == self._detect_sig and self.detection.get(self.player_side):
+            return
+        self._detect_sig = sig
         before = dict(self.detection.get(self.player_side, {}))
-        rules.build_detection_map(self)
+        rules.build_detection_map(self, sync=False)
         after = self.detection.get(self.player_side, {})
         for uid, lvl in after.items():
             old = before.get(uid)
@@ -1390,6 +1421,9 @@ class GameState:
         for side in (Side.BLUE, Side.RED):
             for uid, src in rules.assign_supply(self, side).items():
                 self.supply_links[uid] = src
+        # 渲染层用这个版本号判断补给线图层要不要重画。补给分配一变，
+        # 虚线就该跟着换——以前是每帧重拼一遍全量签名，占整帧 23%。
+        self.supply_epoch = getattr(self, "supply_epoch", 0) + 1
 
     def _tick_logistics(self) -> None:
         """回合推进时的油料、弹药与维修结算。

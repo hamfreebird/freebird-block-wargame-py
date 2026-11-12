@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
 
 DEFAULT_LANGUAGE = "zh"
 #: v3.0：从 2 种扩到 8 种。新增的语言包在 ``data/lang/<code>.json``。

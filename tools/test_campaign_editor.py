@@ -33,8 +33,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame  # noqa: E402
 
 from core.campaign import (CARRYOVER_ALL, CARRYOVER_NONE, CARRYOVER_VETERANS,
-                           CampaignStep, apply_carryover_policy, load_campaign)
-from core.enums import Side  # noqa: E402
+                           apply_carryover_policy, load_campaign)
 from ui import theme as T
 from ui.editor import Editor  # noqa: E402
 

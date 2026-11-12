@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import copy
 import os
-from typing import Any
 
 from core.loader import MapData, Scenario, load_scenario
 from core.model import Objective, Tile, clone_tile

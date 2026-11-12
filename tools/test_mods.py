@@ -344,6 +344,35 @@ def test_example_mod() -> None:
     check("concept_laser" in arm.templates, "示例模组的兵种进入武器库")
 
 
+
+def test_dir_error_visible() -> None:
+    """用户模组目录不可用时，必须留下可见的错误（AUDIT §3.1 C3）。
+
+    以前这里是 ``except Exception: pass``：目录探测失败 → 静默丢弃 →
+    一个模组都不加载 → 玩家只看到「我装的模组没生效」。
+    这条断言守的是「错误必须进报告」，而不是「必须能加载」。
+    """
+    from core import paths as _paths
+
+    orig = _paths.user_writable_dir
+
+    def boom():
+        raise OSError("模拟只读盘")
+
+    _paths.user_writable_dir = boom
+    try:
+        _mods.default_mod_dirs()
+        check(bool(_mods.DIR_ERRORS), "目录探测失败被记录到 DIR_ERRORS")
+        reg = _mods.load_all()
+        check(any("用户模组目录不可用" in e for e in reg.errors),
+              "目录错误进入注册表的 errors（界面据此提示）")
+    finally:
+        _paths.user_writable_dir = orig
+    # 恢复后不应残留错误
+    _mods.default_mod_dirs()
+    check(not _mods.DIR_ERRORS, "恢复正常后错误列表被清空")
+
+
 def main() -> int:
     print("=== 模组接口自检 ===")
     test_load_and_inject()
@@ -352,6 +381,7 @@ def main() -> int:
     test_unknown_event()
     test_entry_path_guard()
     test_example_mod()
+    test_dir_error_visible()
     print()
     if FAILED:
         print(f"模组自检失败 {len(FAILED)} 项：{FAILED}")

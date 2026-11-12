@@ -138,7 +138,73 @@ def main() -> None:
         rules.reachable_tiles(state, u)
         print(f"可达集解算    {(time.perf_counter() - t0) * 1000:8.1f} ms")
 
+    _ai_phase(state)
+
     pygame.quit()
+
+
+def _ai_phase(state) -> None:
+    """跑一回合双方 AI，打印相位耗时、单步分位与距离场缓存情况。
+
+    为什么不设阈值：共享 CI 机器上同一种子能差 20%，设阈值等于养一个
+    flaky 测试。回归断言交给 tools/test_perf.py 的渲染 / 探测那几条
+    （那些稳定得多）；这里只把「AI 到底多慢、缓存有没有爆」变成常驻数字。
+    """
+    from core import pathfind
+    from core.ai import AIPlanner
+
+    if state.map.width > 160:
+        print("AI 相位       跳过（大地图请用 python tools/perf.py big256 单独测）")
+        return
+
+    calls = [0]
+    evict = [0]
+    orig = pathfind._build_field
+
+    def wrapped(st, unit, goal, limit, ignore_units):
+        calls[0] += 1
+        n0 = len(getattr(st, "_field_cache", {}))
+        r = orig(st, unit, goal, limit, ignore_units)
+        if len(getattr(st, "_field_cache", {})) < n0:
+            evict[0] += 1
+        return r
+
+    pathfind._build_field = wrapped
+    steps: list[float] = []
+    turns: list[float] = []
+    try:
+        # 跑两回合：第一回合含全部「首次建场」，第二回合才是稳态。
+        # 只报第一回合会把 p99 的成因（冷启动）误读成「每步都慢」。
+        for _ in range(2):
+            t_turn = time.perf_counter()
+            for side in (state.player_side, state.player_side.foe):
+                state.phase = "player" if side is state.player_side else "ai"
+                planner = AIPlanner(state, side)
+                guard = 0
+                while planner.pending() and guard < 900 and not state.over:
+                    guard += 1
+                    ts = time.perf_counter()
+                    act = planner.step(state)
+                    steps.append(time.perf_counter() - ts)
+                    if act is None:
+                        break
+                    state.apply_ai_action(act)
+                state.resolve_missiles()
+                state.refresh_detection()
+            turns.append(time.perf_counter() - t_turn)
+            state._advance_turn()
+    finally:
+        pathfind._build_field = orig
+
+    steps.sort()
+    n = len(steps)
+    print(f"AI 两回合      {turns[0] * 1000:7.0f} / {turns[1] * 1000:7.0f} ms"
+          f"（首回合含冷启动，{n} 步动作）")
+    print(f"  单步 p50/p90/p99  {steps[n // 2] * 1000:.0f} / "
+          f"{steps[int(n * 0.9)] * 1000:.0f} / {steps[int(n * 0.99)] * 1000:.0f} ms"
+          f"（p99 基本是首次建场）")
+    print(f"  距离场查询 {calls[0]} 次 · 缓存 {len(state._field_cache)} 条 · "
+          f"淘汰 {evict[0]} 次")
 
 
 if __name__ == "__main__":

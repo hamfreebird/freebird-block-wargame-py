@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 
 #: 与 README 徽章、AUDIT 基线、git 标签必须一致（`tools/check_docs.py` 会查）
-GAME_VERSION = "3.4.0"
+GAME_VERSION = "3.4.1"
 
 _NUM = re.compile(r"(\d+)")
 

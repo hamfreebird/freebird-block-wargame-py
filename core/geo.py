@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Iterable
 
-from .enums import Domain, SensorKind, Terrain, WeaponKind
+from .enums import Domain, Terrain, WeaponKind
 from .model import Unit, Weapon
 
 if TYPE_CHECKING:  # pragma: no cover

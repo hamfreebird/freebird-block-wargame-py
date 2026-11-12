@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pygame  # noqa: E402
 
 from core import rules  # noqa: E402
-from core.enums import Side, Terrain  # noqa: E402
+from core.enums import Side  # noqa: E402
 from ui.app import App  # noqa: E402
 
 FAILS: list[str] = []

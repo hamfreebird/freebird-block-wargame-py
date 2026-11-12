@@ -31,9 +31,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.commands import (  # noqa: E402
-    CMD_DATALINK, CMD_DECOY, CMD_END_TURN, CMD_FIRE, CMD_FIRE_FACILITY,
-    CMD_FORTIFY, CMD_HOLD, CMD_JAM, CMD_MOVE, CMD_ORDER, CMD_PREPARE,
-    CMD_PROFILE, CMD_RADAR, CMD_SMOKE, Command, CommandLog,
+    CMD_DATALINK, CMD_DECOY, CMD_END_TURN, CMD_FORTIFY, CMD_HOLD, CMD_JAM, CMD_MOVE, CMD_PROFILE, CMD_RADAR, CMD_SMOKE, Command, CommandLog,
 )
 from core.enums import Domain, Side  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
@@ -266,7 +264,6 @@ def test_replay_file() -> None:
 def test_ui_records_commands() -> None:
     """UI 层确实在记录命令。"""
     print("UI 命令记录：")
-    import pygame
     from ui.app import App
     app = App()
     app.start_tutorial()

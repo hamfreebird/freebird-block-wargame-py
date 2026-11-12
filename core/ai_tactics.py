@@ -16,10 +16,10 @@ v2.2 新增。起因是 v1.5 的实测：128×128 想定里蓝方 AI 20 回合�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from core.enums import Detection, Domain, Side, Terrain
+from core.enums import Detection, Domain, Side
 from core import rules
 
 if TYPE_CHECKING:

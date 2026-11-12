@@ -36,7 +36,7 @@ from core import ai_tactics as tactics  # noqa: E402
 from core import rules  # noqa: E402
 from core.ai import AIPlanner  # noqa: E402
 from core.engine import GameState  # noqa: E402
-from core.enums import Detection, Domain, Side  # noqa: E402
+from core.enums import Domain, Side  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
 from core.paths import data_root  # noqa: E402
 

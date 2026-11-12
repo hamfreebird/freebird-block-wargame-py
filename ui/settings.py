@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import pygame
 
-from core.config import ALL_ACTIONS, ACTION_LABELS, DEFAULT_BINDINGS, SLOT_ACTIONS, UserConfig, label_for
+from core.config import ALL_ACTIONS, DEFAULT_BINDINGS, SLOT_ACTIONS, UserConfig, label_for
 from core import i18n
 from core.i18n import available_languages, language_name, tr
 from core import icons as _icons
 
 from . import theme as T
-from .keymap import capture_key_name, hotkey_label, key_name
+from .keymap import capture_key_name, hotkey_label
 
 
 class SettingsPanel:

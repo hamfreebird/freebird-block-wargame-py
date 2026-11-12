@@ -1046,7 +1046,6 @@ def main() -> int:
     check(_fb_ok, "字体：系统字体不可用时仍能降级取字")
 
     # --- 4.2 简报与战斗回顾 ---
-    from ui.briefing import (build_briefing, build_debrief, summarize_force)
     app.mode = "menu"
     app.menu_index = scenario_index("草原雷霆")
     app.start_game()

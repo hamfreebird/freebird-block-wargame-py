@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.4.0-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.4.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -184,6 +184,8 @@ python main.py --sim 16         # 无界面双 AI 推演
 python tools/diag.py 20         # 作战逻辑自检（26 条不变量 + 存档往返）
 python tools/test_units.py      # 规则层单元测试（纯函数 / 40 项覆盖清单，--trace 看行覆盖）
 python tools/check_layout.py    # UI 布局自检（按钮重叠 / 越界 / 遮挡）
+python tools/check_contrast.py  # 配色对比度自检（四主题 × WCAG 阈值）
+ruff check .                    # 静态检查（未使用导入 / 语法错误，配置见 ruff.toml）
 python tools/test_replay.py     # 对局回放自检（可复现 / 可重演）
 python tools/test_mods.py       # 模组接口自检（注册 / 钩子 / 错误隔离）
 python tools/smoke_test.py      # 无界面 UI 冒烟测试（212 项断言）
@@ -256,6 +258,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v3.3**（已发布）—— 规则层拆分 · 单元测试层 · 存档格式迁移 · 事件总线 · 256×256 性能余量
 - **v3.3.1**（已发布）—— 随机流兜底可观测 · 索引写入即留痕 · 探测指纹含模板 · 文档目录可自动重写
 - **v3.4.0**（已发布）—— 本地大模型指挥官 · 后台预取 · 失败即降级 · 决心入命令流
+- **v3.4.1**（已发布）—— 审计遗留问题清零：AI 相位 −33% · 浅色主题可读性 · 夜雾色调 · 地形分界 · ruff 闸门
 
 ---
 

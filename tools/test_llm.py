@@ -16,7 +16,6 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -34,7 +33,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from core import llm_client as llm_mod  # noqa: E402
-from core import rules  # noqa: E402
 from core.commands import CMD_END_TURN, Command, CommandLog  # noqa: E402
 from core.engine import GameState  # noqa: E402
 from core.enums import Detection, Side  # noqa: E402

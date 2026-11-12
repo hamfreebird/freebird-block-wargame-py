@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 import pygame
 
-from core.enums import Domain, Side, UnitClass
+from core.enums import Domain, Side
 from core.i18n import tr
 from core.env import environment_for
 

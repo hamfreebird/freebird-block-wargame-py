@@ -344,7 +344,6 @@ def run(map_name: str, turns: int) -> Checker:
         # L22 动画与音效不影响规则：关闭表现层后战局结果必须一致
         #     （动画/音效只影响观感，不参与命中与拦截判定）
         try:
-            from core.anim import AnimTrack
             if getattr(st, "anim", None) is None:
                 ck.fail("L22", "对局缺少动画轨道")
             else:

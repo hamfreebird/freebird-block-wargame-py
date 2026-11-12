@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import random
 import sys
 
 for _stream in (sys.stdout, sys.stderr):

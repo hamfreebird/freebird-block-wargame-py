@@ -509,7 +509,7 @@ class ModRegistry:
         返回注入的条目数。解析失败只跳过该条目并记录错误——
         一个写错的兵种不该让整个武器库加载失败。
         """
-        from .loader import LoadError, _parse_sensor, _parse_unit, _parse_weapon
+        from .loader import _parse_sensor, _parse_unit, _parse_weapon
 
         count = 0
         for entry in self.mods:
@@ -650,14 +650,25 @@ def set_default_registry(reg: ModRegistry) -> None:
     _REGISTRY = reg
 
 
+#: 搜索模组目录时遇到的错误（用户目录不可写、环境变量异常等）。
+#:
+#: 以前这里是 ``except Exception: pass``——模组作者把文件放进用户目录，
+#: 如果那台机器上 ``user_writable_dir()`` 抛异常，游戏会**当作没有模组**
+#: 正常启动，玩家只会以为「我装的模组没生效」。静默降级是最难排查的
+#: 那种故障：没有报错、没有日志、行为就是不对。
+DIR_ERRORS: list[str] = []
+
+
 def default_mod_dirs() -> list[str]:
     """模组搜索目录（用户目录优先于安装目录）。"""
     dirs: list[str] = []
+    DIR_ERRORS.clear()
     try:
         from .paths import user_writable_dir
         dirs.append(os.path.join(user_writable_dir(), "mods"))
-    except Exception:
-        pass
+    except Exception as exc:          # noqa: BLE001 - 目录探测失败要能被看见
+        DIR_ERRORS.append(
+            f"用户模组目录不可用（{type(exc).__name__}: {exc}）")
     from .paths import data_root
     dirs.append(os.path.join(data_root(), "data", "mods"))
     return dirs
@@ -667,6 +678,8 @@ def load_all(directories: Iterable[str] | None = None) -> ModRegistry:
     """加载全部模组并设为默认注册表。"""
     dirs = list(directories) if directories is not None else default_mod_dirs()
     reg = ModRegistry()
+    if directories is None:
+        reg.errors.extend(DIR_ERRORS)     # 目录探测失败也要进报告
     reg.load_dirs(dirs)
     set_default_registry(reg)
     return reg

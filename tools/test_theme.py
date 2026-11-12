@@ -33,7 +33,6 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
-from core.enums import Side  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
 from core.paths import data_root  # noqa: E402
 from core.tutorial import TUTORIAL_SCENARIO_ID, build_tutorial  # noqa: E402

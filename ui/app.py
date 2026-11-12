@@ -35,7 +35,6 @@ from core import pkg as _pkg
 from core import i18n
 from core.campaign import (CampaignDef, CampaignError, CampaignProgress, apply_carryover,
                            apply_carryover_policy, collect_survivors, list_campaigns,
-                           load_campaign,
                            load_progress, resolve_map_path, save_progress)
 from core.config import ConfigError, UserConfig
 from core.replay import ReplayError, ReplayFile
@@ -60,7 +59,7 @@ from .importdlg import ImportDialog
 from .replaydlg import ReplayDialog
 from .replayplayer import ReplayPlayer
 from .inspect import InspectCard
-from .keymap import build_reverse, hotkey_label, key_code
+from .keymap import build_reverse, hotkey_label
 from .mapview import MapView
 from .settings import SettingsPanel
 from .widgets import Button, LogView
@@ -241,23 +240,30 @@ class App:
         # 而绝大多数玩家根本不会开这个功能。
         self.commander: LLMCommander | None = None
         self._llm_noted = ""            # 已提示过的降级原因，避免每回合刷屏
+        self._mods_noted = False        # 模组摘要只提示一次
         # -- v2.1：单位图标包（用户目录优先，空 = 内置矢量图形）--
         icons.set_current_pack(str(self.cfg.pref("icon_pack", "") or ""))
 
         # -- v2.0：模组加载（用户目录优先，安装目录其次）--
         self.mods = _mods.load_all()
+        #: 模组加载结果摘要（错误优先）。开局时提示一次——以前这里只写进
+        #: ``cfg.pref("last_mods")``，而那个键**没有任何地方读**，
+        #: 等于「模组没生效」这件事从来没告诉过玩家（AUDIT §3.1 C3）。
+        self.mod_note = ""
         # -- v3.0：模组词条注入（必须在本地化初始化之前）--
         try:
             _n = _mods.apply_localization(self.mods)
             if _n:
-                self.cfg.set_pref("last_mods", f"已注入 {_n} 条模组词条")
+                self.mod_note = tr("ui.mods_injected_fmt") % (_n,)
         except Exception as exc:
-            self.cfg.set_pref("last_mods", f"模组词条注入失败：{exc}")
+            self.mod_note = tr("ui.mods_i18n_failed_fmt") % (exc,)
         for _m in self.mods.mods:
             if _m.ok:
-                self.cfg.set_pref("last_mods", self.mods.summary())
+                self.mod_note = self.mods.summary()
             else:
-                self.cfg.set_pref("last_mods", f"{_m.mod_id} 加载失败：{_m.error}")
+                self.mod_note = tr("ui.mods_load_failed_fmt") % (_m.mod_id, _m.error)
+        if self.mods.errors:
+            self.mod_note = tr("ui.mods_error_fmt") % "；".join(self.mods.errors[:2])
 
         # -- v1.4：主题 / 音效 / 本地化 --
         # 语言包：先读安装目录，再读用户目录（用户目录优先，可覆盖）
@@ -805,6 +811,7 @@ class App:
         self.briefing = build_briefing(self.state)
         self.show_briefing = True
         self._prefetch_directive()
+        self._note_mods()
 
     def _campaign_step_complete(self) -> None:
         """一关结束：累计胜负点、收集幸存部队、推进到下一关。"""
@@ -1569,6 +1576,7 @@ class App:
         # 大模型这时开始加载（约 5 秒）——玩家读简报的时间正好用来起服务
         self._llm_noted = ""
         self._prefetch_directive()
+        self._note_mods()
 
     def _close_briefing(self) -> None:
         """关闭作战简报，正式进入战斗。"""
@@ -1660,6 +1668,7 @@ class App:
             self.set_status(msg)
         self._llm_noted = ""
         self._prefetch_directive()
+        self._note_mods()
 
     def _layout_game(self) -> None:
         self.w, self.h = self.screen.get_size()
@@ -1844,6 +1853,20 @@ class App:
             self._note_llm_fallback(reason)
             return None
         return d
+
+    def _note_mods(self) -> None:
+        """开局时把模组加载结果写进战报（一次）。
+
+        为什么不用状态栏：读档提示、教学提示都要用那一条位置，
+        模组信息被覆盖掉就白说了。战报是常驻的，玩家翻得到。
+
+        为什么「有错才说」也要说成功：装了模组却一个都没加载，
+        与「没装」在界面上完全一样——那正是 AUDIT §3.1 C3 指出的问题。
+        """
+        if not self.mod_note or self._mods_noted or self.state is None:
+            return
+        self._mods_noted = True
+        self.state.log_message(None, self.mod_note, "system")
 
     def _note_llm_fallback(self, reason: str) -> None:
         """降级只提示一次——每回合重复同一句会把战报淹掉。"""

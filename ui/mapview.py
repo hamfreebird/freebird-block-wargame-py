@@ -11,7 +11,7 @@ import pygame
 
 from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
 from core.env import env_tint, environment_for
-from core.model import Tile, Unit, tile_epoch
+from core.model import Tile, Unit, pos_epoch, tile_epoch
 from core import anim as anim_mod
 from core.icons import icon_bitmap
 
@@ -57,6 +57,8 @@ class MapView:
         self._supply_sig: tuple | None = None
         self._supply_layer: pygame.Surface | None = None
         self._ring_cache: dict[tuple, pygame.Surface] = {}
+        # 地形分界线的颜色：按「地形色 → 边界色」缓存（同一主题内不变）
+        self._edge_colors: dict[tuple, tuple[int, int, int]] = {}
         self.overlay = "none"          # none / sensors / threat
         self.show_grid = True
         self.fit()
@@ -222,6 +224,32 @@ class MapView:
                         else:
                             pygame.draw.line(surf, shore, (lx, ly), (lx + ts, ly))
 
+        # 地形分界：地形变化处描一道边（水陆边界由上面的海岸线负责）。
+        # 放在块缓存里而不是每帧遍历视口：视口每帧 2000+ 格、4000+ 条线，
+        # 实测整帧会从 3.6ms 涨到 19.4ms——比它要解决的问题严重得多。
+        # 块只在换图/缩放/换肤时重建，正常帧是零成本。
+        if ts >= 8:
+            for ty in range(y0, y1):
+                for tx in range(x0, x1):
+                    t = md.at(tx, ty)
+                    if t is None:
+                        continue
+                    lx = (tx - x0) * ts
+                    ly = (ty - y0) * ts
+                    col = self._edge_color(T.TERRAIN_COLORS[t.terrain])
+                    n = md.at(tx + 1, ty)
+                    if n is not None and n.terrain is not t.terrain \
+                            and t.terrain is not Terrain.WATER \
+                            and n.terrain is not Terrain.WATER:
+                        pygame.draw.line(surf, col, (lx + ts - 1, ly),
+                                         (lx + ts - 1, ly + ts))
+                    n = md.at(tx, ty + 1)
+                    if n is not None and n.terrain is not t.terrain \
+                            and t.terrain is not Terrain.WATER \
+                            and n.terrain is not Terrain.WATER:
+                        pygame.draw.line(surf, col, (lx, ly + ts - 1),
+                                         (lx + ts, ly + ts - 1))
+
         # 等高线（每 600 米一级，仅在与邻格分级不同处描一道暗线）
         if ts >= 13:
             for ty in range(y0, y1):
@@ -304,6 +332,23 @@ class MapView:
             x0, y0, x1, y1 = self._chunk_bounds(cx, cy)
             surf.blit(chunk, (int(self.rect.x + self.ox + x0 * ts),
                               int(self.rect.y + self.oy + y0 * ts)))
+
+    def _edge_color(self, terrain_color) -> tuple[int, int, int]:
+        """地形分界线的颜色：暗地形提亮、亮地形压暗。
+
+        单一颜色做不到：深色主题下地形都很暗，浅色主题下都很亮，
+        同一条线在两端必有一端看不见。按亮度分两档后，
+        边界与两侧地形都能拉开约 2.5–3:1 的差。
+        """
+        key = (T.current_theme().id, terrain_color)
+        c = self._edge_colors.get(key)
+        if c is None:
+            r, g, b = terrain_color
+            lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+            c = (T.mix(terrain_color, (255, 255, 255), 0.42) if lum < 0.34
+                 else T.mix(terrain_color, (0, 0, 0), 0.42))
+            self._edge_colors[key] = c
+        return c
 
     def _decorate(self, surf: pygame.Surface, t: Tile, r: pygame.Rect, col) -> None:
         ts = self.tile
@@ -577,6 +622,11 @@ class MapView:
         签名里的 ``id(st.map)`` 与主题 id 不能省：换图 / 换肤后颜色与坐标都变了，
         但「单位在哪、挂在谁名下」可能一模一样（读同一张图的新对局），
         漏掉它们会 blit 出一层属于上一局的旧线。
+
+        「谁在哪」用 ``pos_epoch()`` + 单位数两个标量代替逐个坐标的 tuple：
+        一百多个单位的 tuple 每帧重建一次就是 0.7ms（占整帧 23%），
+        而版本号在坐标 / 存活状态被写入时自动递增，判废比人工拼签名可靠。
+        补给分配则用 ``supply_epoch``——只在 `_recompute_supply` 里递增。
         """
         st = self.state
         links = getattr(st, "supply_links", {}) or {}
@@ -589,8 +639,7 @@ class MapView:
         sig = (id(st.map), st.player_side, self.tile,
                int(self.ox), int(self.oy), self.rect.size,
                T.current_theme().id,
-               tuple((u.uid, u.x, u.y) for u in mine),
-               tuple(sorted((k, v.tile.x, v.tile.y) for k, v in links.items())))
+               pos_epoch(), len(st.units), getattr(st, "supply_epoch", 0))
 
         if sig == self._supply_sig and self._supply_layer is not None:
             surf.blit(self._supply_layer, self.rect.topleft)
@@ -695,8 +744,15 @@ class MapView:
             pygame.draw.polygon(surf, (250, 250, 250), [(cx, cy - s), (cx + s, cy),
                                                         (cx, cy + s), (cx - s, cy)], 1)
             if self.tile >= 26:
-                T.draw_text_center_x(surf, t.objective_name, cx, r.bottom + 1, 11,
-                                (235, 228, 200))
+                # 走主题令牌：写死的米白在浅色主题下压在浅地形上是 1.12:1，
+                # 等于没画（见 AUDIT §2.1）。
+                # 再加一圈底色描边：地形色从深到浅跨 5 倍亮度，单靠前景色
+                # 在「夜+雾」下仍会掉到 2.8:1（见 tools/check_contrast.py）。
+                ly = r.bottom + 1
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    T.draw_text_center_x(surf, t.objective_name, cx + dx, ly + dy,
+                                         11, T.BG_MAP)
+                T.draw_text_center_x(surf, t.objective_name, cx, ly, 11, T.MAP_LABEL)
 
     def _draw_forts(self, surf: pygame.Surface) -> None:
         """野战工事：地块底部的归属色进度条（长度 = 工事等级）。"""
@@ -724,8 +780,10 @@ class MapView:
             r = self.grid_to_rect(t.x, t.y)
             if not self.rect.colliderect(r):
                 continue
-            col = T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL else (170, 176, 186)
-            col = T.mix(col, (255, 255, 255), 0.25)
+            col = (T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL
+                   else T.MAP_SYMBOL)
+            # 不再统一提亮 25%：那一步把浅色主题的符号也一起提亮，
+            # 直接压进浅地形里（AUDIT §2.1）。各主题的令牌已按对比度选好。
             s = max(3, self.tile // 5)
             cx, cy = r.x + s + 1, r.y + s + 1
             if t.facility is Facility.AIRBASE:

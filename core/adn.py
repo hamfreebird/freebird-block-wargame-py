@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 # 确定性桩值，而打补丁只能改**定义处模块**的属性。函数内直接引用
 # 的名字是另一份绑定，补丁打不到。
 from . import dice, ew
-from .enums import Domain, Side, WeaponKind
+from .enums import Side, WeaponKind
 from .geo import RANGE_TOLERANCE, dist
 from .model import Unit, Weapon
 
