@@ -16,11 +16,10 @@ from .adn import AirDefenseNetwork, interception_estimate
 # 的名字是另一份绑定，补丁打不到。
 from . import detect, ew, geo
 from .detect import detection_level
-from .enums import Detection, Domain, Side, WeaponKind
-from .env import environment_for
+from .enums import Detection, Domain, WeaponKind
 from .geo import (ORBITAL_ENGAGEMENT_DISTANCE, RANGE_TOLERANCE,
                  crossfire_bonus, dist, dist_units)
-from .model import Tile, Unit, Weapon
+from .model import Unit, Weapon
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import GameState

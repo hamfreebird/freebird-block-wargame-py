@@ -36,7 +36,6 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
-from core import i18n  # noqa: E402
 from core.paths import data_root  # noqa: E402
 
 LANG_DIR = os.path.join(data_root(), "data", "lang")

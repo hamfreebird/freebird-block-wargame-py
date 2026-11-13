@@ -288,23 +288,41 @@ TIME_TINTS: dict[TimeOfDay, tuple[tuple[int, int, int], int]] = {
 }
 
 # 天候色调
+#: 天候色调的透明度比 v3.4 之前低：雾不是「贴一层灰」，
+#: 它应该降低远处对比度，而不是把整幅画面压进中灰区间。
 WEATHER_TINTS: dict[Weather, tuple[tuple[int, int, int], int]] = {
     Weather.CLEAR: ((0, 0, 0), 0),
     Weather.RAIN: ((40, 60, 85), 52),
-    Weather.FOG: ((185, 195, 200), 74),
+    Weather.FOG: ((185, 195, 200), 58),
     Weather.SNOW: ((205, 220, 240), 46),
 }
 
+#: 时段与天候叠加后的总不透明度上限。
+#: 为什么要有：旧实现是两层的 alpha **直接相加**再截到 150，
+#: 于是「夜 108 + 雾 74 = 182 → 150」——整幅画面 59% 被同一层灰盖住，
+#: 地图动态范围从 250 掉到 104（−58%），地形与棋子一起糊成中灰。
+#: 夜雾本来就该看不清，但「看不清」应当是暗处看不清、被照亮的仍看得清。
+#: 120 是实测取舍：夜雾动态范围回到 133（≈拂晓+雾的水平），
+#: 同时夜间仍明显比拂晓更暗（合成色不同，不是靠 alpha 区分）。
+_TINT_CAP = 120
+
 
 def env_tint(env: Environment) -> tuple[tuple[int, int, int], int]:
-    """返回当前环境对应的叠加色调与透明度（渲染层使用）。"""
+    """返回当前环境对应的叠加色调与透明度（渲染层使用）。
+
+    两层叠加的**正确**合成是 ``1-(1-a1)(1-a2)``，不是 ``a1+a2``：
+    后者在两层都较浓时会算出「比任何一层都更不透明」的结果，
+    等于把两片滤镜当成一片更厚的滤镜。颜色仍按 alpha 加权平均
+    （近似「先叠时段、再叠天候」的视觉效果）。
+    """
     t_col, t_a = TIME_TINTS[env.time_of_day]
     w_col, w_a = WEATHER_TINTS[env.weather]
     # 合成：以天候为主、时段为辅
     r = (t_col[0] * t_a + w_col[0] * w_a) // max(1, t_a + w_a)
     g = (t_col[1] * t_a + w_col[1] * w_a) // max(1, t_a + w_a)
     b = (t_col[2] * t_a + w_col[2] * w_a) // max(1, t_a + w_a)
-    return (r, g, b), min(150, t_a + w_a)
+    a = 255.0 * (1.0 - (1.0 - t_a / 255.0) * (1.0 - w_a / 255.0))
+    return (r, g, b), min(_TINT_CAP, int(round(a)))
 
 
 __all__ = [

@@ -1,6 +1,6 @@
 # 方块兵棋 · 完整游戏指南
 
-> 版本：2026-11 · v3.4.0 · 适用 `main.py` 与全部数据文件
+> 版本：2026-11 · v3.4.1 · 适用 `main.py` 与全部数据文件
 > 一回合 = 1 小时（1 格 = 12 km，可在想定里改），一次对局 16–18 回合（教学想定 8 回合）。
 > 6 回合 = 1 个作战日：天气与昼夜会贯穿整局。
 
@@ -132,6 +132,8 @@
    - [`python tools/test_debt.py`](#python-toolstestdebtpy)
    - [`python tools/perf.py [基准名]`](#python-toolsperfpy-基准名)
    - [`python tools/check_layout.py`](#python-toolschecklayoutpy)
+   - [`python tools/check_contrast.py`](#python-toolscheckcontrastpy)
+   - [`ruff check .`](#ruff-check)
    - [`python tools/test_stack.py`](#python-toolsteststackpy)
    - [`python tools/test_replay.py`](#python-toolstestreplaypy)
    - [`python tools/test_mods.py`](#python-toolstestmodspy)
@@ -2694,6 +2696,33 @@ tile=60 时需要一张 15360×15360 的表面（约 900MB）——不可行。�
 脚本只检查浮层**内部**元素之间的重叠。
 
 已在 CI 中启用——布局回归会直接让流水线失败。
+
+### `python tools/check_contrast.py`
+
+**配色对比度自检**（v3.4.1）。布局自检只管「元素有没有叠在一起」，
+锚点自检只管「锚点合不合法」——**没有任何工具会去算颜色**。于是浅色主题下
+地图上的目标点名只有 1.12:1（等于没画），这类缺陷只能靠人眼看截图。
+
+现在按 WCAG 2.1 逐项断言：
+
+| 类别 | 阈值 | 测什么 |
+|---|---|---|
+| 地图标签 / 正文 / 语义色 | 4.5:1 | 四套主题 × 地形色与面板色 |
+| 地图符号（图形） | 3.0:1 | 中立设施符号 vs 九种地形 |
+| 夜雾下的地图标签 | 3.0:1 | 按真实 alpha 混合后再比一次 |
+
+`--report` 会打印全部数值（含只提示不失败的 `TEXT_FAINT`、地形两两对比）。
+已在 CI 中启用。
+
+### `ruff check .`
+
+**静态检查**（v3.4.1）。配置在 `ruff.toml`，只开 `F401`（未使用导入）与
+`E9/F63/F7/F82/F821`（语法 / 运行时明显错误），**不追求全套规则**——
+本项目有大量故意的写法（规则门面 re-export、主题动态属性、延迟导入），
+通用规则会一条条误报，最后只能靠 `noqa` 堆过去。
+
+`core/rules.py` 用 `per-file-ignores` 豁免：它的全部工作就是 re-export，
+本身当然「不使用」那些名字。
 
 ### `python tools/test_stack.py`
 

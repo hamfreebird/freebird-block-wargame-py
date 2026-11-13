@@ -52,14 +52,13 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .enums import Domain, Facility, Side, Terrain, Weather
+from .enums import Domain, Side, Terrain, Weather
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import GameState
-    from .model import Unit
 
 
 EVENT_TYPES = ("airstrike", "reinforce", "weather", "objective", "reveal", "message")
@@ -372,7 +371,6 @@ def _objective_kind(name: str):
 
 def _do_reveal(state: "GameState", ev: ScenarioEvent) -> str:
     """强制暴露：让某方立刻识别该区域的目标。"""
-    from .enums import Detection
     side = _side_of(ev)
     if side is None:
         return "暴露事件缺少 side"

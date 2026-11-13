@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .adn import AirDefenseNetwork
-from .enums import Domain, Facility, Side, Terrain, UnitClass, WeaponKind
+from .enums import Domain, Facility, Side, UnitClass
 # 这几个「环境依赖」走模块属性访问（``ew.jam_strength_at`` 而不是
 # ``from .ew import jam_strength_at``）：自检脚本需要把它们临时换成
 # 确定性桩值，而打补丁只能改**定义处模块**的属性。函数内直接引用

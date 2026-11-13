@@ -39,7 +39,7 @@ sys.path.insert(0, ROOT)
 from core import adn, combat, detect, dice, ew, facility, geo, logistics  # noqa: E402
 from core import pathfind  # noqa: E402
 from core.engine import GameState  # noqa: E402
-from core.enums import (Detection, Domain, Facility, SensorKind, Side,  # noqa: E402
+from core.enums import (Detection, Facility, SensorKind, Side,  # noqa: E402
                         Terrain)
 from core.loader import load_armory, load_scenario  # noqa: E402
 from core.model import Tile, Unit  # noqa: E402

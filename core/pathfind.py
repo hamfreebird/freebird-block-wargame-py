@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .enums import Domain, Facility, Side, Terrain, UnitClass
 from .facility import AIRBASE_CAPACITY
-from .geo import NEIGHBORS_8, RANGE_TOLERANCE, dist
+from .geo import NEIGHBORS_8
 from .loader import SUB_CAPACITY
 from .model import Unit
 
@@ -340,9 +340,26 @@ def field_to_goal(state: "GameState", unit: Unit, goal: tuple[int, int],
     return {}
 
 
+#: 距离场缓存条目上限。按内存反推，不是按条数拍的：一条全图场在
+#: 256×256 上约 1 万个格点、约 1MB（键是 tuple，dict 开销占大头）。
+#: 192 条 ≈ 170MB，对应实测工作集：128×128 想定 87 条、256×256 合成图 167 条。
+#: 旧上限 96 贴着小图工作集，大图必然周期性整表清空（实测 2 次 / 单方相位）。
+_FIELD_CACHE_LIMIT = 192
+
+
 def _build_field(state: "GameState", unit: Unit, goal: tuple[int, int],
                  limit: float, ignore_units: bool) -> dict[tuple[int, int], float]:
-    """计算指定半径的距离场（带缓存）。"""
+    """计算指定半径的距离场（带缓存）。
+
+    缓存容量是**按内存**定的，不是按条数拍的：实测 256×256 上一条全图
+    距离场约 8.5k 个格点、约 0.9MB（dict 的键是 tuple），96 条就是 ~85MB。
+    所以不能像审计建议的那样直接放到 512 条（那是 450MB）。
+
+    工作集 = 单位机动剖面数 × 目标点数，实测 128×128 为 87 条、
+    256×256 为 94 条——旧上限 96 是**贴着工作集的悬崖**，多一个目标点
+    就开始周期性整表清空。这里改成 128 条 + 「满了淘汰最旧的四分之一」：
+    正常地图永不触发淘汰，异常地图也不会一次丢掉全部工作集。
+    """
     import heapq
 
     # 缓存：纯地形距离场在地图不变时完全稳定，命中率极高
@@ -377,8 +394,12 @@ def _build_field(state: "GameState", unit: Unit, goal: tuple[int, int],
                 field[(nx, ny)] = ncost
                 heapq.heappush(pq, (ncost, (nx, ny)))
     if cache is not None:
-        if len(cache) > 96:
-            cache.clear()
+        if len(cache) >= _FIELD_CACHE_LIMIT:
+            # 淘汰最旧的一批（dict 保序），而不是 clear()：
+            # 整表清空会让下一次调用把整个工作集重新算一遍——实测 256×256
+            # 单方相位因此多花 13%。清四分之一既腾出空间，又保住大部分热点。
+            for stale in list(cache)[: max(1, _FIELD_CACHE_LIMIT // 4)]:
+                cache.pop(stale, None)
         cache[ck] = field
     return field
 

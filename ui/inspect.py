@@ -21,10 +21,16 @@ from . import theme as T
 
 
 def _det_color(lvl: Detection) -> tuple[int, int, int]:
+    """侦测等级的语义色。
+
+    「已识别」以前写死成 (150,200,240)，绕过了主题系统——
+    在浅色主题的面板上只有 1.72:1，读不出来。现在走 ``DETECT_CLASSIFIED``
+    令牌，四套主题各自给值（对比度由 ``tools/check_contrast.py`` 守）。
+    """
     return {
         Detection.NONE: T.TEXT_FAINT,
         Detection.CONTACT: T.AMBER,
-        Detection.CLASSIFIED: (150, 200, 240),
+        Detection.CLASSIFIED: T.DETECT_CLASSIFIED,
         Detection.TRACKED: T.RED,
     }.get(lvl, T.TEXT_DIM)
 

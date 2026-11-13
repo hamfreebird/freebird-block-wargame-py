@@ -1,4 +1,4 @@
-"""v3.3.1 技术债守卫：四条「自动失效」机制的回归测试。
+"""技术债守卫：五条「自动失效 / 自动早退」机制的回归测试。
 
 这四条债原本都是**约定**，不是机制：
 
@@ -6,9 +6,10 @@
    且失配时表现为「同种子两次跑出不同结果」，极难查）；
 2. ``unit.x/y`` 改了必须手动调 ``invalidate_pos_index()``；
 3. 目标点 / 工事 / 设施变了必须手动递增 ``state.map_epoch``；
-4. 探测缓存的指纹没覆盖模板（模组换雷达后沿用旧结论）。
+4. 探测缓存的指纹没覆盖模板（模组换雷达后沿用旧结论）；
+5. 探测刷新不看状态就全量重算（v3.4.1：近一半调用是「什么都没变」）。
 
-v3.3.1 把它们都改成了「写入即留痕」：``core.model`` 的 ``pos_epoch()`` /
+v3.3.1 / v3.4.1 把它们都改成了「写入即留痕」：``core.model`` 的 ``pos_epoch()`` /
 ``tile_epoch()`` 会在相关字段被写入时递增，索引访问时比对版本号自动重建；
 ``core.dice`` 给兜底加了计数与严格模式；探测指纹补上了模板。
 
@@ -205,19 +206,56 @@ def test_detect_template() -> None:
     check(target.detect_gen > gen0, "模板替换后探测世代号递增（缓存自动作废）")
 
 
+# --------------------------------------------------------------------------- #
+# [5] 探测刷新的早退判据：省下的必须是「重复」，不是「变化」
+# --------------------------------------------------------------------------- #
+def test_detect_early_exit() -> None:
+    print("[5] 探测刷新：无变化早退、有变化必重算、结果与全量一致")
+    st = new_state("strait_shield")
+    st.refresh_detection()
+    side = st.player_side
+    table = st.detection[side]
+
+    st.refresh_detection()
+    check(st.detection[side] is table,
+          "状态未变时复用上一张探测表（早退生效）")
+
+    # 只改雷达、不改坐标：pos_epoch 不动，只有单位指纹能抓到
+    emitter = next((u for u in st.units
+                    if u.alive and u.template.is_radar_emitter), None)
+    if emitter is None:
+        check(False, "想定里没有雷达辐射源，无法验证非位置变化")
+        return
+    was = emitter.radar_on
+    emitter.radar_on = not was
+    st.refresh_detection()
+    check(st.detection[side] is not table,
+          "雷达开关（不改坐标）仍会触发重算")
+
+    # 早退路径的结果必须与「忽略早退、强制全量」逐项一致
+    st._detect_sig = None
+    st.refresh_detection()
+    full = {s: dict(t) for s, t in st.detection.items()}
+    st.detection = {Side.BLUE: {}, Side.RED: {}}
+    st._detect_sig = None
+    st.refresh_detection()
+    check(full == st.detection, "早退后的表与强制全量重建逐项一致")
+
+
 def main() -> int:
-    print("=== 技术债守卫自检（v3.3.1）===")
+    print("=== 技术债守卫自检 ===")
     test_dice_fallback()
     test_pos_index()
     test_tile_index()
     test_detect_template()
+    test_detect_early_exit()
     print()
     if FAILS:
         print(f"✗ {len(FAILS)} 项失败：")
         for f in FAILS:
             print("   -", f)
         return 1
-    print("✓ 四条自动失效机制均在位")
+    print("✓ 五条自动失效 / 早退机制均在位")
     return 0
 
 

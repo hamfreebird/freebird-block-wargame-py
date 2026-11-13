@@ -18,7 +18,7 @@ import os
 import time
 from typing import Any
 
-from .enums import Detection, Side
+from .enums import Side
 from .engine import GameState, LogEntry
 
 # 日志事件类型 → 中文标签

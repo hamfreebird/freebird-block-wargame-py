@@ -39,7 +39,7 @@ import pygame  # noqa: E402
 
 from core import config as C  # noqa: E402
 from core import i18n  # noqa: E402
-from core.enums import Side, UnitClass  # noqa: E402
+from core.enums import UnitClass  # noqa: E402
 from ui import theme as T  # noqa: E402
 from ui import mapview as MV  # noqa: E402
 

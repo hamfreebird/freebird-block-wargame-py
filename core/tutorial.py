@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
-from .enums import Detection, Side
+from .enums import Detection
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import GameState

@@ -1,7 +1,7 @@
 """补给链：补给源、覆盖范围、断粮判定。"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .enums import Domain, Facility, Side

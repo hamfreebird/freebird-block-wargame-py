@@ -21,10 +21,9 @@ import os
 import pygame
 
 from core.campaign import (CARRYOVER_ALL, CARRYOVER_LABELS, CARRYOVER_NONE,
-                           CARRYOVER_VETERANS, DIFFICULTY_LABELS, CampaignDef,
+                           CARRYOVER_VETERANS, CampaignDef,
                            CampaignError, CampaignStep, load_campaign)
 from core.i18n import tr
-from core import paths as _paths
 
 from . import theme as T
 from .editor import TextInput

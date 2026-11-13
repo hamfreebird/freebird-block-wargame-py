@@ -288,7 +288,6 @@ def test_interception(sc, arm) -> None:
     print("反导多段拦截")
     from core import dice, rules
     from core.model import Missile
-    from core.rng import GameRng
 
     def find_unit_weapon(prefix: str):
         for t in arm.templates.values():

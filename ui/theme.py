@@ -56,6 +56,13 @@ class Theme:
     green: RGB
     purple: RGB
     white: RGB
+    #: 地图层专用：目标点名称（压在**地形**上，不是面板上）。
+    #: 以前这两处写死在 mapview 里，浅色主题下对比度掉到 1.1:1——等于没画。
+    map_label: RGB
+    #: 地图层专用：中立设施符号（哨所/港口等的小图标）。
+    map_symbol: RGB
+    #: 侦测等级「已识别」的语义色（信息卡 / 面板背景上用）。
+    detect_classified: RGB
     side_blue: dict = field(default_factory=dict)
     side_red: dict = field(default_factory=dict)
     side_neutral: dict = field(default_factory=dict)
@@ -90,6 +97,9 @@ TACTICAL = Theme(
     green=(92, 222, 150),
     purple=(180, 142, 255),
     white=(244, 250, 255),
+    map_label=(235, 228, 200),
+    map_symbol=(191, 196, 203),
+    detect_classified=(150, 200, 240),
     side_blue=_side((26, 58, 96), (110, 178, 255), (210, 234, 255), (78, 156, 255)),
     side_red=_side((96, 34, 42), (248, 124, 124), (255, 216, 216), (255, 106, 106)),
     side_neutral=_side((48, 54, 64), (140, 152, 168), (208, 216, 228), (150, 160, 175)),
@@ -120,13 +130,16 @@ LIGHT = Theme(
     text=(26, 32, 42),
     text_dim=(88, 98, 112),
     text_faint=(134, 144, 158),
-    cyan=(14, 132, 136),
+    cyan=(10, 112, 118),
     blue=(38, 96, 196),
-    red=(198, 52, 52),
-    amber=(176, 112, 12),
-    green=(30, 142, 82),
+    red=(184, 44, 44),
+    amber=(150, 92, 8),
+    green=(22, 120, 66),
     purple=(124, 82, 196),
     white=(255, 255, 255),
+    map_label=(26, 32, 42),
+    map_symbol=(74, 82, 94),
+    detect_classified=(30, 80, 160),
     side_blue=_side((196, 218, 248), (46, 104, 200), (18, 44, 96), (58, 116, 214)),
     side_red=_side((250, 208, 206), (206, 62, 58), (112, 20, 20), (216, 72, 68)),
     side_neutral=_side((224, 227, 232), (140, 148, 160), (72, 78, 88), (150, 158, 170)),
@@ -167,6 +180,9 @@ DEUTERAN = Theme(
     green=(150, 224, 200),
     purple=(196, 176, 255),
     white=(246, 250, 255),
+    map_label=(235, 228, 200),
+    map_symbol=(191, 196, 203),
+    detect_classified=(150, 200, 240),
     side_blue=_side((26, 58, 96), (120, 186, 255), (214, 236, 255), (94, 168, 255)),
     side_red=_side((94, 66, 24), (255, 198, 120), (255, 236, 202), (255, 186, 92)),
     side_neutral=_side((48, 54, 64), (146, 156, 172), (210, 216, 228), (152, 162, 176)),
@@ -204,6 +220,9 @@ PROTAN = Theme(
     green=(146, 226, 214),
     purple=(190, 180, 255),
     white=(244, 250, 255),
+    map_label=(235, 228, 200),
+    map_symbol=(191, 196, 203),
+    detect_classified=(150, 200, 240),
     side_blue=_side((24, 56, 94), (116, 184, 255), (210, 234, 255), (96, 172, 255)),
     side_red=_side((88, 68, 20), (255, 206, 120), (255, 240, 206), (255, 214, 96)),
     side_neutral=_side((46, 52, 62), (142, 154, 170), (208, 216, 228), (150, 160, 175)),
@@ -277,6 +296,8 @@ def __getattr__(name: str):
         "TEXT": t.text, "TEXT_DIM": t.text_dim, "TEXT_FAINT": t.text_faint,
         "CYAN": t.cyan, "BLUE": t.blue, "RED": t.red, "AMBER": t.amber,
         "GREEN": t.green, "PURPLE": t.purple, "WHITE": t.white,
+        "MAP_LABEL": t.map_label, "MAP_SYMBOL": t.map_symbol,
+        "DETECT_CLASSIFIED": t.detect_classified,
         "NIGHT_TINT": t.night_tint, "DAY_TINT": t.day_tint,
     }
     if name in simple:
@@ -297,6 +318,7 @@ def __dir__() -> list[str]:
         "BG", "BG_MAP", "PANEL", "PANEL_HI", "PANEL_SUNK", "BORDER", "BORDER_HI",
         "GRID", "TEXT", "TEXT_DIM", "TEXT_FAINT", "CYAN", "BLUE", "RED", "AMBER",
         "GREEN", "PURPLE", "WHITE", "SIDE_COLORS", "TERRAIN_COLORS",
+        "MAP_LABEL", "MAP_SYMBOL", "DETECT_CLASSIFIED",
         "NIGHT_TINT", "DAY_TINT",
     ])
 

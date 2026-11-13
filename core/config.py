@@ -189,7 +189,6 @@ class UserConfig:
     @property
     def theme(self) -> str:
         """当前主题 ID（非法值回退默认）。"""
-        from . import paths  # 延迟导入避免循环
         theme = str(self.prefs.get("theme", DEFAULT_THEME))
         valid = {"tactical", "light", "deuteranopia", "protanopia"}
         return theme if theme in valid else DEFAULT_THEME

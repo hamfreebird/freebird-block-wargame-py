@@ -17,7 +17,7 @@ from typing import Any
 from core.commands import CommandLog
 from core.engine import GameState
 from core.enums import Side
-from core.replay import KIND_AI_VS_AI, ReplayFile, ReplayError, apply_command
+from core.replay import KIND_AI_VS_AI, ReplayFile, apply_command
 from core.spectate import SpectatorMatch
 
 

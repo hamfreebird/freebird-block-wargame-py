@@ -34,7 +34,6 @@ for _stream in (sys.stdout, sys.stderr):
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-from core.enums import Domain, UnitClass  # noqa: E402
 from core.paths import data_root  # noqa: E402
 
 
