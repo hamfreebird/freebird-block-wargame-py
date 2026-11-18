@@ -320,6 +320,29 @@ def test_kill_paths() -> None:
     check(st.casualties[Side.RED] == cas_before + 1,
           f"区域伤害计入伤亡（{cas_before} → {st.casualties[Side.RED]}）")
 
+    # 5.6 想定脚本的空袭（v3.4.2）：这是区域伤害之外另一条独立路径，
+    # 以前直接 casualties += 1，不广播也不判歼灭。审计实测过全歼不结束。
+    from core.events import ScenarioEvent, apply_events
+    st = fresh()
+    reds = [u for u in st.units if u.side is Side.RED and u.alive]
+    victim = reds[0]
+    for u in reds:
+        if u is not victim:
+            u.destroyed = True
+    victim.x, victim.y = 8, 8
+    victim.hp = 5.0
+    cas_before = st.casualties[Side.RED]
+    ev = ScenarioEvent(type="airstrike", side="BLUE", x=8, y=8,
+                       radius=0, damage=50)
+    apply_events(st, [ev])
+    kills = st.bus.recent("unit_destroyed")
+    check(not victim.alive, "空袭击毁了单位")
+    check(any(k["cause"] == "scenario_airstrike" for k in kills),
+          f"空袭广播了 cause（{[k['cause'] for k in kills]}）")
+    check(st.casualties[Side.RED] == cas_before + 1,
+          f"空袭计入伤亡（{cas_before} → {st.casualties[Side.RED]}）")
+    check(st.over, "空袭造成全歼后判定对局结束")
+
 
 # --------------------------------------------------------------------------- #
 # 6. 回合 / 占领 / 设施打击

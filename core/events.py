@@ -243,7 +243,10 @@ def _do_airstrike(state: "GameState", ev: ScenarioEvent) -> str:
         u.apply_damage(dmg)
         hits.append(f"{u.name}(-{dmg:.0f})")
         if u.destroyed:
-            state.casualties[u.side] += 1
+            # v3.4.2：必须走统一阵亡出口。以前直接 casualties += 1，
+            # 结果是全歼不判胜负、unit_destroyed 无人广播——实测过：
+            # 只剩一个红方单位被空袭击毁后 over 仍为 False、事件 0 条。
+            state.kill_unit(u, "scenario_airstrike")
             state.add_fx("explosion", (u.x, u.y), None, ttl=1.2, color=(255, 110, 70))
     if not hits:
         return f"{ev.message or '空袭'}：未造成伤亡"

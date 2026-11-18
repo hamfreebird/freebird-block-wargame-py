@@ -313,6 +313,36 @@ def main() -> int:
         app._on_key(key(pygame.K_ESCAPE))
         check(not app.show_help, "帮助：Esc 关闭")
         app.h = real_h
+
+        # ---- 编辑器：纯键盘完成核心操作（v3.4.2）-----------------------
+        from ui.editor import Editor as MapEditor
+        from ui.campaign_editor import CampaignEditor
+        pygame.display.set_mode((1200, 760))
+        me = MapEditor(app.screen)
+        ce = CampaignEditor(me)
+        ce.draw(app.screen)
+        n0 = len(ce.camp.steps)
+        ce.handle_event(key(pygame.K_n))
+        check(len(ce.camp.steps) == n0 + 1, "战役编辑器：N 新增关卡")
+        ce.handle_event(key(pygame.K_n))       # 至少两关才谈得上「切换」
+        before = ce.step_index
+        ce.handle_event(key(pygame.K_RIGHT))
+        check(ce.step_index != before, "战役编辑器：→ 切换关卡")
+
+        me.draw(app.screen)
+        ox, tile = me.ox, me.tile
+        me.handle_event(key(pygame.K_LEFT))
+        check(me.ox != ox, "地图编辑器：← 平移视野")
+        me.handle_event(key(pygame.K_PLUS))
+        check(me.tile > tile, "地图编辑器：+ 放大")
+
+        # 游戏内 +/- 缩放
+        app.start_game()
+        app._close_briefing()
+        app.mapview.draw(app.screen)
+        t0 = app.mapview.tile
+        app._on_key(key(pygame.K_PLUS))
+        check(app.mapview.tile > t0, "游戏内：+ 放大地图")
     finally:
         shutil.rmtree(_TEST_USER_DIR, ignore_errors=True)
 

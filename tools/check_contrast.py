@@ -117,7 +117,12 @@ def check_theme(tid: str, verbose: bool) -> None:
         r, name = _worst(fg, panels)
         check(r >= TEXT_MIN, f"{tid} {key} vs {name} {r:.2f}:1 ≥ {TEXT_MIN}")
 
-    # 6) 辅助说明：只报告
+    # 6) 功能性提示（text_hint）必须达标——它承载底栏操作说明与菜单快捷键，
+    #    是键盘用户发现操作的主要途径。text_faint 保留为纯装饰性淡化。
+    r, name = _worst(th.text_hint, panels)
+    check(r >= TEXT_MIN, f"{tid} 操作提示 text_hint vs {name} {r:.2f}:1 ≥ {TEXT_MIN}")
+
+    # 6b) 纯装饰性辅助说明：只报告
     for key in ("text_dim", "text_faint"):
         fg = getattr(th, key)
         r, name = _worst(fg, panels)
@@ -125,6 +130,22 @@ def check_theme(tid: str, verbose: bool) -> None:
             print(f"    [info] {tid} {key} vs {name} {r:.2f}:1")
         if r < TEXT_MIN:
             note(f"{tid} {key} vs {name} 只有 {r:.2f}:1（辅助说明，未纳入强制）")
+
+    # 6c) 目标点归属（v3.4.2）：中立与敌方在色盲主题下亮度天然接近，
+    #     不可能靠颜色达到 3:1。主区分手段是**形状**（中方 / 己方三角 / 敌方菱形，
+    #     见 ui/mapview.py::_draw_objectives），颜色只是辅助。这里检查代码契约：
+    #     三种归属必须走三种不同形状；颜色差异作为报告项而非硬阈值。
+    src = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "mapview.py")
+    with open(src, encoding="utf-8") as fh:
+        obj_src = fh.read()
+    body = obj_src.split("def _draw_objectives", 1)[1].split("def _draw_forts", 1)[0]
+    check("Side.NEUTRAL" in body and "player_side" in body and body.count("pts =", 0) >= 3,
+          f"{tid} 目标点按归属使用三种形状（颜色仅辅助）")
+    neutral = th.side_neutral["edge"]
+    enemy = th.side_red["edge"]
+    v = ratio(neutral, enemy)
+    if verbose:
+        print(f"    [info] {tid} 中立 vs 敌方色 {v:.2f}:1（形状为主）")
 
     # 7) 地形之间的可区分度（B3）：只报告最差的一对
     worst = (99.0, "", "")

@@ -116,7 +116,7 @@ class CampaignEditor:
         self.step_index = 0
         self.scroll = 0
         self.error = ""
-        self.status = "已新建战役"
+        self.status = tr("ui.msg.campaign_created")
         self._bind_inputs()
 
     def open_campaign(self, camp_id: str) -> None:
@@ -195,7 +195,7 @@ class CampaignEditor:
         if not self.camp.steps:
             return
         if len(self.camp.steps) == 1:
-            self.error = "战役至少要保留一关"
+            self.error = tr("ui.msg.campaign_min_one")
             return
         title = self.camp.steps[self.step_index].title
         self.camp.steps.pop(self.step_index)
@@ -224,7 +224,7 @@ class CampaignEditor:
                             difficulty=src.difficulty, carryover=src.carryover)
         self.camp.steps.insert(self.step_index + 1, copy)
         self.step_index += 1
-        self.status = "已复制关卡"
+        self.status = tr("ui.msg.level_copied")
         self._bind_inputs()
 
     def current(self) -> CampaignStep | None:
@@ -288,6 +288,25 @@ class CampaignEditor:
                 self.move_step(-1)
             elif e.key == pygame.K_DOWN:
                 self.move_step(1)
+            elif e.key == pygame.K_n:
+                # v3.4.2：原先新增关卡只能点按钮，纯键盘无法完成核心操作。
+                self.add_step()
+            elif e.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # 左右切关；上下保留给「重排关卡」，两者不能互换。
+                if self.camp.steps:
+                    d = -1 if e.key == pygame.K_LEFT else 1
+                    self.step_index = (self.step_index + d) % len(self.camp.steps)
+            elif e.key == pygame.K_TAB:
+                # Tab / Shift+Tab 在输入框间循环焦点
+                fields = list(getattr(self, "inputs", {}).values())
+                if fields:
+                    cur = fields.index(self.focus) if self.focus in fields else -1
+                    d = -1 if (e.mod & pygame.KMOD_SHIFT) else 1
+                    nxt = fields[(cur + d) % len(fields)]
+                    if self.focus is not None:
+                        self.focus.active = False
+                    self.focus = nxt
+                    nxt.active = True
             return
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             self._on_click(e.pos)

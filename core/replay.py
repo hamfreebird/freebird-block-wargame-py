@@ -278,7 +278,10 @@ class ReplayFile:
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
+            # v3.4.2：回放是机器格式，indent=2 让 5 万条命令的文件从 2.8MB
+            # 涨到 6.1MB、写盘 403ms——没有读者会手工读这个文件。
+            json.dump(self.to_dict(), f, ensure_ascii=False,
+                      separators=(",", ":"))
 
     def save_shared(self, path: str) -> None:
         """导出为**可直接分享**的文件（缺想定时自动内嵌）。

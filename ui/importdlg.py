@@ -155,7 +155,7 @@ class ImportDialog:
     def _do_import(self) -> None:
         """执行导入。"""
         if not self.items:
-            self.message = "没有可导入的想定包"
+            self.message = tr("ui.msg.no_scenario_pkg")
             self.message_color = T.AMBER
             return
         item = self.items[self.index]

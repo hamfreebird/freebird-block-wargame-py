@@ -786,6 +786,9 @@ class GameState:
         # 电子诱饵：雷达/红外特征逼真，但打上去什么也没有
         if target.is_decoy:
             target.destroyed = True
+            # v3.4.2：与「诱饵自然到期」共用广播路径。以前这里只置标志，
+            # 同为诱饵消失却一个有 unit_destroyed、一个没有，订阅者行为不一致。
+            self.kill_unit(target, "decoy_hit", attacker, count_casualty=False)
             self.add_fx("ping", (target.x, target.y), None, ttl=1.1, color=(170, 140, 255),
                         text="诱饵")
             self.log_message(attacker.side,

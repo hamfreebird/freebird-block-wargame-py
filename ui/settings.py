@@ -82,7 +82,7 @@ class SettingsPanel:
             if self.capturing:
                 if e.key == pygame.K_ESCAPE:
                     self.capturing = ""
-                    self.message = "已取消本次修改"
+                    self.message = tr("ui.msg.changes_cancelled")
                     self.message_color = T.TEXT_DIM
                     return True
                 name = capture_key_name(e)
@@ -251,7 +251,7 @@ class SettingsPanel:
 
     def _reset_keys(self) -> None:
         self.cfg.reset_keys()
-        self.message = "已恢复默认键位"
+        self.message = tr("ui.msg.keys_reset")
         self.message_color = T.GREEN
 
     # ------------------------------------------------------------------ #

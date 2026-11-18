@@ -44,10 +44,16 @@ class MapView:
         self._token_epoch_cache: tuple | None = None
         self._vector_icons: dict[tuple, pygame.Surface] = {}
         self._weather_cache: dict[tuple, pygame.Surface] = {}
-        self._tint_cache: dict[tuple, pygame.Surface] = {}
+        self._env_cache: dict[tuple, pygame.Surface] = {}  # 色调+天气合成层（一次 blit）
         self._smoke_cache: dict[tuple, pygame.Surface] = {}
         self._smoke_key: tuple | None = None
         self._smoke_list: list[Tile] = []
+        # 缩略图：地形逐格重画在 128×128 上实测 98ms/帧、256×256 上 377ms/帧，
+        # 是完整 App.draw 里最贵的一项（占 97%）。纯地形只依赖地图身份、缩略图
+        # 尺寸与主题，烘成表面后命中帧不到 0.05ms。目标点/单位/视窗框是动态的，
+        # 留在缓存层之上每帧叠加。ox/oy 不能进签名——平移镜头不该让静态层失效。
+        self._minimap_key: tuple | None = None
+        self._minimap_layer: pygame.Surface | None = None
         self._fx_layer: pygame.Surface | None = None
         self._fx_dirty: list[pygame.Rect] = []
         self._anim_layer: pygame.Surface | None = None
@@ -415,7 +421,9 @@ class MapView:
         失效的索引；但更不能每帧扫视口——大地图缩到最小格时视口有两万格，
         而实际有烟的通常只有个位数。
         """
-        key = (self.state.turn_count, self.state.map_epoch)
+        # v3.4.2：必须含地图身份。新开局 map_epoch=0、读档 +1，
+        # 两局若回合数相同会命中同一 key，把上一张图的烟幕画到新图上。
+        key = (id(self.state.map), self.state.turn_count, self.state.map_epoch)
         if getattr(self, "_smoke_key", None) != key:
             self._smoke_key = key
             self._smoke_list = [t for t in self.state.map.iter_tiles() if t.smoke > 0]
@@ -474,24 +482,24 @@ class MapView:
         """
         env = environment_for(self.state)
         tint, alpha = env_tint(env)
-        if alpha > 0:
-            # 色调层按 (颜色, 透明度) 缓存：同一时段/天候下图案完全相同，
-            # 每帧重建一张全屏 SRCALPHA 表面是纯粹的浪费。
-            key = (tint, alpha, self.rect.width, self.rect.height)
-            layer = self._tint_cache.get(key)
+        weather = env.weather.value if env.weather.value in ("rain", "snow") else ""
+        if alpha > 0 or weather:
+            # v3.4.2：色调与天气都是静态图案，原先分两张表面做**两次**全屏
+            # SRCALPHA blit。2560×1440 下合计 5.92ms（整帧的 53%）。合成一张
+            # 缓存表面后每帧只 blit 一次。键含尺寸/色调/天气/tile，不含地图
+            # 坐标——环境效果与镜头位置无关。
+            key = (tint, alpha, weather, self.rect.size, max(6, self.tile))
+            layer = self._env_cache.get(key)
             if layer is None:
                 layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-                layer.fill((*tint, alpha))
-                if len(self._tint_cache) > 6:
-                    self._tint_cache.clear()
-                self._tint_cache[key] = layer
+                if alpha > 0:
+                    layer.fill((*tint, alpha))
+                if weather:
+                    layer.blit(self._weather_layer(weather), (0, 0))
+                if len(self._env_cache) > 8:
+                    self._env_cache.clear()
+                self._env_cache[key] = layer
             surf.blit(layer, self.rect.topleft)
-
-        # 天气颗粒：雨为竖线，雪为缓慢下落的点
-        if env.weather.value == "rain":
-            self._draw_rain(surf)
-        elif env.weather.value == "snow":
-            self._draw_snow(surf)
 
     def _weather_layer(self, kind: str) -> pygame.Surface:
         """取天气图案（雨丝 / 雪花）。
@@ -735,14 +743,24 @@ class MapView:
             r = self.grid_to_rect(t.x, t.y)
             if not self.rect.colliderect(r):
                 continue
-            col = T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL else T.AMBER
+            # v3.4.2：中立原用 T.AMBER，在两套色盲主题下与敌方红几乎同色
+            # （protanopia 实测 1.04:1），且三者都是菱形——颜色与形状都分不出归属。
+            # 中立改走 side_neutral.edge，并按归属换形状：中立方 / 己方三角 / 敌方菱形。
+            col = T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL \
+                else T.side_color(Side.NEUTRAL, "edge")
             cx, cy = r.centerx, r.centery
             s = max(4, self.tile // 4)
-            pygame.draw.polygon(surf, (0, 0, 0), [(cx, cy - s - 1), (cx + s + 1, cy),
-                                                  (cx, cy + s + 1), (cx - s - 1, cy)])
-            pygame.draw.polygon(surf, col, [(cx, cy - s), (cx + s, cy), (cx, cy + s), (cx - s, cy)])
-            pygame.draw.polygon(surf, (250, 250, 250), [(cx, cy - s), (cx + s, cy),
-                                                        (cx, cy + s), (cx - s, cy)], 1)
+            if t.owner is Side.NEUTRAL:
+                pts = [(cx - s, cy - s), (cx + s, cy - s),
+                       (cx + s, cy + s), (cx - s, cy + s)]
+            elif t.owner is self.state.player_side:
+                pts = [(cx, cy - s - 1), (cx + s + 1, cy + s), (cx - s - 1, cy + s)]
+            else:
+                pts = [(cx, cy - s), (cx + s, cy), (cx, cy + s), (cx - s, cy)]
+            outline = [(cx + (x - cx) * 1.18, cy + (y - cy) * 1.18) for x, y in pts]
+            pygame.draw.polygon(surf, (0, 0, 0), outline)
+            pygame.draw.polygon(surf, col, pts)
+            pygame.draw.polygon(surf, (250, 250, 250), pts, 1)
             if self.tile >= 26:
                 # 走主题令牌：写死的米白在浅色主题下压在浅地形上是 1.12:1，
                 # 等于没画（见 AUDIT §2.1）。
@@ -769,7 +787,7 @@ class MapView:
                              (r.x + 1, r.bottom - 5, ts - 2, 4))
             pygame.draw.rect(surf, col, (r.x + 2, r.bottom - 4, w, 3))
             if ts >= 18:
-                T.draw_text(surf, "⌂", (r.right - 3, r.y + 2), max(8, ts // 4), col,
+                T.draw_text(surf, "⌂", (r.right - 3, r.y + 2), max(10, ts // 4), col,
                             anchor="topright")
 
     def _draw_facilities(self, surf: pygame.Surface) -> None:
@@ -897,7 +915,7 @@ class MapView:
         if lvl is Detection.CONTACT:
             pygame.draw.rect(surf, (26, 30, 38), body, border_radius=2)
             pygame.draw.rect(surf, (150, 120, 90), body, width=1, border_radius=2)
-            T.draw_text(surf, "?", body.center, max(9, ts // 2),
+            T.draw_text(surf, "?", body.center, max(10, ts // 2),
                         T.mix(T.AMBER, T.WHITE, 0.3),
                         bold=True, anchor="center")
             return
@@ -1264,17 +1282,31 @@ class MapView:
         cell = max(1, min(rect.width / md.width, rect.height / md.height))
         ox = rect.x + (rect.width - md.width * cell) / 2
         oy = rect.y + (rect.height - md.height * cell) / 2
-        for t in md.iter_tiles():
-            base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
-            col = T.elevation_shade(base, t.elevation)
-            pygame.draw.rect(surf, col, pygame.Rect(int(ox + t.x * cell), int(oy + t.y * cell),
-                                                    max(1, int(cell)), max(1, int(cell))))
-        for t in md.iter_tiles():
-            if t.objective:
-                pygame.draw.rect(surf, T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL
-                                 else T.AMBER,
-                                 pygame.Rect(int(ox + t.x * cell), int(oy + t.y * cell),
-                                             max(2, int(cell)), max(2, int(cell))))
+
+        # 静态地形层：签名含地图身份与主题，绝不能含 ox/oy（平移不该失效）。
+        # 目标点的归属会变，所以目标点放在动态层，不烘进缓存。
+        key = (id(md), md.width, md.height, rect.size, T.current_theme().id)
+        if self._minimap_key != key or self._minimap_layer is None:
+            layer = pygame.Surface(rect.size, pygame.SRCALPHA)
+            lx = (rect.width - md.width * cell) / 2
+            ly = (rect.height - md.height * cell) / 2
+            for t in md.iter_tiles():
+                base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
+                col = T.elevation_shade(base, t.elevation)
+                pygame.draw.rect(layer, col,
+                                 pygame.Rect(int(lx + t.x * cell), int(ly + t.y * cell),
+                                             max(1, int(cell)), max(1, int(cell))))
+            self._minimap_layer = layer
+            self._minimap_key = key
+        surf.blit(self._minimap_layer, rect.topleft)
+
+        # 目标点走 state.objective_tiles（已按 tile_epoch 缓存），不要遍历
+        # 全图——128×128 上那是每帧 16384 次迭代，比缓存未命中还贵。
+        for t in self.state.objective_tiles:
+            pygame.draw.rect(surf, T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL
+                             else T.AMBER,
+                             pygame.Rect(int(ox + t.x * cell), int(oy + t.y * cell),
+                                         max(2, int(cell)), max(2, int(cell))))
         for u in self.state.units:
             if not u.alive or u.domain is Domain.SPACE:
                 continue

@@ -73,19 +73,19 @@ class Button:
             label = f"{self.label}"
         # 标签过长时自动降字号——中文标签（如「筑工事 0/3」）在窄按钮里
         # 会顶到边框，字号自适应比硬编码更省事
-        size = self.size
+        size = max(T.FS_TINY, self.size)
         avail = r.width - 10
         if avail > 10 and T.text_width(label, size) > avail:
-            for cand in range(size - 1, 7, -1):
+            for cand in range(size - 1, T.FS_TINY - 1, -1):
                 if T.text_width(label, cand) <= avail:
                     size = cand
                     break
-            else:
-                size = 8
+            # 放不下也保持 FS_TINY——再小就是不可读的像素点
+            # （旧代码降到 8px，绕过 AST 检查；快捷键更低到 2px）
         T.draw_text(surf, label, r.center, size, fg, bold=self.kind == "primary",
                     anchor="center")
         if self.hotkey and r.width > 54:
-            T.draw_text(surf, self.hotkey, (r.right - 6, r.centery + 1), self.size - 11,
+            T.draw_text(surf, self.hotkey, (r.right - 6, r.centery + 1), max(T.FS_TINY, self.size - 4),
                         T.TEXT_FAINT, anchor="midright")
 
 
