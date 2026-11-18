@@ -1008,12 +1008,29 @@ def main() -> int:
         for _node in _ast.walk(_ast.parse(_src)):
             if (isinstance(_node, _ast.Call)
                     and isinstance(_node.func, _ast.Attribute)
-                    and _node.func.attr == "draw_text"
-                    and len(_node.args) >= 4
-                    and isinstance(_node.args[3], _ast.Constant)
-                    and isinstance(_node.args[3].value, int)
-                    and _node.args[3].value < _T2.FS_TINY):
-                _too_small.append(f"{_f}:{_node.lineno}")
+                    and _node.func.attr in ("draw_text", "render_text")
+                    and len(_node.args) >= 4):
+                # v3.4.2：原来只查字面 int，self.size - 11 / max(8, tile//3)
+                # 这类变量传参全部漏检（实测快捷键提示只有 2px）。
+                # 现在额外识别 max(a, b) 里的常量下限与二项减法里的常量。
+                _sz = _node.args[3]
+                _vals: list[int] = []
+                if isinstance(_sz, _ast.Constant) and isinstance(_sz.value, int):
+                    _vals.append(_sz.value)
+                elif isinstance(_sz, _ast.Call) and isinstance(_sz.func, _ast.Name) \
+                        and _sz.func.id == "max":
+                    _vals += [a.value for a in _sz.args
+                              if isinstance(a, _ast.Constant) and isinstance(a.value, int)]
+                elif isinstance(_sz, _ast.BinOp) \
+                        and isinstance(_sz.left, _ast.Constant) \
+                        and isinstance(_sz.left.value, int) \
+                        and isinstance(_sz.right, _ast.Constant) \
+                        and isinstance(_sz.right.value, int):
+                    # 只判「字面量 - 字面量」；T.FS_SMALL - 1 这类符号常量
+                    # 的值要按 px() 换算，AST 看不到，交给运行时自检覆盖。
+                    _vals.append(_sz.left.value - _sz.right.value)
+                if any(v < _T2.FS_TINY for v in _vals):
+                    _too_small.append(f"{_f}:{_node.lineno}")
     check(not _too_small,
           f"字号：无小于 {_T2.FS_TINY} 号的正文"
           + (f"（{_too_small[:3]}）" if _too_small else ""))
@@ -1078,11 +1095,10 @@ def main() -> int:
     app.draw()
     check(True, "回顾：可渲染")
 
-    print()
-    if FAILED:
-        print(f"冒烟测试失败 {len(FAILED)} 项：{FAILED}")
-        return 1
-
+    # v3.4.2：FAILED 汇总必须留到所有断言之后。
+    # 这里原先有一处提前 return 1，而后面还有 18 个 check()——那些失败
+    # 只进 FAILED、再没人判，最终照样打印「全部通过」并退出 0。
+    # 变异测试（注入必失败断言）坐实过这个漏洞，故把判据统一移到末尾。
     # --- v2.2.1：普通想定不得触发教学 -----------------------------------
     # 教学引导机会往作战日志里写「教学：第 N 步 · …」。
     # 若普通想定也挂了引导机，玩家在正规作战中会看到与战局无关的教学提示。
@@ -1162,6 +1178,10 @@ def main() -> int:
     _click(app._spec_btn_exit.center)
     check(app.mode == "menu", "AI 观战：点击「退出」回到主菜单")
 
+    print()
+    if FAILED:
+        print(f"冒烟测试失败 {len(FAILED)} 项：{FAILED}")
+        return 1
     print("冒烟测试全部通过")
     return 0
 

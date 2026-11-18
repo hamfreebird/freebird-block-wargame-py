@@ -49,6 +49,7 @@ class Theme:
     text: RGB
     text_dim: RGB
     text_faint: RGB
+    text_hint: RGB
     cyan: RGB
     blue: RGB
     red: RGB
@@ -90,6 +91,7 @@ TACTICAL = Theme(
     text=(210, 224, 238),
     text_dim=(126, 145, 166),
     text_faint=(76, 92, 112),
+    text_hint=(126, 145, 166),
     cyan=(94, 231, 224),
     blue=(78, 156, 255),
     red=(255, 106, 106),
@@ -130,6 +132,7 @@ LIGHT = Theme(
     text=(26, 32, 42),
     text_dim=(88, 98, 112),
     text_faint=(134, 144, 158),
+    text_hint=(88, 98, 112),
     cyan=(10, 112, 118),
     blue=(38, 96, 196),
     red=(184, 44, 44),
@@ -173,6 +176,7 @@ DEUTERAN = Theme(
     text=(216, 226, 238),
     text_dim=(132, 148, 168),
     text_faint=(84, 98, 118),
+    text_hint=(132, 148, 168),
     cyan=(120, 214, 232),
     blue=(94, 168, 255),
     red=(255, 186, 92),        # 敌方：琥珀
@@ -213,6 +217,7 @@ PROTAN = Theme(
     text=(212, 224, 236),
     text_dim=(128, 146, 166),
     text_faint=(80, 96, 116),
+    text_hint=(128, 146, 166),
     cyan=(110, 220, 226),
     blue=(96, 172, 255),
     red=(255, 214, 96),        # 敌方：金黄
@@ -271,6 +276,13 @@ def theme_ids() -> list[str]:
 
 
 def theme_name(theme_id: str) -> str:
+    # v3.4.2：主题名也属于玩家可见文案，英文界面不该显示「深色战术终端」。
+    # 延迟导入避免 core.i18n 与主题初始化顺序耦合。
+    from core.i18n import tr
+    key = f"ui.theme.name.{theme_id}"
+    translated = tr(key)
+    if translated != key:
+        return translated
     t = THEMES.get(theme_id)
     return t.name if t else theme_id
 
@@ -294,6 +306,7 @@ def __getattr__(name: str):
         "PANEL": t.panel, "PANEL_HI": t.panel_hi, "PANEL_SUNK": t.panel_sunk,
         "BORDER": t.border, "BORDER_HI": t.border_hi, "GRID": t.grid,
         "TEXT": t.text, "TEXT_DIM": t.text_dim, "TEXT_FAINT": t.text_faint,
+        "TEXT_HINT": t.text_hint,
         "CYAN": t.cyan, "BLUE": t.blue, "RED": t.red, "AMBER": t.amber,
         "GREEN": t.green, "PURPLE": t.purple, "WHITE": t.white,
         "MAP_LABEL": t.map_label, "MAP_SYMBOL": t.map_symbol,
@@ -316,7 +329,7 @@ def __getattr__(name: str):
 def __dir__() -> list[str]:
     return sorted(list(globals().keys()) + [
         "BG", "BG_MAP", "PANEL", "PANEL_HI", "PANEL_SUNK", "BORDER", "BORDER_HI",
-        "GRID", "TEXT", "TEXT_DIM", "TEXT_FAINT", "CYAN", "BLUE", "RED", "AMBER",
+        "GRID", "TEXT", "TEXT_DIM", "TEXT_FAINT", "TEXT_HINT", "CYAN", "BLUE", "RED", "AMBER",
         "GREEN", "PURPLE", "WHITE", "SIDE_COLORS", "TERRAIN_COLORS",
         "MAP_LABEL", "MAP_SYMBOL", "DETECT_CLASSIFIED",
         "NIGHT_TINT", "DAY_TINT",
@@ -396,6 +409,11 @@ def font_scale_ids() -> list[str]:
 
 
 def font_scale_name(scale_id: str) -> str:
+    from core.i18n import tr
+    key = f"ui.font_scale.name.{scale_id}"
+    translated = tr(key)
+    if translated != key:
+        return translated
     for f in FONT_SCALES:
         if f.id == scale_id:
             return f.name
@@ -501,6 +519,11 @@ def shape_mode() -> str:
 
 
 def shape_mode_name(mode: str) -> str:
+    from core.i18n import tr
+    key = f"ui.shape_mode.name.{mode}"
+    translated = tr(key)
+    if translated != key:
+        return translated
     for k, v in SHAPE_MODES:
         if k == mode:
             return v
@@ -535,6 +558,17 @@ _FONT_CANDIDATES_BOLD = [
     r"C:\Windows\Fonts\Dengb.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
 ]
+# 韩文（谚文）字体：中文字体（微软雅黑等）没有 Hangul 字形，
+# lang=ko 时若仍用中文候选，按钮上的「한국어」会渲染成三个豆腐块。
+# 实测 msyh.ttc 渲染「한」与 U+E000 像素一致，malgun.ttf 则正常。
+_FONT_CANDIDATES_KO = [
+    r"C:\Windows\Fonts\malgun.ttf",
+    r"C:\Windows\Fonts\malgunbd.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+]
+_HANGUL_CHARS = re.compile(r"[\uac00-\ud7af\u1100-\u11ff]")
 _FONT_MONO = [
     r"C:\Windows\Fonts\consola.ttf",
     r"C:\Windows\Fonts\cour.ttf",
@@ -577,14 +611,23 @@ class Fonts:
     def __init__(self) -> None:
         if not pygame.font.get_init():
             pygame.font.init()
-        self._cache: dict[tuple[int, bool, bool], pygame.font.Font] = {}
+        self._cache: dict[tuple[int, bool, bool, bool], pygame.font.Font] = {}
 
-    def get(self, size: int, bold: bool = False, mono: bool = False) -> pygame.font.Font:
-        key = (size, bold, mono)
+    def get(self, size: int, bold: bool = False, mono: bool = False,
+            hangul: bool = False) -> pygame.font.Font:
+        key = (size, bold, mono, hangul)
         if key in self._cache:
             return self._cache[key]
         font: pygame.font.Font | None = None
-        if mono:
+        if hangul:
+            # 谚文优先：中文字体没有 Hangul 字形，选错就是豆腐块。
+            path = _first_existing(tuple(_FONT_CANDIDATES_KO))
+            if path:
+                try:
+                    font = pygame.font.Font(path, size)
+                except Exception:
+                    font = None
+        if mono and font is None:
             # 等宽字体（Consolas 等）**没有中文字形**——直接用会让中文
             # 渲染成方框或字距错乱。优先按**文件路径**加载：SysFont 要
             # 枚举系统注册表，既慢又可能抛异常，而且它的 fallback 链
@@ -639,24 +682,32 @@ _text_cache: dict[tuple, pygame.Surface] = {}
 _CACHE_LIMIT = 3000
 
 
-_CN_CHARS = re.compile(r"[　-〿一-鿿＀-￯]")
+# v3.4.2：原正则只覆盖 CJK 与全角，漏掉日文假名与韩文谚文。
+# 实测 Consolas 下「リ」「리」与豆腐块像素一致，而 mono=True 未触发降级——
+# 回放进度条的日/韩词条必现。扩充到假名 / 谚文 / CJK 扩展区。
+_CN_CHARS = re.compile(
+    "[\u3000-\u303f\u3040-\u30ff\u3100-\u312f\u31a0-\u31bf"
+    "\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef"
+    "\uac00-\ud7af\u1100-\u11ff]"
+)
 
 
 def render_text(s: str, size: int, color: tuple[int, int, int],
                 bold: bool = False, mono: bool = False) -> pygame.Surface:
     """渲染一行文字。`size` 传**基准字号**，这里统一换算到当前档位。"""
     # 等宽字体（Consolas 等）**没有中文字形**——用它渲染中文会出现
-    # 方框或字距错乱。含中文的文本一律改用中文字体；
+    # 方框或字距错乱。含 CJK / 假名 / 谚文的文本一律改用非等宽字体；
     # 纯数字 / 纯拉丁文本仍走等宽，保证表格对齐。
     if mono and _CN_CHARS.search(s):
         mono = False
+    hangul = bool(_HANGUL_CHARS.search(s))     # 谚文要选韩文字体，中文候选无此字形
     size = px(size)
-    key = (s, size, color, bold, mono)
+    key = (s, size, color, bold, mono, hangul)
     surf = _text_cache.get(key)
     if surf is None:
         if len(_text_cache) > _CACHE_LIMIT:
             _text_cache.clear()
-        surf = fonts().get(size, bold, mono).render(s, True, color)
+        surf = fonts().get(size, bold, mono, hangul).render(s, True, color)
         _text_cache[key] = surf
     return surf
 
@@ -668,7 +719,7 @@ def render_text(s: str, size: int, color: tuple[int, int, int],
 # 2. **单轴锚点不可用**——"top" / "bottom" / "centerx" / "centery" 单独传给
 #    get_rect 会抛 TypeError（它们是坐标轴名，不是锚点名）。
 #
-# 因此本模块只暴露这 9 个合法值，并在 draw_text 里显式校验，
+# 因此本模块只暴露这 7 个合法值，并在 draw_text 里显式校验，
 # 把「写错锚点」从运行时的 AttributeError/TypeError 变成开发期就能看见的 ValueError。
 _VALID_ANCHORS = frozenset({
     "topleft", "topright", "bottomleft", "bottomright",

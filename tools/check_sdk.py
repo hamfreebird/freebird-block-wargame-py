@@ -151,14 +151,22 @@ def check_coverage(text: str) -> None:
     _require_mentions(text, list(EVENT_TYPES), "想定事件（EVENT_TYPES）")
     _require_mentions(text, list(TUTORIAL_EVENTS), "教学触发（tutorial.EVENTS）")
 
-    # 枚举取值：必须在「枚举取值」那张表里逐项出现
+    # 枚举取值：必须在「枚举取值」那张表里逐项出现。
+    # v3.4.2：改为动态遍历 core.enums 的所有 Enum 子类。原先硬编码 11 个名字，
+    # 实际有 16 个业务枚举——Side / JamBand / Echelon / OrderKind 漏检，
+    # 新增枚举也不会让自检变红（变异测试坐实过）。
     from core import enums as E
-    for name in ("Domain", "WeaponKind", "SensorKind", "Guidance", "Altitude",
-                 "Detection", "Terrain", "Weather", "Facility", "ObjectiveKind",
-                 "TimeOfDay"):
-        cls = getattr(E, name, None)
-        if cls is None:
-            continue
+    import enum as _enum
+    enum_names = sorted(
+        n for n in dir(E)
+        if isinstance(getattr(E, n), type)
+        and issubclass(getattr(E, n), _enum.Enum)
+        and list(getattr(E, n))                  # 跳过 StrEnum 这类无成员基类
+    )
+    for name in enum_names:
+        if name == "UnitClass":
+            continue                      # 下面按正文逗号串单独校验
+        cls = getattr(E, name)
         row = next((ln for ln in text.splitlines() if ln.startswith(f"| `{name}`")), "")
         if not row:
             fail(f"枚举 {name} 没有对应的取值表行")

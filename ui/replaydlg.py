@@ -138,7 +138,7 @@ class ReplayDialog:
 
     def _do_play(self) -> None:
         if not self.items:
-            self.message = "没有可播放的回放"
+            self.message = tr("ui.msg.no_replay")
             self.message_color = T.AMBER
             return
         item = self.items[self.index]

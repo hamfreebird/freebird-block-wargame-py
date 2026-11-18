@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.4.1-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.4.2-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -30,7 +30,7 @@ pip install pygame-ce          # 或 pip install pygame
 python main.py
 ```
 
-**第一次玩？** 主菜单点「**快速上手**」（或按 `T`）进入教学想定，6 步带你在 3~5 分钟内
+**第一次玩？** 主菜单点「**快速上手**」（或按 `T`）进入教学想定，12 步带你在 3~5 分钟内
 走完一遍核心循环：认识战场 → 发现识别 → 跟踪开火 → 对手视角 → 构筑工事 → 结束回合。
 
 其他运行方式：
@@ -130,7 +130,7 @@ python tools/diag.py                       # 作战逻辑自检（26 条不变�
 | **v1.5** | 大型战役 | **同格共存机制**、**128×128 大型想定**、美方兵种扩充、性能优化 |
 | **v2.0** | 复现与扩展 | **对局回放**、**可复现随机流**、**模组接口**、**12 步空海天协同教学** |
 | **v2.1** | 内容与性能 | **可视化战役编辑器**、**可替换单位图标包**、**分块渲染 + 增量探测**（渲染提速 4.3 倍） |
-| **v2.1.1** | 缺陷修复 | 修复战役编辑器文字锚点崩溃（pygame 只认 9 种锚点） |
+| **v2.1.1** | 缺陷修复 | 修复战役编辑器文字锚点崩溃（pygame 只认 7 种锚点） |
 | **v2.1.2** | 交互修复 | 主菜单**点击才选中**（不再悬停即切换）、修复「导入回放」浮层不显示 |
 | **v2.2.1** | 体验修复 | 普通想定不再误触发教学、**浅色主题下按钮不再显示为深色** |
 | **v2.2** | 深度与智能 | **AI 战术库**（可达性判断 / 斩首 / 撤退）、**大地图寻路优化**、**JSON 规则钩子**、**平衡体检** |
@@ -259,6 +259,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v3.3.1**（已发布）—— 随机流兜底可观测 · 索引写入即留痕 · 探测指纹含模板 · 文档目录可自动重写
 - **v3.4.0**（已发布）—— 本地大模型指挥官 · 后台预取 · 失败即降级 · 决心入命令流
 - **v3.4.1**（已发布）—— 审计遗留问题清零：AI 相位 −33% · 浅色主题可读性 · 夜雾色调 · 地形分界 · ruff 闸门
+- **v3.4.2**（已发布）—— 第二轮审计 22 条清零：缩略图 98→0.13ms · 三道闸门变异验证 · 阵亡路径统一 · 键盘全操作
 
 ---
 

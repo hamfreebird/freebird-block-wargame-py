@@ -198,6 +198,14 @@ def report() -> int:
             print(f"    ……另有 {len(unknown) - 8} 处")
         return 1
     print("✓ UI 引用的词条键全部存在")
+
+    # v3.4.2：覆盖率必须进退出码。
+    # 以前这里只 print「最低覆盖率 0.0%」，CI 跑的默认模式照样退出 0——
+    # 删光一整个语言包都不能让流水线变红。真闸门只在 --verify 分支，
+    # 而 CI 从不调用它。变异测试坐实后把判据补到这里。
+    if worst < 100:
+        print(f"✗ 语言包覆盖率不足：最低 {worst:.1f}% < 100%")
+        return 1
     return 0
 
 

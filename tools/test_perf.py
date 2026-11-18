@@ -131,15 +131,23 @@ def main() -> int:
     check(len(view._chunks) <= 256, f"缓存块数 {len(view._chunks)} 有上限")
 
     # -- 探测耗时 --
+    # v3.4.2：改成多轮中位数。原先跑一次 10 圈取平均，共享 CI runner 上
+    # 偶发一轮 6.52ms（正常 1.4–2.0ms）就会让整脚本退出 1——同一份代码
+    # 重跑两次都通过。取中位数既压掉单次抖动，又不放宽达标线。
     for _ in range(3):
         rules.build_detection_map(state)
-    t0 = time.perf_counter()
-    for _ in range(10):
-        rules.build_detection_map(state)
-    detect_ms = (time.perf_counter() - t0) / 10 * 1000
-    print(f"  探测全量重算 {detect_ms:.2f} ms")
+    rounds: list[float] = []
+    for _ in range(5):
+        t0 = time.perf_counter()
+        for _ in range(10):
+            rules.build_detection_map(state)
+        rounds.append((time.perf_counter() - t0) / 10 * 1000)
+    rounds.sort()
+    detect_ms = rounds[len(rounds) // 2]
+    print(f"  探测全量重算 {detect_ms:.2f} ms（5 轮中位数，"
+          f"最快 {rounds[0]:.2f} / 最慢 {rounds[-1]:.2f}）")
     check(detect_ms < DETECT_LIMIT_MS,
-          f"探测重算耗时 {detect_ms:.2f}ms < {DETECT_LIMIT_MS}ms")
+          f"探测重算耗时（中位数）{detect_ms:.2f}ms < {DETECT_LIMIT_MS}ms")
 
     # -- 探测结论正确性（加速不得改变结果）--
     mismatch = 0

@@ -58,7 +58,22 @@ class SupplySource:
 
 
 def supply_sources(state: "GameState", side: Side) -> list[SupplySource]:
-    """列出该阵营所有可用作补给源的地块（按覆盖半径降序）。"""
+    """列出该阵营所有可用作补给源的地块（按覆盖半径降序）。
+
+    v3.4.2：枚举源要遍历全图，256×256 实测 8.8ms。设施归属一整个回合
+    通常不变，却每次结算补给都重扫一遍。缓存挂在 **state 上**（模块级缓存
+    会在换图后给出上一局的 Tile），签名含地图身份与地块世代——
+    facility / owner 写入会递增 tile_epoch（v3.3.1 机制），自动判废。
+    """
+    from .model import tile_epoch
+    key = (id(state.map), state.map_epoch, tile_epoch(), side)
+    cache = getattr(state, "_supply_src_cache", None)
+    if cache is None:
+        cache = state._supply_src_cache = {}
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+
     out: list[SupplySource] = []
     for t in state.map.iter_tiles():
         if t.facility not in SUPPLY_PROFILE:
@@ -68,6 +83,11 @@ def supply_sources(state: "GameState", side: Side) -> list[SupplySource]:
         radius, cap = SUPPLY_PROFILE[t.facility]
         out.append(SupplySource(tile=t, radius=radius, capacity=cap, side=side))
     out.sort(key=lambda s: (-s.radius, s.x, s.y))
+    # key 含递增的 tile_epoch，旧条目永远不会再命中；超过上限整表丢掉即可，
+    # 不必做 LRU（每条只是几个 SupplySource，重建成本远低于全图扫描）。
+    if len(cache) > 64:
+        cache.clear()
+    cache[key] = out
     return out
 
 

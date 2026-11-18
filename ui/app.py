@@ -368,7 +368,27 @@ class App:
     def _menu_button_y(self) -> int:
         # 卡片区底边 + 24。字号放大后卡片变高，按钮必须跟着下移——
         # 早先写死 542，特大档下卡片会压到按钮上。
-        return self._menu_cards_area().bottom + T.m(24)
+        # v3.4.2：但不能无限下移。实测 1180×740 + 特大字号下卡片底边在
+        # 680，按钮 bottom=764 直接越出窗口、完全不可点击。留一行的高度
+        # 给底部提示，把按钮压回屏幕内。
+        return min(self._menu_cards_area().bottom + T.m(24),
+                   self.h - T.m(46) - T.m(22))
+
+    def _menu_button_scale(self) -> float:
+        """按钮行横向自适应系数：窄窗口 / 大字号下压缩按钮与间距。
+
+        v3.4.2：实测 1180×740 + 大字号下「设置」按钮 right=1297 > 1180，
+        而 check_layout 的最小窗口检查只覆盖对局界面，漏掉了主菜单。
+        """
+        xs = (60, 316, 532, 718, 864, 1018, 1128)   # 末项是最后一按钮的右沿
+        need = T.m(xs[-1])
+        avail = self.w - T.m(24)
+        return min(1.0, avail / need) if need > 0 else 1.0
+
+    def _menu_btn(self, x: int, w: int) -> pygame.Rect:
+        k = self._menu_button_scale()
+        return pygame.Rect(T.m(int(x * k)), self._menu_button_y(),
+                           T.m(int(w * k)), T.m(46))
 
     # -- 主菜单想定列表：网格与滚动 --------------------------------------
     def _menu_cards_area(self) -> pygame.Rect:
@@ -493,23 +513,23 @@ class App:
         self._menu_scroll_to_index()
 
     def _menu_start_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(60), self._menu_button_y(), T.m(240), T.m(46))
+        return self._menu_btn(60, 240)
 
     def _menu_edit_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(316), self._menu_button_y(), T.m(200), T.m(46))
+        return self._menu_btn(316, 200)
 
     def _menu_tutorial_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(532), self._menu_button_y(), T.m(170), T.m(46))
+        return self._menu_btn(532, 170)
 
     def _menu_campaign_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(718), self._menu_button_y(), T.m(130), T.m(46))
+        return self._menu_btn(718, 130)
 
     def _menu_spectate_rect(self) -> pygame.Rect:
         """主菜单「AI 观战」按钮（v3.2）。"""
-        return pygame.Rect(T.m(864), self._menu_button_y(), T.m(140), T.m(46))
+        return self._menu_btn(864, 140)
 
     def _menu_settings_rect(self) -> pygame.Rect:
-        return pygame.Rect(T.m(1018), self._menu_button_y(), T.m(110), T.m(46))
+        return self._menu_btn(1018, 110)
 
     # ------------------------------------------------------------------ #
     # 教学想定
@@ -1521,7 +1541,7 @@ class App:
         tips = [tr("ui.menu.tip_data"), tr("ui.menu.tip_controls")]
         yy = self.h - 92
         for t in tips:
-            T.draw_text(s, t, (60, yy), 12, T.TEXT_FAINT)
+            T.draw_text(s, t, (60, yy), 12, T.TEXT_HINT)
             yy += 20
         if self.error:
             T.draw_text(s, self.error, (60, self.h - 44), 12, T.RED)
@@ -2157,6 +2177,19 @@ class App:
                 if getattr(self.settings_panel, "close_requested", False):
                     self.settings_panel.close_requested = False
                     self.close_settings()
+                return
+
+        # v3.4.2：缩放原先只有滚轮，纯键盘用户无法调整视野。
+        # +/= 放大、- 缩小，锚点取视口中心（与滚轮以鼠标为锚点不同，
+        # 键盘没有天然指针位置）。回放播放器没有缩放概念，故不含 replay。
+        if k in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS,
+                 pygame.K_MINUS, pygame.K_KP_MINUS) and self.mode in (
+                     "game", "spectate"):
+            mv = self.mapview
+            if mv is not None:
+                step = 1 if k in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS) else -1
+                c = (mv.rect.centerx, mv.rect.centery)
+                mv.zoom_at(c, step)
                 return
 
         if self.mode == "spectate":
@@ -4166,7 +4199,7 @@ class App:
         pygame.draw.rect(s, T.PANEL, pygame.Rect(0, y, self.w, bottom_h()))
         T.hline(s, 0, self.w, y, T.BORDER)
         hint = tr("ui.hud.hint_bar")
-        T.draw_text(s, hint, (12, y + 6), 11, T.TEXT_FAINT)
+        T.draw_text(s, hint, (12, y + 6), 11, T.TEXT_HINT)
 
         if self.hover_tile:
             t = self.state.map.at(*self.hover_tile)

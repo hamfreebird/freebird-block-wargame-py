@@ -176,7 +176,7 @@ def _any_tracked_target(state: "GameState") -> bool:
 
 
 def default_steps() -> list[TutorialStep]:
-    """标准新手引导脚本（4 步，覆盖探测—打击—防守—工事）。"""
+    """标准新手引导脚本（6 步，覆盖探测—打击—防守—工事—结束回合）。"""
     return [
         TutorialStep(
             id="welcome",

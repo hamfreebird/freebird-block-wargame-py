@@ -1,6 +1,6 @@
 """静态扫描：找出所有传给 draw_text 的非法锚点。
 
-pygame 的 Rect.get_rect 只接受 9 个锚点名，且**单轴锚点不可用**
+pygame 的 Rect.get_rect 只接受 7 个锚点名，且**单轴锚点不可用**
 （"top" / "bottom" / "centerx" / "centery" 单独传会抛 TypeError）。
 写错锚点在开发期看不出来，只在玩家打开对应界面时才崩。
 

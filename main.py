@@ -148,13 +148,14 @@ def _resolve_map(selector: str) -> str:
 
 def run_sim(turns: int, map_selector: str = "0") -> int:
     """无界面双 AI 推演，用于平衡性测试与回归验证。"""
-    import random
     from core.ai import AIPlanner
     from core.engine import GameState
 
-    random.seed(1234)
+    # v3.4.2：seed 必须传给 GameState。原先全局 random.seed(1234) 是死代码——
+    # 引擎随机全走 state.rng（SystemRandom 取熵），导致同命令两次推演结果不同，
+    # 而 docstring 承诺的是「平衡性测试与回归验证」，两者都需要可复现。
     sc = load_scenario(_resolve_map(map_selector), ARMORY)
-    st = GameState(sc, Side.BLUE)
+    st = GameState(sc, Side.BLUE, seed=1234)
 
     def play(side: Side) -> None:
         planner = AIPlanner(st, side)

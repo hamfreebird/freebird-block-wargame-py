@@ -387,6 +387,22 @@ class Editor:
                 self.undo()
             elif e.key == pygame.K_y and (e.mod & pygame.KMOD_CTRL) and self.tab == "map":
                 self.redo()
+            elif self.tab == "map" and not (e.mod & pygame.KMOD_CTRL):
+                # v3.4.2：平移原先只能中键拖拽、缩放只能滚轮——纯键盘用户
+                # 完全无法浏览大地图。补方向键平移与 +/- 缩放。
+                pan = 48
+                if e.key == pygame.K_LEFT:
+                    self.ox += pan
+                elif e.key == pygame.K_RIGHT:
+                    self.ox -= pan
+                elif e.key == pygame.K_UP:
+                    self.oy += pan
+                elif e.key == pygame.K_DOWN:
+                    self.oy -= pan
+                elif e.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    self.tile = min(46, self.tile + 2)
+                elif e.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    self.tile = max(6, self.tile - 2)
             return
         if e.type == pygame.MOUSEBUTTONDOWN:
             self._on_mouse_down(e)
@@ -472,7 +488,7 @@ class Editor:
                 self.sel_anchor = cell
                 self._sel_dragging = True
                 self._set_selection(cell[0], cell[1], cell[0], cell[1])
-                self.status = "拖拽框选区域"
+                self.status = tr("ui.msg.drag_select")
                 return
             self._dragging = 1
             self._apply(cell)
@@ -480,7 +496,7 @@ class Editor:
             if self.tool == "select" or self.sel_cells:
                 # 右键清除选区
                 self.clear_selection()
-                self.status = "已清除选区"
+                self.status = tr("ui.msg.selection_cleared")
                 return
             self._erase(cell)
 
@@ -489,7 +505,7 @@ class Editor:
             self.quit = True
         elif action == "fill_sel":
             if not self.sel_cells:
-                self.status = "尚未框选区域"
+                self.status = tr("ui.msg.no_selection")
                 return
             # 填充选区：使用当前笔刷地形
             saved = self.tool
@@ -499,7 +515,7 @@ class Editor:
             self.status = f"已填充 {n} 个格子为「{TERRAIN_NAME.get(self.brush_terrain, '')}」"
         elif action == "clear_sel":
             self.clear_selection()
-            self.status = "已清除选区"
+            self.status = tr("ui.msg.selection_cleared")
         elif action == "tool":
             self.tool = str(arg)
             if self.tool == "unit":
@@ -619,19 +635,19 @@ class Editor:
 
     def undo(self) -> None:
         if not self.undo_stack:
-            self.status = "没有可撤销的操作"
+            self.status = tr("ui.msg.no_undo")
             return
         self.redo_stack.append(self._map_state())
         self._restore_map_state(self.undo_stack.pop())
-        self.status = "已撤销（Ctrl+Z）"
+        self.status = tr("ui.msg.undo_done")
 
     def redo(self) -> None:
         if not self.redo_stack:
-            self.status = "没有可重做的操作"
+            self.status = tr("ui.msg.no_redo")
             return
         self.undo_stack.append(self._map_state())
         self._restore_map_state(self.redo_stack.pop())
-        self.status = "已重做（Ctrl+Y）"
+        self.status = tr("ui.msg.redo_done")
 
     def resize_map(self, nw: int, nh: int) -> None:
         """调整地图尺寸：扩大时以平原/海拔 2 补边，缩小时裁掉右侧与下方。"""
@@ -730,7 +746,7 @@ class Editor:
                 return
             occupied = [u for u in self.units if u["x"] == x and u["y"] == y]
             if any(u.get("side") != self.brush_side.value for u in occupied):
-                self.status = "该格已有敌方单位，不能同格部署"
+                self.status = tr("ui.msg.enemy_occupied")
                 return
             same = [u for u in occupied if u.get("side") == self.brush_side.value]
             if same:
@@ -741,7 +757,7 @@ class Editor:
                           and f.get("owner") == self.brush_side.value
                           and len(same) < 4)
                 if not ok_air:
-                    self.status = "该格已有同阵营单位（仅机场可叠放航空兵）"
+                    self.status = tr("ui.msg.ally_occupied")
                     return
             self.units.append({"template": self.brush_template, "x": x, "y": y,
                                "side": self.brush_side.value})
@@ -910,7 +926,7 @@ class Editor:
             if ref in catalog:
                 entries.append({"ref": ref, "ammo": ammo})
         if not entries:
-            self.error = "该挂载预设为空"
+            self.error = tr("ui.msg.empty_preset")
             return
         t["weapons"] = entries
         self.error = ""
@@ -1013,7 +1029,7 @@ class Editor:
         try:
             with open(self.armory_path, "w", encoding="utf-8") as f:
                 json.dump(self.armory_doc, f, ensure_ascii=False, indent=2)
-            self.status = "武器库已保存"
+            self.status = tr("ui.msg.armory_saved")
             self.error = ""
         except Exception as exc:
             self.error = f"武器库保存失败：{exc}"
@@ -1034,7 +1050,7 @@ class Editor:
                 self.error = f"导出前保存失败：{exc}"
                 return
         if not self.path or not os.path.isfile(self.path):
-            self.error = "导出失败：地图尚未保存"
+            self.error = tr("ui.msg.export_unsaved")
             return
         try:
             out_dir = os.path.join(USER_DIR, "packages")
@@ -1132,7 +1148,7 @@ class Editor:
                     pygame.draw.rect(s, c, cell.inflate(-6, -6), 1)
                     if self.tile >= 12:
                         T.draw_text(s, Facility(f["facility"]).label[:2], cell.center,
-                                    max(8, self.tile // 3), c, anchor="center")
+                                    max(T.FS_TINY, self.tile // 3), c, anchor="center")
                 o = self.obj.get((x, y))
                 if o:
                     cx, cy = cell.center
@@ -1166,7 +1182,7 @@ class Editor:
             if self.tile >= 16:
                 tpl = u.get("template", "?")
                 short = tpl[:4].upper()
-                T.draw_text(s, short, body.center, max(7, self.tile // 4),
+                T.draw_text(s, short, body.center, max(T.FS_TINY, self.tile // 4),
                             T.SIDE_COLORS[side]["text"], anchor="center")
         # 选区高亮
         if self.sel_cells:
