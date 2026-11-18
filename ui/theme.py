@@ -621,7 +621,13 @@ class Fonts:
         font: pygame.font.Font | None = None
         if hangul:
             # 谚文优先：中文字体没有 Hangul 字形，选错就是豆腐块。
-            path = _first_existing(tuple(_FONT_CANDIDATES_KO))
+            # v3.4.3：按 bold 选字体——原先恒取 malgun.ttf，导致韩文界面
+            # 所有粗体标题与常规像素完全相同，层级丢失。
+            ko_candidates = (
+                [r"C:\Windows\Fonts\malgunbd.ttf"] +
+                [p for p in _FONT_CANDIDATES_KO if "malgunbd" not in p]
+            ) if bold else _FONT_CANDIDATES_KO
+            path = _first_existing(tuple(ko_candidates))
             if path:
                 try:
                     font = pygame.font.Font(path, size)
@@ -707,9 +713,47 @@ def render_text(s: str, size: int, color: tuple[int, int, int],
     if surf is None:
         if len(_text_cache) > _CACHE_LIMIT:
             _text_cache.clear()
-        surf = fonts().get(size, bold, mono, hangul).render(s, True, color)
+        if hangul and any(_HANGUL_CHARS.search(ch) is None
+                          and "\u3400" <= ch <= "\u9fff" for ch in s):
+            # v3.4.3：汉谚混排。malgun 缺大量简体字形（膛/战/术/红/东），
+            # 整串交给它会让中文变豆腐块。按字符分段：谚文用韩文字体，
+            # 其余用中文字体，逐段渲染后拼接。
+            surf = _render_mixed_text(s, size, color, bold)
+        else:
+            surf = fonts().get(size, bold, mono, hangul).render(s, True, color)
         _text_cache[key] = surf
     return surf
+
+
+def _render_mixed_text(s: str, size: int, color: tuple[int, int, int],
+                       bold: bool) -> pygame.Surface:
+    """汉谚混排逐字形选字体（v3.4.3）。
+
+    谚文走 malgun，CJK / 假名 / 拉丁走中文字体。每段各自渲染，
+    基线按字号对齐，横向按实际字宽拼接——不做字形级 fallback 的
+    话，malgun 会把「滑膛炮」画成方框。
+    """
+    pieces: list[tuple[bool, str]] = []
+    for ch in s:
+        is_ko = bool(_HANGUL_CHARS.search(ch))
+        if pieces and pieces[-1][0] == is_ko:
+            pieces[-1] = (is_ko, pieces[-1][1] + ch)
+        else:
+            pieces.append((is_ko, ch))
+
+    ko_font = fonts().get(size, bold, False, True)
+    cjk_font = fonts().get(size, bold, False, False)
+    lines = [(f.render(text, True, color), f.get_linesize())
+             for is_ko, text in pieces
+             for f in (ko_font if is_ko else cjk_font,)]
+    height = max((h for _, h in lines), default=size)
+    width = sum(img.get_width() for img, _ in lines)
+    out = pygame.Surface((max(1, width), max(1, height)), pygame.SRCALPHA)
+    x = 0
+    for img, _lh in lines:
+        out.blit(img, (x, (height - img.get_height()) // 2))
+        x += img.get_width()
+    return out
 
 
 # pygame 的 Rect.get_rect 只认这些锚点名。

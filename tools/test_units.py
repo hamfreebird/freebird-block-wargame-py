@@ -452,13 +452,16 @@ def test_shot_profile() -> None:
     p_far = combat.shot_profile(st, atk, far, gun)
     check(not p_far.ok, "超出射程不成立")
 
+    # v3.4.3：原先的 `salvo_limit == 0 or not shot_profile.ok` 第一项恒假
+    # （salvo_limit 恒 ≥1），宽区间断言也守不住 supply_state。现在钉死
+    # 两种补给的期望值——变异成恒 return 1 后这里必须红。
     atk.ammo[gun.id] = 0
-    check(combat.salvo_limit(atk, gun) == 0 or not combat.shot_profile(
-        st, atk, tgt, gun).ok, "没有备弹就开不了火")
-    atk.ammo[gun.id] = 8
-    check(1 <= combat.salvo_limit(atk, gun) <= gun.max_salvo,
-          f"齐射上限受武器与备弹双重夹取（{combat.salvo_limit(atk, gun)}"
-          f" ≤ {gun.max_salvo}）")
+    check(not combat.shot_profile(st, atk, tgt, gun).ok, "没有备弹就开不了火")
+    atk.supply_dry = 1
+    check(combat.salvo_limit(atk, gun) == 1, "断补给时只能单发点射")
+    atk.supply_dry = 0
+    check(combat.salvo_limit(atk, gun) == gun.max_salvo,
+          f"补给充裕时齐射 {gun.max_salvo} 发")
 
 
 @case("combat", "counter_threat_profile")

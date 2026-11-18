@@ -112,6 +112,10 @@ def main() -> int:
     check(c.evaluate(st), "any：有真则真")
     c = hooks.Condition.parse({"type": "not", "conditions": [never]})
     check(c.evaluate(st), "not 取反正确")
+    # v3.4.3：not 是单目——两个子条件时只取第一个的否定，
+    # 不再是「并非全部满足」的 NAND。
+    c = hooks.Condition.parse({"type": "not", "conditions": [always, never]})
+    check(not c.evaluate(st), "not 单目：只按首个子条件取反")
 
     # ------------------------------------------------------------------ #
     print("--- 规则执行 ---")
@@ -193,6 +197,19 @@ def main() -> int:
     t = st4.map.at(12, 12)
     check(t is not None and t.objective and t.objective_name == "规则点",
           "objective 效果真的设置了目标点")
+
+    # v3.4.3：weather 效果必须真正改变环境，而不只是写进无人读取的字段。
+    from core.env import Weather, environment_for
+    from core.env import EnvironmentTrack
+    st5 = _scenario_with_rules([])
+    st5.env_track = EnvironmentTrack(seed=1, mode="random")
+    st5.turn_count = 1
+    before = environment_for(st5).weather
+    msg = hooks._do_weather(st5, hooks.Effect(type="weather", weather="fog"))
+    after = environment_for(st5).weather
+    check(after is Weather.FOG and before is not after,
+          f"weather 效果真的改了环境（{before.value}→{after.value}）")
+    check("改写天候" in msg, "weather 效果有播报")
 
     pygame.quit()
     if FAILS:

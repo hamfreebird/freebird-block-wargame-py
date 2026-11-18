@@ -154,14 +154,16 @@ def main() -> int:
         check("carryover" in raw["steps"][0], "存档含继承策略字段")
 
     # -- 继承策略筛选 --
-    survivors = [{"template": "m1a2", "count": 1},
-                 {"template": "t90", "count": 5},
-                 {"template": "lav", "count": 3}]
+    # v3.4.3：veterans 改为按平均血量比例（hp_ratio）判定「精锐」，
+    # 与文档「存活率过半」一致；旧的 count>=2 会把 2/10 残兵当精锐。
+    survivors = [{"template": "m1a2", "count": 1, "hp_ratio": 0.2},
+                 {"template": "t90", "count": 5, "hp_ratio": 0.9},
+                 {"template": "lav", "count": 3, "hp_ratio": 0.7}]
     check(len(apply_carryover_policy(survivors, CARRYOVER_ALL)) == 3, "全继承保留全部")
     check(len(apply_carryover_policy(survivors, CARRYOVER_NONE)) == 0, "不继承全部丢弃")
     vet = apply_carryover_policy(survivors, CARRYOVER_VETERANS)
     check(len(vet) == 2, "只继承精锐保留战损小的兵种")
-    check(all(s["count"] >= 2 for s in vet), "精锐判定依据存活数量")
+    check(all(s.get("hp_ratio", 1.0) >= 0.5 for s in vet), "精锐判定依据血量比例")
 
     # -- 绘制 --
     # 必须在**各种边界状态**下都渲染一遍：空战役、空选择、浮层打开……

@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.4.2-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.4.3-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -260,6 +260,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v3.4.0**（已发布）—— 本地大模型指挥官 · 后台预取 · 失败即降级 · 决心入命令流
 - **v3.4.1**（已发布）—— 审计遗留问题清零：AI 相位 −33% · 浅色主题可读性 · 夜雾色调 · 地形分界 · ruff 闸门
 - **v3.4.2**（已发布）—— 第二轮审计 22 条清零：缩略图 98→0.13ms · 三道闸门变异验证 · 阵亡路径统一 · 键盘全操作
+- **v3.4.3**（已发布）—— 第三轮审计 22 条清零：规则钩子与战役 VP 修复 · 四道闸门变异验证 · 混排字体 · tag 触发 CI
 
 ---
 

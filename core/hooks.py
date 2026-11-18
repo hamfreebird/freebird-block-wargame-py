@@ -122,7 +122,9 @@ class Condition:
         if ctype == "any":
             return any(c.evaluate(state) for c in self.children)
         if ctype == "not":
-            return not all(c.evaluate(state) for c in self.children)
+            # v3.4.3：`not` 是单目取反。原先写成 not all(children)（多目 NAND），
+            # 放多个子条件时语义变成「并非全部满足」，与命名直觉相反。
+            return not self.children[0].evaluate(state) if self.children else False
         if ctype == "turn_at_least":
             return state.turn_count >= self.turn
         if ctype == "turn_at_most":
@@ -457,13 +459,23 @@ def _do_area_heal(state, eff: Effect) -> str:
 
 
 def _do_weather(state, eff: Effect) -> str:
-    """改写天候。"""
+    """改写天候。
+
+    v3.4.3：原先写进 ``state.scenario_weather``——全仓没有任何读取方，
+    结果是播报「改写为雾」而环境仍是 clear。真正决定环境的是
+    ``environment_for()`` 读的 ``env_track``，与 events.py 的 weather 事件同源。
+    """
     from .env import Weather
     try:
-        w = Weather(eff.weather)
+        w = Weather(eff.weather if isinstance(eff.weather, str) else str(eff.weather))
     except ValueError:
         return f"规则改写天候失败：未知天候 '{eff.weather}'"
-    state.scenario_weather = w
+    track = getattr(state, "env_track", None)
+    if track is None:
+        return "规则改写天候失败：当前对局没有环境系统"
+    track.mode = "fixed"
+    track.fixed = w
+    state._last_env = None          # 强制下一回合播报环境变化
     return f"规则改写天候为 {w.label}"
 
 

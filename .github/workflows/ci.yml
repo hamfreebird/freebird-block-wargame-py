@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main, "feature/**"]
-    tags-ignore: ["v*"]
+    # v3.4.3：tag 也跑 CI。以前 tags-ignore:v* 让发版完全绕过自检，
+    # release.yml 只打包不测试——未过 CI 的提交也能直接发 Release。
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -70,7 +72,7 @@ jobs:
 
       - name: 静态检查（未使用导入 / 语法错误，配置见 ruff.toml）
         run: |
-          python -m pip install ruff
+          python -m pip install -r requirements-dev.txt
           ruff check .
 
       - name: 数据校验（地图 + 武器库）

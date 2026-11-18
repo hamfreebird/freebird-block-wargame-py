@@ -122,7 +122,7 @@ class LogView:
             color = self.kind_color(e.kind)
             prefix = f"T{e.turn} "
             for i, seg in enumerate(theme_wrap(prefix + e.text, self.size, width - 10)):
-                lines.append((seg, color if i == 0 else T.TEXT_FAINT))
+                lines.append((seg, color if i == 0 else T.TEXT_HINT))
         return lines
 
     def draw(self, surf: pygame.Surface, entries) -> None:

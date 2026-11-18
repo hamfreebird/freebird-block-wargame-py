@@ -257,7 +257,8 @@ def check_versions() -> None:
         badge = m.group(1)
 
     # AUDIT 基线
-    m2 = re.search(r"## 当前基线（v(\d+\.\d+\.\d+)）", audit)
+    # v3.4.3：允许「vX.Y.Z · 未发版」后缀，供发版前的基线显式豁免标签校验。
+    m2 = re.search(r"## 当前基线（v(\d+\.\d+\.\d+)[^）]*）", audit)
     if not m2:
         fail("AUDIT.md 找不到「## 当前基线（vX.Y.Z）」")
         base = None
@@ -284,12 +285,19 @@ def check_versions() -> None:
         if latest == f"v{base}":
             ok(f"最新 git 标签与基线一致（{latest}）")
         else:
-            # 基线是补丁前的版本也算合理，只提示
-            print(f"  [提示] 最新 git 标签是 {latest}，基线写的是 v{base}"
-                  f"（若基线尚未发版请忽略）")
+            # v3.4.3：以前这里只 print 提示，CI 专门设 fetch-depth:0 取全量
+            # 历史却换不来真门禁。现在 mismatch 直接计入失败；确属「基线
+            # 尚未发版」的，须在 AUDIT 基线标题里显式写「未发版」豁免。
+            audit_text = _read("AUDIT.md")
+            m_base = re.search(r"^## 当前基线（[^）]*）", audit_text, re.M)
+            exempt = bool(m_base and "未发版" in m_base.group(0))
+            if exempt:
+                print(f"  [豁免] 基线标记「未发版」，跳过标签校验"
+                      f"（标签 {latest} / 基线 v{base}）")
+            else:
+                fail(f"最新 git 标签 {latest} 与 AUDIT 基线 v{base} 不一致")
     elif base:
         # 浅克隆 / 尚未打标签时不能假装校验过——明确写出来，CI 日志里才看得见。
-        # （CI 已用 fetch-depth: 0 取全量历史，正常不会再走到这里。）
         print(f"  [跳过] 取不到 git 标签，未校验「标签 == v{base}」（需要完整历史）")
 
 

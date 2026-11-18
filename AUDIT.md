@@ -4,16 +4,20 @@
 > 审计回答「现在到底怎么样」——功能堆到 45 项机制、41k 行代码之后，
 > 后一个问题更能决定下一步。
 >
-> **本版为第二轮审计（2026-11-18，基于 v3.4.2 / 待发版）**。
-> 第一轮（v3.4.1）列出的 10 条问题已全部关闭；第二轮（本文件正文）列出的 22 条也已在 v3.4.2 全部关闭；本轮从零重新测一遍，
-> 找的是**当时没测到的地方**。结论：规则层核心干净，但**三条测试闸门
-> 实际上没守住东西**、**主循环里有一条每帧 100ms 的路径此前从未被测过**。
+> **本版为第三轮审计（2026-11-19，基于 v3.4.3 / 待发版）**。
+> 前两轮共关闭 32 条问题：v3.4.1 的 10 条（性能 / 视觉 / 卫生）、
+> v3.4.2 的 22 条（测试闸门 / 缩略图 / 阵亡路径 / 键盘 / 本地化）。
+> 本轮从零重测，找的是**前两轮的断言范围之外**的东西。
+>
+> 结论：随机流、存档、回放、数据一致性这些「硬内核」经变异测试确认是干净的；
+> 新问题集中在三类——**三条规则路径实际不生效或算错**、
+> **字体与布局的组合场景漏测**、**四道自检闸门仍是纸糊的**。
 >
 > 全文没有推测性结论：每一条都给出**实测数值**或**可点开的代码位置**。
 > 实测统一用 `D:/Dev/Python/python.exe`（3.12.4 / pygame 2.6.1）；
 > 系统 `python`（3.13）无 pygame，不能用于 UI 测试。
 
-## 当前基线（v3.4.2）
+## 当前基线（v3.4.3 · 未发版）
 
 | 维度 | 现状 |
 |---|---|
@@ -21,18 +25,17 @@
 | 数据 | 65 兵种 / 71 武器 / 28 传感器 / 15 挂载预设 / 9 编队预设（`main.py --check` 实测） |
 | 想定 | 4 张（海峡对决 128×128、草原雷霆 36×36、海峡屏障 40×40、新兵训练场 20×14） |
 | 引导 | 教学想定 + 12 步事件驱动引导（`training_ground.json` 实测 12 步） |
-| 规则 | JSON 声明式规则钩子（12 种条件 × 9 种效果） |
+| 规则 | JSON 声明式规则钩子（**14 种条件，含 3 种组合器** × 9 种效果） |
 | 呈现 | 8 种战斗动画 · 4 套主题（含 2 套色盲友好）· 字号三档 · 色盲形状标识 · 9 种音效 · 8 种语言 |
 | 对手 AI | 规则启发式（默认）· **本地大模型指挥官**（LFM3 1.7B，可选，只决定作战决心） |
-| 代码规模 | core 42 文件 16,639 行 · ui 15 文件 11,694 行 · tools 46 文件 14,492 行 · `main.py` 219 行 |
+| 代码规模 | core 42 文件 16,668 行 · ui 15 文件 11,845 行 · tools 46 文件 14,610 行 · `main.py` 220 行（含空行与注释的全行口径） |
 | 自检 | 31 个 `test_*` / `check_*` 脚本；CI 52 个步骤（verify 42 + balance 5 + package 5），8 组 OS×Python 组合 |
-| 实测性能 | `MapView.draw` 128×128 **4.1ms** / 256×256 **4.0ms**；**完整 `App.draw` 128×128 98.5ms / 256×256 373.8ms**（缩略图占 97%，见 §1.1） |
-| 内存 | 256×256 三回合 RSS 326→318→305MB，无单调增长；距离场 151/149/155 条；地形块 66 块 6.8MB |
-| 质量 | `diag 20` 三张图 0 错误；31 个自检名义全绿（其中 2 个闸门实测无效，见 §2）；`ruff check` 0 告警 |
+| 实测性能 | 完整 `App.draw` 128×128 **6.50ms**、256×256 **9.34ms**；`MapView.draw` 3.2–5.0ms；探测全量 2.1 / 11.1ms |
+| 内存 | 256×256 60 回合 RSS 166→177MB（30 回合后趋稳）；距离场 144 条 0 淘汰；地形块 66 块 6.8MB |
+| 质量 | `diag 20` 三张图 0 错误；31 个自检退出 0；`ruff check` 0 告警。**但变异测试证明其中 4 道闸门是纸糊的（见 §3）** |
 
-> 与第一轮的差异：第一轮测的是 `MapView.draw`，本轮补测了**完整 `App.draw`**，
-> 才发现缩略图这条每帧 100ms 的路径。第一轮把「31 个自检全绿」当作质量结论，
-> 本轮做了变异测试，发现其中两条即使断言失败也照样退出 0。
+> 与前两轮的差异：本轮不只看「自检是否通过」，而是**给自检注入 bug 看它会不会红**。
+> 7 个被测闸门里 4 个在变异下仍退出 0。这是本轮最重要的方法论结论。
 
 ---
 
@@ -40,403 +43,377 @@
 
 | 级别 | 条目 | 一句话证据 | 状态 |
 |---|---|---|---|
-| **高** | P1 缩略图每帧逐格重绘 | 128×128 实测 98.77ms/帧、256×256 377ms/帧；`perf.py` 完全没测这条路径 | ✅ 已修 |
-| **高** | P2 `smoke_test` 后半段断言失效 | 注入必失败断言，退出码仍 0，照打「全部通过」 | ✅ 已修 |
-| **高** | P3 `lang_check` 覆盖率不是门禁 | 删光韩文词条，覆盖率 0%，退出码仍 0 | ✅ 已修 |
-| **高** | P4 空袭事件绕过统一阵亡出口 | 全歼场景下战损 +1，但广播 0 次、`over=False` | ✅ 已修 |
-| 中 | P5 `--sim` 不可复现 | 同命令连跑两次存活数 15/13 vs 15/14 | ✅ 已修 |
-| 中 | P6 韩文字形渲染为豆腐块 | `msyh.ttc` 渲染「한」与 U+E000 像素完全相同；系统已装 `malgun.ttf` 未纳入 | ✅ 已修 |
-| 中 | P7 最小窗口＋特大字号主菜单越界 | 1180×740 / xlarge 下 4/4 按钮 `bottom=764 > 740` | ✅ 已修 |
-| 中 | P8 等宽字体漏假名/谚文降级 | Consolas 下「リ」「리」均为豆腐块，`mono=True` 未触发降级 | ✅ 已修 |
-| 中 | P9 色盲主题下中立/敌方目标点同色 | protanopia 对比度 1.04:1，且形状一致 | ✅ 已修 |
-| 中 | P10 `test_perf` 绝对阈值抖动 | 同一份代码 6.52ms 判失败，重跑 1.99 / 1.42ms 通过 | ✅ 已修 |
-| 中 | P11 `check_sdk` 枚举校验盲区 | 新增未文档化枚举后仍退出 0；16 个枚举只校验 11 个 | ✅ 已修 |
-| 中 | P12 编辑器无法纯键盘完成核心操作 | 战役编辑器无键新增/切关；地图编辑器平移仅中键拖拽、缩放仅滚轮 | ✅ 已修 |
-| 中 | P13 环境色调层在大视口成为第二热点 | 2560×1440 夜雾+雪整帧 11.24ms，环境占 53% | ✅ 已修 |
-| 低 | 9 条低优先级项 | 补给扫描 / 回放膨胀 / 诱饵事件 / 烟幕缓存 / 快捷键字号 / 文档失真等，详见 §1.3–1.4、§3.2–3.3、§4.5、§5 | ✅ 已修 |
+| **高** | R1 `weather` 规则钩子完全无效 | 播报「改写为雾」，环境仍 clear；`scenario_weather` 全仓仅写不读 | 未修 |
+| **高** | R2 战役 VP 双重累计 | 两关战果 10/3、5/2 → 累计 25/8，正确应为 15/5 | 未修 |
+| **高** | R3 战役失败也强制推进 | `_game_over` 只看 `over` 不看 `winner`，败方残部被当继承兵力 | 未修 |
+| **高** | T1 `test_save` 随机流自证 | 变异 `rng.clone()` 为 `return self`，自检仍退出 0 | 未修 |
+| 中 | T2 `check_sdk` 清单裸子串兜底 | 删除 API 表两行仍报「全部覆盖」；SDK 示例用了不存在的 `unit_lost` | 未修 |
+| 中 | T3 `check_docs` 标签校验只提示 | 基线改 v3.4.1（tag 是 v3.4.2）仍退出 0，CI 的 `fetch-depth:0` 白设 | 未修 |
+| 中 | T4 `test_units` 覆盖声明与断言强度脱节 | 变异 `salvo_limit` 恒返回 1，`test_units` 退出 0（由 `test_logistics` 兜住） | 未修 |
+| 中 | T5 `test_mods` 恒真断言 | `check(... or True, "坏模组不会让武器库加载失败")` | 未修 |
+| 中 | U1 小窗口＋特大字号阵营卡与按钮重叠 | 1180×740/xlarge 红方卡 bottom=688、按钮 top=651，3 个重叠 | 未修 |
+| 中 | U2 粗体谚文失效 | 20/16/13 三档下 bold 与常规像素完全相同 | 未修 |
+| 中 | U3 汉谚混排中文变豆腐块 | malgun 缺「膛/战/术/红/东」字形，而 v3.4.2 把含谚文整串一律走 malgun | 未修 |
+| 中 | P1 主题切换半秒级卡顿 | 256 图切主题后首帧 532.8ms（minimap 358 + 地形块 163） | 未修 |
+| 中 | P2 窗口尺寸变化触发缩略图重建 | big256 连续 8 次尺寸切换中 6 次首帧 381–397ms | 未修 |
+| 中 | P3 可达层每帧分配全屏表面 | 4 个可达格时仍占 1.76ms/帧（整帧的 39%） | 未修 |
+| 中 | P4 大模型推理抢核 | 帧时中位 6.5→11.5ms（+70%），max 40.9ms | 未修 |
+| 低 | 其余 8 条 | 详见 §2 / §3 / §4 | 未修 |
 
-**没有发现规则结论错误**：`diag 20` 三张图 0 错误，决策指纹逐条一致；
-`test_perf` 的 206 项探测结论对比 0 不一致。本轮问题集中在
-**测试有效性、主循环渲染、本地化字形与界面可达性**。
+**硬内核经住变异测试**：随机流 283 命令长局 `FALLBACK_CALLS == 0`；回放重演 0 差异、
+随机数同源；v5/坏档全部翻译为 `SaveError`；事件总线错误隔离；65/71/28 数据无悬空 id。
+本轮问题**没有一条是规则计算错误**，而是「写了但没接上」「算了两遍」「测了但没守住」。
 
 ---
 
-## 1. 性能
+## 1. 规则与战役
 
-### 1.1 P1：缩略图是主循环里最贵的一帧（高）
+### 1.1 R1：`weather` 规则钩子把结果写进了无人读取的字段（高）
 
-**这是本轮最重要的发现，也是第一轮审计的测量盲区。**
+`core/hooks.py:459-467` 的 `_do_weather()`：
 
-`ui/mapview.py:1262` 的 `draw_minimap()` 每帧对**整张地图逐格调用
-`pygame.draw.rect`**，并在循环里做 `T.elevation_shade()` 与动态主题属性查找；
-没有任何缓存。`ui/app.py:2715` 每帧调用它，`MapView` 本身不知道这件事——
-`tools/perf.py` 只测 `MapView.draw`，所以此前的「整帧 3.8ms」是**假的低**。
-
-实测（`/d/Dev/Python/python.exe`，dummy 视频驱动，3 轮×10 帧中位数）：
-
-| 地图 | 尺寸 | `draw_minimap` 单项 | 完整 `App.draw` |
-|---|---|---|---|
-| 新兵训练场 | 20×14 | 1.34ms | — |
-| 草原雷霆 | 36×36 | 7.88ms | — |
-| 海峡对决 | 128×128 | **98.77ms** | **98.48ms**（其中 `MapView.draw` 仅 2.50ms） |
-| 合成大地图 | 256×256 | **377.4ms** | **373.8ms**（minimap 占 97%） |
-
-cProfile（128×128，10 帧）佐证：`draw_minimap` 累计 1.679s / 总 1.773s；
-`theme.py:284(__getattr__)` 调用 **329,840 次**、`elevation_shade` 163,840 次、
-`pygame.draw.rect` 165,300 次。主循环目标 `clock.tick(60)`，实际约 10fps（128）
-到 2.7fps（256）。
-
-复现方式：
-
-```
-python -c "
-import os,time,pygame;os.environ['SDL_VIDEODRIVER']='dummy';pygame.init();
-s=pygame.display.set_mode((1500,920));
-from core.loader import load_scenario
-from core.paths import data_root
-from core.engine import GameState
-from core.enums import Side
-from ui.mapview import MapView
-sc=load_scenario(os.path.join(data_root(),'data','maps','strait_confrontation.json'),
-                 os.path.join(data_root(),'data','units','armory.json'))
-st=GameState(sc,Side.BLUE,seed=2);st.refresh_detection()
-v=MapView(pygame.Rect(0,0,1180,860),st);v.draw(s)
-r=pygame.Rect(1180,8,300,220);ts=[]
-for _ in range(12):
-    t=time.perf_counter();v.draw_minimap(s,r);ts.append((time.perf_counter()-t)*1000)
-print(sorted(ts)[6])"
+```python
+w = Weather(eff.weather)
+state.scenario_weather = w
+return f"规则改写天候为 {w.label}"
 ```
 
-**改法**：把缩略图的**静态地形层**烘进一张缓存表面，签名
-`(rect.size, map_epoch, theme.id)`；单位点与视窗框作为动态层每帧叠加。
-签名**不要**含 `ox/oy`，否则平移镜头会让静态层反复失效。
-临时验证：缓存命中后 0.02ms/帧（首帧构建仍约 90/377ms）。
+全仓 grep `scenario_weather` **只有这一处写入，没有任何读取方**。
+真正决定环境的是 `core/env.py` 的 `environment_for()`，它只读 `state.env_track`。
 
-### 1.2 P13：环境色调层的成本与像素数线性相关（中）
+实测：
 
-`ui/mapview.py:469-494` 对**整个视口**做 SRCALPHA blit（色调 + 雨/雪）。
-实测 `steppe_thunder`（3 轮×30 帧中位数）：
+```
+before: clear
+hook msg: 规则改写天候为 雾
+after: clear | scenario_weather: fog
+```
 
-| 视口 | 仅色调 | 色调+天气 | 整帧 |
+对照 `core/events.py:320-331` 的同语义实现：改 `env_track.mode="fixed"`、
+`env_track.fixed=Weather(...)`，并清 `_last_env`——那条路径是生效的。
+也就是说：`events` 的天候事件正常，但 `rules` 规则钩子的 `weather` 效果 **100% 无效**，
+只播报一句假消息。
+
+改法：与 events.py 对齐写 `env_track`，删除死字段；并在 `test_hooks.py` 加
+「规则改天候后 `environment_for()` 真的变了」的断言（现有测试只查播报文本）。
+
+### 1.2 R2：战役胜负点双重累计（高）
+
+`ui/app.py:811-813` 开局把历史 VP 注入本关：
+
+```python
+self.state.vp[Side.BLUE] += prog.vp.get("BLUE", 0)
+```
+
+`ui/app.py:842-843` 结束时又把整个 `state.vp`（已含历史）加回 `prog.vp`：
+
+```python
+prog.vp["BLUE"] = prog.vp.get("BLUE", 0) + self.state.vp[Side.BLUE]
+```
+
+按两关本关战果 10/3 与 5/2 代入：
+
+```
+关1: 实际 {10, 3}  正确 (10, 3)
+关2: 实际 {25, 8}  正确 (15, 5)
+```
+
+历史 VP 每过一关翻一倍。难度加成 `diff_bonus` 同样被重复计入。
+关卡越多偏差越大，最终战役胜负判定失真。
+
+改法：开局不注入历史 VP，累计只在关卡结束时用本关战果；
+或结束时只加增量（`state.vp - 开局基线`）。推荐前者，语义最清晰。
+
+### 1.3 R3：战役失败也强制推进（中→高）
+
+`ui/app.py:738-740` 只要 `state.over` 就结算，**不区分 `winner`**：
+
+```python
+if self.campaign is not None and ... and self.state.over:
+    self._campaign_step_complete()
+```
+
+结算函数无条件 `completed.append`、`carryover` 重算、`step_index += 1`。
+`mode=="over"` 的键鼠分支也只有「进入下一关」与「退回菜单」，没有重试入口。
+后果：玩家输掉一关后，失败方的残部反而被收集成下一关的继承兵力。
+
+改法：按 `state.winner is self.menu_side` 分支；失败提供「重试本关」，
+且不在失败路径收集败方残部。
+
+### 1.4 继承兵力满血复活，与文档矛盾（低）
+
+`core/campaign.py:286-299` 的 `collect_survivors()` 只按 `template.id` 统计**数量**，
+`apply_carryover()` 用 `Unit(template=tpl, ...)` 全新构造——hp / 弹药 / 战损全部满值。
+而模块 docstring 明写「上一关活下来的单位会带到下一关——打残了就是打残了」。
+同类问题：`veterans` 策略文档说「存活率过半」，实现却是绝对数量 `count >= 2`
+（2/10 的兵种算精锐，1/1 满员的反被丢弃）。
+
+改法：要么在 carryover 数据里保存 hp_ratio / ammo 并回填；要么改文档，
+明确「按满编兵种继承，不保留个体战损」。
+
+### 1.5 规则钩子的 `not` 是多目 NAND（低）
+
+`core/hooks.py:124-125`：
+
+```python
+if ctype == "not":
+    return not all(c.evaluate(state) for c in self.children)
+```
+
+与同级 `all` / `any` 一样被当成多目运算，但 `not` 通常是单目。
+作者在 `not` 下放多个子条件时得到的是「并非全部满足」，
+而不是直觉上的「对单一条件的否定」。建议明确单目语义并校验子节点数，
+或在文档中写死 NAND 约定。
+
+### 1.6 已实测确认无问题的硬内核
+
+| 维度 | 实测结论 |
+|---|---|
+| 随机流 | 自造 283 命令长局，`dice.set_strict(True)` 下原局与回放 `FALLBACK_CALLS == 0` |
+| 回放 | v3 `directive` 透传正确；283 命令重演 0 差异，`rng.calls` 原局/回放均 61 |
+| 存档 | `SAVE_VERSION=6`、链 `5→6` 连续；v5 旧档升级成功；坏 JSON / 越界版本 / 非法 side / 损坏 rng 全部只抛 `SaveError` |
+| 事件总线 | 模组钩子与订阅者均隔离异常，errors 上限 64；`modify_damage` 做 `float()` + `max(0,…)` 校验 |
+| 想定事件 | reinforce / weather / objective / reveal 的越界与非法枚举处理正确（airstrike 已在上轮修复） |
+| 规则边界 | 命中率 `max(0.02,min(0.97,…))`、减伤 `min(0.90,…)`、干扰 `min(0.85,…)` 等除零/越界保护齐全 |
+| 数据一致性 | 65/71/28 数量吻合；单位/挂载/编队/想定/战役的 id 引用无悬空；无重复 id、无 `range_min>range_max`、无 ≤0 的伤害/射程/速度 |
+
+---
+
+## 2. 性能
+
+### 2.1 P1：切换主题后半秒级卡顿（中）
+
+`theme.set_theme()` 清缓存，而地形块签名的 `T.current_theme().id`（`mapview.py:150`）
+与缩略图 key 的主题 id（`:1288`）同时失效，导致下一帧逐块逐格重画。
+10 次主题来回切换中位数：
+
+| 地图 | 切主题后首帧 | 地形块 | 缩略图层 |
 |---|---|---|---|
-| 800×600 | 0.32ms | 0.65ms | — |
-| 1600×900 | 1.06ms | 2.14ms | 1.82→4.08ms（+124%） |
-| 2560×1440 | 3.18ms | 5.92ms | 11.24ms（环境占 53%） |
+| 128×128 | **284.57ms** | 173.26ms | 94.03ms |
+| 256×256 | **532.80ms** | 163.23ms | 358.06ms |
+| 36×36 | 49.9ms | — | — |
 
-白天晴天 `envonly=0.00ms`；色盲主题无额外开销（四主题 2.17–2.28ms）。
-改法：大视口下把天气层降到半分辨率再放大，或改用整屏 fill。
-优先级低于 P1——修完 P1 后它才是第二热点。
+稳态缩略图仅 0.10–0.70ms——尖峰放大了 500–900 倍。
+改法：缩略图按 4 主题预生成常驻（4×0.1MB 可忽略），或只替换颜色 LUT；
+地形块分帧重建。
 
-### 1.3 补给源全图扫描（低）
+### 2.2 P2：窗口尺寸变化触发缩略图重建（中）
 
-`core/logistics.py:60` 的 `supply_sources()` 每次枚举都遍历全图，`engine.py:1418`
-在每回合与设施占领/摧毁时重算。实测中位数：20×14 **0.05ms**、40×40 0.22ms、
-128×128 3.05ms、256×256 **8.80ms**（44 个源）。改法：按 `map_epoch` 或
-设施归属版本缓存源列表。
+缩略图 key 含 `rect.size`，而 `mm_size` 由视口高度推导（`app.py:3255`）。
+big256 连续 8 次尺寸切换中 6 次首帧 **381.39–396.93ms**（minimap 占 373–390ms）；
+另 2 次因 `mm_size` 被 clamp 到 164 未变而未重建（0.58/0.91ms），反向印证成因。
+改法：key 用 clamp 后的离散档位，或按最大 164×164 生成一次再 `smoothscale`。
 
-### 1.4 回放文件 `indent=2` 膨胀 2.2 倍（低）
+### 2.3 P3：可达层每帧分配全屏表面（中）
 
-`core/replay.py:281` 用 `json.dump(..., indent=2)`。实测 5,000 / 15,000 / 50,000
-条命令：文件大小 0.61 / 1.82 / **6.10MB**，紧凑格式 0.27 / 0.82 / 2.76MB；
-写盘 71 / 133 / 403ms。命令流自身内存仅 0.3 / 0.8 / 2.8MB，加载 33ms——
-不是瓶颈，属于「顺手改」级别。
+`ui/mapview.py:828-837` 的 `_draw_reachable()` 每帧新建
+`pygame.Surface((rect.width, rect.height), SRCALPHA)`（约 5MB），逐格 `fill`。
+实测只有 **4 个可达格**时仍有：
 
-### 1.5 已实测的性能基线（无问题）
+```
+有可达集: 4.53ms   无可达集: 2.77ms   差值 1.76ms（整帧 39%）
+```
+
+cProfile 中该函数 1.0–1.5ms/帧。改法：缓存该表面（键含尺寸/缩放/可达集签名），
+或只分配可达格包围盒大小的小表面。
+
+### 2.4 P4：大模型推理期间主线程帧时上升 70%（中）
+
+两次完整运行（342/365 帧样本）：
+
+| 阶段 | 中位 | p90 | max |
+|---|---|---|---|
+| 基线 | 6.54 / 7.04ms | — | — |
+| 推理期间 | **11.46 / 11.78ms** | 15.90 / 16.46ms | 40.94 / 46.81ms |
+
+根因是 `llm_client.py:220` 用 `max(2, cpu_count-4)` = 8 线程，吃满 CPU 与渲染抢核。
+改法：降到 2–4 线程，或给 llama-server 设低优先级 / CPU 亲和性。
+注：上一轮测的是 `MapView.draw`（3.29 vs 3.35ms，无影响），
+本轮测完整 `App.draw` 才暴露差异——又一次「测局部 ≠ 测全场」。
+
+### 2.5 已实测的性能基线（无问题）
 
 | 项目 | 条件 | 中位数 |
 |---|---|---|
-| MapView 整帧 | 128×128 / 256×256 ×3 | 4.1ms / 4.0ms |
-| 探测全量重算 | 128×128 / 256×256 | 2.1ms / 11.1ms |
-| 首帧建块 | 128×128 / 256×256 | 239.6 / 262.1ms（48 / 66 块） |
-| 距离场命中率 | 128×128 逐回合 5 次 | 94.4–95.9%，0 淘汰 |
-| 小地图整帧 | 36×36 / 20×14 | 4.1ms / 2.9ms |
-| 视口缩放 | 800×600 → 2560×1440 | 1.23 → 7.60ms |
-| 内存 | 256×256 三回合 | RSS 326→318→305MB，无泄漏 |
-| 地形块预算 | 64MB 上限 | 66 块 6.8MB，未越界 |
-| 启动 | `main.py --check` ×3 | 3.94s |
-| 模块导入 | `ui.app` 累计 | 438ms（pygame.surfarray/numpy 194ms） |
-| 大模型冷启 | 1.1GB GGUF | 冷 8.70s / 热 1.73s（`boot_timeout` 90s，不会误判） |
-
-> 曾观察到「距离场缓存 90% 条目是过期 epoch」，交叉验证后是**测量时点假象**
-> （`map_epoch` 在回合内递增），不列为问题。这轮特意记下来，避免下次重复踩。
+| 完整 App.draw | 128×128 / 256×256 | 6.50ms / 9.34ms |
+| MapView.draw | 128×128 / 256×256 | 3.2–3.5 / 3.7–5.0ms |
+| 探测全量重算 | 128×128 / 256×256 | 2.98 / 14.08ms |
+| 首帧建块 | 128×128 / 256×256 | 168–212 / 219–241ms |
+| 距离场 | 128×128 两回合 | 2937 次查询、144 条缓存、0 淘汰 |
+| 60 回合 RSS | big256 | 166.1→177.5MB（30 回合后仅 +2MB） |
+| 缓存驻留 | 60 回合后 | env 8 张 28.33MB、chunks 4.1MB、minimap 0.103MB、supply_src 12 条，均有界 |
+| 日志 / fx / sfx 上限 | 2000 次推送 | 402 / 200 / 40，裁剪阈值真实生效 |
+| 回放 | 7200 命令 | 0.40MB，save 37.6ms、load 10.8ms |
+| LLM 启停 | 冷 / 热 / stop | 10.5s / 1.73s / 213–250ms 无残留 |
+| 队列与缓存无单调增长 | 跨图 12 次 | RSS +15.8MB 后趋稳，交替小/大图稳定 ~100MB |
 
 ---
 
-## 2. 测试有效性
+## 3. 测试有效性与闸门
 
-**本轮最值得警惕的一类问题：自检跑绿了，但根本没守住。**
-以下三条都用变异测试坐实（在 `/tmp` 隔离副本注入缺陷，原项目未改）。
+**本轮方法升级：不满足于「跑绿」，而是注入 bug 看闸门会不会红。**
+7 个闸门中 4 个在变异下仍退出 0。
 
-### 2.1 P2：`smoke_test` 后半段 18 个断言形同虚设（高）
+### 3.1 T1：`test_save` 的随机流断言自证（高）
 
-`tools/smoke_test.py:1082` 就做了 `if FAILED: ... return 1`，
-但此后**还有 18 个 `check()` 调用**（v2.2.1「普通想定不得挂教学」、
-v3.2 观战控制条、分歧判读等），函数末尾再无第二次 `FAILED` 判定，
-最终无条件打印「冒烟测试全部通过」并 `return 0`。
-
-变异验证：在第 1086 行之后注入 `check(False, "[MUTATION]...")`：
-
-```
-  [FAIL] [MUTATION] 故意让后半段断言失败，验证是否影响退出码
-冒烟测试全部通过
-[PIPE_EXIT=0]
-```
-
-README 声称 smoke_test 有 212 项断言——其中后半段全部不计入退出码。
-
-### 2.2 P3：`lang_check` 覆盖率不是门禁（高）
-
-`tools/lang_check.py:130` 的 `report()` 中，覆盖率 `worst=0.0` 时只打印
-「最低覆盖率 0.0%」，函数照常 `return 0`；CI（`.github/workflows/ci.yml:159`）
-跑的正是这个默认模式。真正的失败只在 `--verify <code>` 分支，CI 从不调用。
-
-变异验证：删光 `data/lang/ko*.json`：
-
-```
-  ko   한국어          内置   0 条（磁盘语言包不存在）
-最低覆盖率 0.0%——用 --missing <代码> 查看缺哪些词条
-✓ 调用点参数个数全部匹配
-✓ UI 引用的词条键全部存在
-[PIPE_EXIT=0]
-```
-
-注意这与 P6 的关系：8 语言「740/740 100% 覆盖」是真的（数词条），
-但词条存在 ≠ 字形能显示、≠ 源码真的调用了 `tr()`。
-
-### 2.3 P11：`check_sdk` 枚举校验有盲区（中）
-
-`tools/check_sdk.py:156-158` 硬编码 11 个枚举名，
-`core.enums` 实际有 16 个业务枚举；`Side`、`JamBand`、`Echelon`、`OrderKind`
-完全不在清单内，新增枚举也不触发失败。
-
-变异验证：向 `core/enums.py` 追加一个未文档化的 `NewFancyEnum`，
-`check_sdk.py` 输出 `✓ SDK 文档与代码一致`，退出 0。
-新增假 API（`zzz_never_documented_api`）**会**被抓出——说明符号清单部分是真的，
-盲区只在硬编码枚举表。
-
-### 2.4 P10：`test_perf` 绝对阈值抖动（中）
-
-`tools/test_perf.py:45-46` 用硬编码 `DETECT_LIMIT_MS=6.0ms` 判失败，无重试。
-同一份代码首次实测 `探测重算耗时 6.52ms < 6.0ms` 退出 1，
-紧接重跑两次 1.99 / 1.42ms 退出 0。与 §1.5「perf.py 不设阈值是因为
-共享机器差 20%」的思路矛盾。建议取多次中位数或改相对阈值。
-
-### 2.5 断言强度稀释（中）
-
-`grep -c 'check(True' tools/smoke_test.py` = 19、
-`test_campaign_editor.py` 有 6 处「`ed.draw(screen); check(True, "...可渲染")`」，
-只证明不崩，不验证绘制内容。真实跳过项应单列 `skip()` 统计，
-不计入「N 项通过」。
-
-### 2.6 P5：`--sim` 不可复现（中）
-
-`main.py:151` 的 `random.seed(1234)` 是死代码——`GameState(sc, Side.BLUE)`
-不传 seed，取系统熵；引擎随机全走 `state.rng`，全局种子不起作用。
-
-```
-run1: 存活：蓝 15 / 红 13 ｜ 战损：蓝 1 / 红 1
-run2: 存活：蓝 15 / 红 14 ｜ 战损：蓝 1 / 红 0
-```
-
-docstring 写的是「用于平衡性测试与回归验证」——这两件事都需要可复现。
-改法：`GameState(sc, Side.BLUE, seed=1234)`。
-注意观战、`diag`、平衡体检不受影响（它们另有 seed 入口）。
-
-### 2.7 变异验证过、确实有效的闸门
-
-| 闸门 | 变异 | 结果 |
-|---|---|---|
-| `check_docs` README↔AUDIT 版本 | 徽章改 v9.9.9 | 退出 1，`[FAIL] 版本号不一致` |
-| `check_contrast` 地图标签 | tactical `map_label` 改暗 | 退出 1，报 1.02:1 / 1.28:1 |
-| `check_sdk` 符号清单 | 加假 API | 退出 1 |
-| `check_docs` 目录/锚点 | — | 165 个目录链接全部有效 |
-
-**已核查无问题**：`test_save`（随机流整份往返、坏档不崩、迁移链连续）、
-`test_bus`（五条阵亡路径）、`test_debt`（五条自动失效/早退）、
-`test_replay` / `test_share`、`test_units`（40 项）、`test_i18n`、`test_a11y`、
-`check_anchors`、`check_layout`、`check_names`、`check_scripts` 均为真校验。
-
----
-
-## 3. 规则与代码风险
-
-### 3.1 P4：空袭事件绕过统一阵亡出口（高）
-
-`core/events.py:243-247` 的 `_do_airstrike()` 直接记账：
+`tools/test_save.py:124-131`：
 
 ```python
-u.apply_damage(dmg)          # model.py:469 内部置 destroyed=True
-if u.destroyed:
-    state.casualties[u.side] += 1        # ← 绕过 state.kill_unit()
+ref = st.rng.clone()                       # ← 期望值取自被测对象
+expect = [ref.random() for _ in range(5)]
+st2 = load_game(save_path, ARMORY)
+got = [st2.rng.random() for _ in range(5)]
+check(expect == got, "...")
 ```
 
-实测（只剩 1 个红方单位、hp=1，空袭 damage=50）：
+变异 `core/rng.py:clone()` 为 `return self`：
 
 ```
-前 (alive=True, casualties=0, over=False)
-后 (alive=False, casualties=1, over=False)
-广播 0 次 | bus 计数 unit_destroyed=0
+MUTANT test_save rc=0
+  [OK] 读档后 5 次取数与存档瞬间的序列逐项一致
+  ✓ 存档自检全部通过
 ```
 
-对照：同语义的 `core/hooks.py:434` 走 `state.kill_unit(u, "scenario_event")`；
-直接调 `kill_unit` 的对照实验广播 1 次。
-后果有三：① `unit_destroyed` 订阅者（模组、UI、教学）收不到；
-② `_check_elimination()` 不跑，全歼不判胜负；③ 违背 SDK.md 的契约。
-`test_bus.py` 只覆盖了 hooks 路径，没覆盖脚本事件路径。
+因为 `expect` 与 `got` 从同一基准状态重放，两边天然相等。这是典型的
+「用被测对象的输出当期望值」。而随机流整份往返是本项目最核心的可复现性保证——
+这道闸门纸糊，等于最重要的一条不变量没人守。
 
-改法：`state.kill_unit(u, "scenario_airstrike")`。
+改法：从存档 dict **独立构造**参考流：
+`ref = GameRng(0); ref.setstate(raw["rng"]); expect = [ref.random() for _ in range(5)]`。
 
-### 3.2 诱饵被击毁不广播，与到期行为不一致（低）
+### 3.2 T2：`check_sdk` 用裸子串兜底 + SDK 示例无效（中）
 
-`engine.py:787-794` 命中诱饵时直接 `target.destroyed = True` 后 return；
-而 `engine.py:1695` 的诱饵到期走 `kill_unit(..., count_casualty=False)` 并广播。
-同为「诱饵消失」，事件总线行为不一致。
-注：`Unit.__setattr__` 会在 `destroyed` 写入时递增位置世代，索引不受影响——
-问题只在事件广播与契约一致性。
+`tools/check_sdk.py:128-134` 的清单校验最后一项是 `i not in text`。
+实测 10 项 `PUBLIC_API` **全部**只靠这一项命中（文档里写成 `` `add_weapon(data)` ``，
+前两种严格形式都不匹配）。变异删除 API 表的 `on` / `log` 两行：
 
-### 3.3 烟幕列表缓存缺地图身份（低）
+```
+MUTANT check_sdk rc=0  [OK] 公开 API 全部覆盖（10 项）
+```
 
-`ui/mapview.py:418` 的 key 是 `(turn_count, map_epoch)`，不含 `id(state.map)`。
-新开局 `map_epoch=0`（`engine.py:134`）、读档 `map_epoch += 1`（`save.py:422`），
-因此两局若回合数与 map_epoch 恰好相同，会 blit 上一张地图的烟幕 Tile。
-同文件其他缓存均含 `id(md)`（地形块）或 `id(st.map)`（补给线），此处是遗漏。
+因为它们还出现在 §5.1 的示例代码里。任何散文中的同名子串都能通过。
 
-### 3.4 已核查确认无问题的部分
+另：`SDK.md:461` 的示例规则用了不存在的条件类型 `unit_lost`。
+实测喂给 `parse_rules()` 报 `未知条件类型 'unit_lost'`。
+`check_sdk` 从不解析文档里的 jsonc 示例，所以这个「照抄即报错」的例子长期过检。
 
-- **随机来源**：core 业务随机全走 `state.rng`；全局 `random` 仅 `dice.py`
-  兜底（有 `FALLBACK_CALLS` 计数 + `set_strict`）与 `rng.new_seed()`（SystemRandom）。
-  唯一例外是 §2.6 的 CLI 入口。
-- **uid 分配**：开局按想定顺序重编号并重置模块计数器；增援/脚本/钩子/战役/
-  诱饵全部走 `state.alloc_uid()`。`SAVE_VERSION=6`。
-- **存档**：整份保存 `rng.getstate()`（含 seed/calls/version/internal/gauss_next）；
-  字段异常统一翻译为 `SaveError`；迁移链 5→6 连续；新增字段缺失取默认。
-- **事件三处一致**：`bus.CATALOGUE` / `mods.HOOK_SIGNATURES` / `SDK.md §5.4`
-  逐项对齐（P4 是**调用点**问题，不是清单不一致）。
-- **异常吞噬**：`except Exception: pass` 10 处逐一读过，均为可接受降级
-  （图标/音效/窗口图标/句柄清理/坏回放标记），未发现「功能静默消失」。
-- **模块边界**：`rules.py` 仅 re-export；跨模块调用写成 `mod.f(...)`。
+改法：只在 §5.3 表格区块内做结构化匹配，去掉裸子串兜底；
+抽取 SDK 的 jsonc 块用 `parse_rules` 实解析一遍。
+
+### 3.3 T3：`check_docs` 标签校验只提示（中）
+
+`tools/check_docs.py:288-293`：tag 与基线不一致时只 `print [提示]`，不匹配时
+`print [跳过]`，两者都不 `fail()`。而 CI `ci.yml:40` 专门设了 `fetch-depth: 0`
+并注释「取全量历史才能真的校验」——取到了也只是提示。
+变异把 README 徽章与 AUDIT 基线同时改成 v3.4.1（tag 是 v3.4.2）后仍退出 0。
+
+改法：mismatch 时 `fail()`，并为「预发布基线」提供显式豁免标记；
+或删掉 `fetch-depth: 0` 并改正注释，别让人以为这是门禁。
+
+### 3.4 T4/T5：覆盖声明与断言强度脱节（中）
+
+- `test_units.py:432,456-460`：`salvo_limit` 被 `@case` 登记为「已覆盖」，
+  但断言 `salvo_limit(...) == 0 or not shot_profile(...).ok` 的第一个析取项恒假。
+  变异 `salvo_limit` 为恒 `return 1` 后 `test_units` 退出 0（由 `test_logistics` 兜住）。
+- `test_mods.py:275-276`：`check("test_laser" in arm.templates or ... or True, ...)`
+  恒真，标签承诺的语义无人看守。
+
+改法：`@case` 清单按「真实承担断言的用例」维护；删掉恒真断言，改成具体期望值。
+
+### 3.5 变异测试结果表
+
+| 闸门 | 注入的 bug | 退出码 | 判定 |
+|---|---|---|---|
+| `test_save` | `clone()` → `return self` | **0** | 纸糊 |
+| `check_sdk` | 删 API 表两行 | **0** | 纸糊 |
+| `check_docs` | 基线改 v3.4.1（tag v3.4.2） | **0** | 纸糊 |
+| `test_units` | `salvo_limit` 恒 `return 1` | **0** | 纸糊（他处兜住） |
+| `test_replay` | `compare()` → `return []` | 1 | 守住 |
+| `test_replay` | `Replayer.run()` 忽略命令 | 1 | 守住 |
+| `test_bus` | 空袭改回绕过 `kill_unit` | 1 | 守住 |
+| `test_i18n` | 非法语言码返回 True | 1 | 守住 |
+| `test_logistics` | `salvo_limit` 恒 `return 1` | 1 | 守住 |
+
+### 3.6 CI 结构性问题（中）
+
+- **发版 tag 不触发 CI**：`ci.yml` 有 `tags-ignore: v*`，而 `release.yml` 的
+  build/publish 全流程**不运行任何自检**。一个从未过 CI 的提交只要打上 `v*`
+  标签就能产出 Release 附件。建议 release 复用 verify workflow 或让 ci 也响应 tags。
+- **依赖不 pin**：CI 直接 `pip install ruff`（连 `requirements-dev.txt` 的
+  `ruff>=0.5` 都没用），`pygame-ce>=2.5.0` 也无上限。
+  Ruff 次版本升级会直接改变 F401/E9 闸门行为——风险正好落在本轮修过的东西上。
 
 ---
 
-## 4. 视觉、可用性与本地化
+## 4. UI、字体与本地化
 
-### 4.1 韩文界面是豆腐块（中）
+### 4.1 U1：小窗口＋特大字号，阵营卡与按钮重叠（高）
 
-`ui/theme.py:522` 的 `_FONT_CANDIDATES_CN` 只有中文字体，首选 `msyh.ttc`；
-系统已装 `C:\Windows\Fonts\malgun.ttf` 但未纳入。实测像素比较：
-
-```
-msyh: 한 == U+E000（豆腐块）? True
-malgun: 한 == U+E000? False
-```
-
-`lang_check.py` 只数词条，不管字形。`lang=ko` 时按钮「한국어」显示为 `□□□`。
-
-### 4.2 等宽降级漏假名/谚文（中）
-
-`ui/theme.py:642` 的 `_CN_CHARS = r"[　-〿一-鿿＀-￯]"` 只覆盖 CJK 与全角。
-实测 Consolas 字形与 U+E000 像素比对：
-
-| 字符 | Consolas 下是豆腐块 | `render_text(mono=True)` 已降级 |
-|---|---|---|
-| 回 | 是 | 是 |
-| リ | **是** | **否** |
-| 리 | **是** | **否** |
-| П / A | 否 | 否（符合预期） |
-
-回放进度条 `tr("ui.replay_progress_fmt")` 正是 `mono=True`，日/韩词条分别含
-「リプレイ」「리플레이」，必现。改法：正则扩到 U+3040-30FF / U+AC00-D7AF，
-或改为「非纯 ASCII 可打印字符就不走 mono」。`smoke_test` 只用「传感器 5.0」
-测中文降级，覆盖不到这两类。
-
-### 4.3 最小窗口＋特大字号主菜单越界（中）
-
-`ui/app.py:368` 的 `_menu_button_y()` 只跟卡片区底边走，不按 `self.h` 钳制。
+`ui/app.py:368-375` 的 `_menu_button_y()` 上一轮做了钳制，
+但 `_side_card_top()`（`:445`）仍只跟卡片区底边走，两者没有联动。
 实测 1180×740：
 
-| 字号 | 越界按钮 | 证据 |
-|---|---|---|
-| standard | 0/4 | — |
-| large | 1/4 | `_menu_settings_rect: right=1297 > 1180` |
-| xlarge | **4/4** | 四个按钮 `bottom=764 > 740`，完全不可点击 |
-
-`check_layout.py` 的最小窗口检查只覆盖对局界面（`_check_min_size`），
-主菜单矩形只在默认 1500×920 下检查，因此自检通过。
-顺带：主菜单底部提示钉在 `self.h - 92`（`app.py:1521`），xlarge 下与卡片文字重叠。
-改法：`_menu_button_y()` 加 `min(self.h - T.m(72), ...)` 钳制，并把主菜单
-纳入最小窗口检查。
-
-### 4.4 色盲主题下中立与敌方目标点无法区分（中）
-
-`ui/mapview.py:738-755` 中立目标点用 `T.AMBER`、敌方用 `side_color(RED,"edge")`，
-两者都画成菱形。实测对比度：
-
-| 主题 | 中立 | 敌方 | 对比度 |
+| 字号 | 红方卡 bottom | 按钮 top | 重叠按钮数 |
 |---|---|---|---|
-| tactical | (255,196,92) | (248,124,124) | 1.63:1 |
-| light | (150,92,8) | (206,62,58) | 1.14:1 |
-| deuteranopia | (255,214,120) | (255,198,120) | **1.11:1** |
-| protanopia | (255,200,110) | (255,206,120) | **1.04:1** |
+| standard | 530 | 542 | 0 |
+| large | 609 | 624 | 0 |
+| **xlarge** | **688** | **651** | **3** |
 
-`check_contrast.py` 测的是 `map_symbol vs terrain`，不测「中立 vs 敌方」这个语义对。
-改法：中立改用 `side_neutral.edge` 或 `MAP_SYMBOL`，并加空心/实心形状差异，
-把该语义对加入自检。
+底栏提示 `self.h-92=648` 也与按钮顶边 651 挤在一起。
+事件顺序上 `_menu_side_at` 先判、按钮后判，重叠区会被双重响应。
+`check_layout.py` 的 `_check_min_size` 只在 standard 字号跑，
+三档字号只在 1500×920 跑——这个组合自检必漏。
 
-### 4.5 快捷键字号通过变量传参绕过 AST 检查（中）
+### 4.2 U2：粗体谚文完全失效（中）
 
-`ui/widgets.py:79-89`：标签过长时 `for cand in range(size-1, 7, -1)` 可降到 8px；
-快捷键提示用 `self.size - 11`，默认 `size=13` 时只有 **2px**（实测渲染尺寸 3×4），
-实质不可读。`smoke_test` 只查位置参数为字面 int 的 `draw_text`，
-`size = cand` 与 `self.size - 11` 都漏检。
-同类：`ui/editor.py:1132/1169` 的 `max(8, tile//3)` / `max(7, tile//4)`。
-改法：下限统一用 `T.FS_TINY`，并把 AST 检查扩展到变量/关键字参数与 `render_text`。
+`ui/theme.py:622-629` 的 hangul 分支只取候选表首项 `malgun.ttf`（常规），
+从不按 `bold` 选 `malgunbd.ttf`。实测 size 13/16/20 三档下
+`render_text("한국어", bold=True)` 与 `bold=False` 像素**完全相同**。
 
-### 4.6 编辑器无法纯键盘完成核心操作（中）
+### 4.3 U3：汉谚混排时简体中文变豆腐块（中）
 
-战役编辑器（`ui/campaign_editor.py:274-302`）无键新增关卡、无键切换选中关卡
-（UP/DOWN 是 `move_step` 重排），Tab 不切换输入框焦点。
-地图编辑器（`ui/editor.py:371-434`）平移仅中键拖拽、缩放仅滚轮；
-`app.py` 与回放播放器的缩放同样只有 MOUSEWHEEL，无 `+`/`-` 键。
-`test_keyboard.py` 覆盖设置/主菜单/系统菜单/对局/帮助，未覆盖两个编辑器与缩放。
-改法：补 Tab/Shift+Tab 焦点循环、新增/切关快捷键、方向键平移与 `+`/`-` 缩放。
+v3.4.2 把含谚文的整串一律改走 `malgun.ttf`，但 malgun 不覆盖全部简体汉字。
+实测 malgun 下「膛」「战」「术」「红」「东」与 U+E000 豆腐块像素一致
+（「炮」「置」恰好有字形故正常）。
 
-### 4.7 主题名等 UI 文案未接入本地化（中）
+真实触发场景：`ui.card.threat_fmt = '%s 직접 타격 가능'`（谚文格式串）
+拼接武器名 `120mm M256 滑膛炮`（中文数据），整串 `hangul=True` 后中文变方框。
+`test_a11y` 只测「한」单字与假名谚文降级，不测混排。
 
-实测 `i18n.set_language("en")` 后：
+改法：按字符分段渲染（谚文段 malgun、CJK 段 msyh），或改用同时覆盖
+Hangul + 简体的 Noto Sans CJK；自检增加混排串逐字形 fallback 测试。
 
-```
-tr('settings.theme') = 'Theme'
-T.theme_name('tactical') = '深色战术终端'
-T.font_scale_name('large') = '大'
-T.shape_mode_name('auto') = '自动'
-```
+### 4.4 缩略图目标点仍是旧逻辑（中）
 
-AST 扫描另发现 22 处赋值形式的中文状态文案（如
-`campaign_editor.py:119 "已新建战役"`、`editor.py:913 "该挂载预设为空"`），
-以及 `campaign_editor.py:636 "滚动查看更多"`、`mapview.py:610 "射界/标定"`
-两处直接绘制的中文常量。`lang_check.py` 不扫源码硬编码。
-改法：接入 `tr()` 并补 8 语言词条；自检增加「`tr()` 之外的中文 UI 字面量」扫描。
+主视图 `_draw_objectives` 已按归属画三种形状（中方/己方三角/敌方菱形），
+但缩略图 `mapview.py:1305-1309` 仍是一律方块 + 中立用 `T.AMBER`。
+实测中立 AMBER vs 敌方 edge 对比度：tactical 1.63、light 1.14、
+deuteranopia **1.11**、protanopia **1.04**——与上轮主视图修掉的 P9 完全同源。
+`check_contrast.py` 的形状契约只读 `_draw_objectives` 函数体源码，
+漏掉了 `draw_minimap`，所以「三种形状」自检通过却没覆盖缩略图。
 
-### 4.8 底栏操作提示对比度不足（中）
+### 4.5 其他 UI 发现
 
-`ui/app.py:4169` 的操作说明用 `T.TEXT_FAINT`，四主题实测 2.70–2.98:1
-（tactical 2.75 / light 2.70 / deuteranopia 2.98 / protanopia 2.90），
-低于 WCAG AA 4.5:1。`check_contrast.py` 明确把 `text_faint` 列为
-「辅助说明，未纳入强制」——但这是键盘用户发现快捷键的主要途径，属功能性提示。
-改法：新增 `text_hint` 令牌并纳入强制阈值，或把这类调用提升到 `TEXT_DIM`。
+- **长文案按钮无溢出保护**（中）：主菜单六按钮用裸 `T.draw_text`，
+  不复用 `widgets.Button` 的降字号逻辑。俄语 `ui.menu.spectate` =
+  「Наблюдение за ИИ」等长词条在 130–140px 按钮里有溢出风险。
+  `lang_check` 只数词条不测渲染宽度。（具体像素溢出量需截图复核，故置信度低于上述几条）
+- **回放播放器硬编码中文**（中）：`ui/replayplayer.py:111-162` 的
+  `status_line()` / `current_label()` 返回「第 N/M 回合」「准备就绪/机动 →/开火 →」
+  等中文，切到 8 语言后仍显示中文。`lang_check` 不扫源码硬编码，`test_i18n` 不覆盖播放器。
+- **功能性文字仍用 TEXT_FAINT**（低）：战报续行（`widgets.py:125`）、
+  信息卡字段标签（`inspect.py:162`）在四主题下仅 2.70–2.98:1。
+  上轮新增的 `text_hint` 令牌已达标 5.17–5.97:1，应切过去。禁用按钮可豁免。
 
-### 4.9 已核查无问题的部分
+### 4.6 已核查确认无问题的部分
 
-- **锚点合法性**：7 种锚点全覆盖校验，运行时有 `ValueError` 兜底
-  （注：注释写「9 个」是文档失真，见 §5）。
-- **中文等宽降级**：中文路径像素级一致；西里尔/拉丁 Consolas 有字形。
-- **信息卡语义**：探测等级同时有文字标签，HP 同时有数值，非纯颜色区分。
-- **补给线/火力准备**：断粮红叉 vs 正常绿虚线、准备实线圈 vs 虚线圈，
-  形状差异在色盲下仍可辨。
-- **设施中立色**：用 `MAP_SYMBOL` 灰色，与敌方区分（§4.4 只针对目标点）。
-- **设置面板键盘**：31 个焦点项，`_ensure_visible()` 处理滚动。
-- **语言热切换**：`tr()` 每次查表，缓存键含文本，无需重启。
-- **棋子形状标识**：`test_a11y.py` 像素级验证 mbt/sam/fighter 切角与角标。
+- 主菜单按钮横向自适应缩放：1024×640 至 3440×1440 各档均无横向越界
+- 主视图目标点三形状：`_draw_objectives` 与 check_contrast 契约一致
+- 等宽正则扩充：假名/谚文在 `mono=True` 下正常降级
+- 传感器覆盖圈 / 威胁圈是互斥 overlay，不构成需同时区分的语义对
+- 补给线红叉/绿虚线、准备实线/虚线、设施三形状在色盲下仍可辨
+- 观战、回放、导入/回放对话框、设置面板的键盘操作齐全
+- 语言热切换无需重启；`test_i18n` 末尾切回 zh 不留残态
 
 ---
 
@@ -444,71 +421,48 @@ AST 扫描另发现 22 处赋值形式的中文状态文案（如
 
 | # | 位置 | 写的 | 实际 |
 |---|---|---|---|
-| D1 | `README.md:33` | 「6 步带你走完核心循环」 | 教学想定 12 步（同文件 :131 又写 12 步） |
-| D2 | `core/tutorial.py:179` | docstring「标准新手引导脚本（4 步）」 | 回退脚本返回 6 步；代码里有「第 6 步」标题 |
-| D3 | `tools/check_anchors.py:3`、`ui/theme.py:671`、`README.md:133` | 「9 种锚点」 | `frozenset` 实际 7 个，脚本自报也是 7 种 |
-| D4 | 上一版 `AUDIT.md:22` | 「45 个 CI 步骤」 | 实测 52 个（verify 42 + balance 5 + package 5） |
-| D5 | 上一版 `AUDIT.md:24` vs `:417` | 「31 个自检全绿」vs「跑了 9 个自检」 | 后者是 v3.4.0 历史陈述，未标时点 |
+| D1 | `SDK.md:461` | 示例用 `"type": "unit_lost"` | `CONDITION_TYPES` 14 种里没有它，照抄必报 `RuleError` |
+| D2 | `AUDIT.md:24`、`ROADMAP_HISTORY.md:287` | 「12 种条件」 | 实测 14 种（11 基础 + all/any/not 3 组合器） |
+| D3 | `AUDIT.md:27` | core/ui/tools 行数 16,639/11,694/14,492 | 实测全行口径 16,668/11,845/14,610，未说明统计口径 |
+| D4 | `AUDIT.md:7`（旧） | 「基于 v3.4.2 / 待发版」 | v3.4.2 已发版，自相矛盾（本版已修正） |
 
-> D4/D5 由本报告的重写一并修正。D1–D3 需改源码/文档，本轮未改。
-
-**已确认未失真**：数据规模（65/71/28）、代码行数、主题 4 / 音效 9 / 语言 8、
-版本号五处一致（`GAME_VERSION`、README 徽章、AUDIT 基线、SDK 抬头、git tag）、
-GAME_GUIDE 二级标题 1–20 连续、165 个目录锚点全有效、已知机制边界 12 条。
+**已确认未失真**：数据规模 65/71/28/15/9；4 想定、12 步教学、4 主题、9 音效、
+8 语言、8 动画；CI 52 步、8 组矩阵；31 个自检脚本；版本号五处一致；
+165 个文档目录锚点全有效；GAME_GUIDE 二级标题 1–20 连续。
 
 ---
 
-## 6. 大模型指挥官（v3.4 新增路径）
+## 6. 大模型指挥官（未发现新问题）
 
-### 6.1 实测
-
-| 项 | 数值 |
+| 项 | 实测 |
 |---|---|
-| 服务启动 | 冷 8.70s / 热 1.73s（`boot_timeout=90s`） |
-| 单次研判 | 7.5–13.4s（39 token） |
-| 常驻内存 | 约 1.4GB（独立进程） |
-| 推理期间整帧 | 3.29ms vs 空闲 3.35ms（p90 4.57 / 4.48）——不掉帧 |
-| 决心就绪后 AI 相位 | 0.3s 内开始动作 |
+| 启动 | 冷 10.5s / 热 1.73s（`boot_timeout=90s`，余量充足） |
+| 单次研判 | `chat_json` 3.8–5.5s |
+| 进程内存 | server RSS 1.85→1.93GB（README 标称 1.4GB，本机更高，属模型固有常驻，非泄漏） |
+| 退出 | `stop()` 213–250ms，PID 消失、restart 干净；Job Object 回收有效 |
+| 决策质量 | 仍能改主攻方向，但 6 次研判全给 `assault`（已知弱点，非 bug） |
 
-### 6.2 为什么不把动作交给模型
-
-1.7B 输出不了可靠的「uid + 路径 + 武器」动作串（错一格就撞山、进雷场、
-把弹药打光），而 `AIPlanner` 在「怎么走、打谁、打几发」上更强。
-所以模型只选四个枚举字段，规则层折算成权重。模型再离谱，最坏结果是
-「打得更莽」，不会作弊、不会产生非法动作——它根本不产生动作。
-
-### 6.3 已知弱点（不是 bug，是模型能力）
-
-- 实测 6 次研判全给 `assault`：能改主攻方向，判断不出「该固守」。
-- 倾向选高价值点而不看可达性；`EFFORT_GAIN` 只放大偏好，不强制执行。
-- 自动下载脚本只覆盖 Windows x64。
-
-### 6.4 对可复现性的影响
-
-中性决心 == 不传决心，动作序列逐条一致（`test_llm` 第一条）。
-决心随 `end_turn` 入命令流（回放 v3）。观战 / `--sim` / `diag` /
-平衡体检不启用模型，仍只由种子决定——但见 §2.6，`--sim` 本身没传 seed。
+推理抢核的帧时影响见 §2.4。
 
 ---
 
 ## 7. 建议的处理顺序
 
-**先修「让检查变真」的三条**，否则后续任何改动都无法验证是否修好：
+**先修「写了但没接上 / 算了两遍」的三条规则问题**——它们会直接改变玩家的胜负结果：
 
-1. **P2 + P3**（半天量级）：把 `smoke_test` 的 `FAILED` 汇总移到函数末尾；
-   `lang_check report()` 增加 `worst < 100 → return 1`，或 CI 改为逐语言 `--verify`。
-   验收：注入必失败断言 → 退出 1；删光某语言包 → 退出 1。
-2. **P11 + P10**：`check_sdk` 改为动态遍历枚举；`test_perf` 改中位数/相对阈值。
-3. **P1**（半天量级）：缩略图静态层缓存。验收：128×128 完整 `App.draw`
-   从 98.5ms 降到 5ms 以内；把这条加进 `tools/perf.py`。
-4. **P4 + P5**：修正阵亡路径与 CLI seed。验收：全歼场景广播 1 次且
-   `over=True`；`--sim 3` 连跑两次输出逐字一致。
-5. **P6–P9**：字体回退链、主菜单边界钳制、等宽正则、目标点形状差异。
-6. 其余低优先级穿插处理。
+1. **R1 + R2 + R3**（半天量级）：weather 钩子接 `env_track`；VP 累计去掉一次；
+   失败不推进并提供重试。验收：规则改天候后 `environment_for()` 变化；
+   三关战役累计等于各关战果之和；败方关卡不产生下一关继承。
+2. **T1 + T2 + T3 + T4/T5**（半天量级）：让四道闸门在变异下退出 1。
+   验收：重跑 §3.5 的 9 组变异，4 个纸糊的必须转红。
+3. **U1 + U2 + U3**（半天量级）：阵营卡与按钮联动钳制（并把小窗口×大字号
+   纳入 `check_layout`）；粗体谚文选 `malgunbd`；混排串分段渲染。
+4. **P3 + P1/P2**：可达层缓存；缩略图按主题预生成 + 离散尺寸档。
+5. 其余低优先级穿插处理。
 
-**不建议做**：`ui/app.py` 4367 行拆分——机械但量大，应与修 bug 分开评审。
-**暂不做**：AI 单步 p99 压平——长尾来自首次建场，只能拆帧或换近似距离，
-后者会改变 AI 结论，需单独立项评估。
+**不建议做**：`ui/app.py` 拆分（机械但量大，应与修 bug 分开评审）。
+**暂不做**：AI 单步 p99 压平（需拆帧或近似距离，后者改变 AI 结论）；
+非中文文案的母语翻译（先保证接入 `tr()`，翻译另行组织）。
 
 ---
 
@@ -516,17 +470,17 @@ GAME_GUIDE 二级标题 1–20 连续、165 个目录锚点全有效、已知机
 
 本轮实际执行：
 
-- 四个维度并行审阅：①代码结构与规则正确性 ②性能实测
-  ③UI/无障碍/本地化 ④测试质量与文档一致性
-- 31 个自检脚本全跑一遍（30 个退出 0，`test_perf` 首次退出 1 后重跑通过）
-- 变异测试 6 组：`smoke_test` 后置断言、`lang_check` 覆盖率、
-  `check_sdk` 新枚举、`check_docs` 版本、`check_contrast` 配色、`check_sdk` 假 API
-- 实测复现 12 项：空袭记账、`--sim` 种子、缩略图耗时、韩文字形、
-  主菜单越界、补给扫描、等宽字形、色盲目标点色差、`test_perf` 抖动等
-- `main.py --check`、`ruff check .`、`check_docs`、`check_sdk`、`lang_check` 全过
+- 四个维度并行审阅：①规则正确性与战役 ②性能与资源 ③UI/本地化/无障碍 ④测试质量与文档
+- 31 个自检脚本全跑一遍，退出码全 0
+- **变异测试 9 组**（`test_save` / `test_replay`×2 / `test_bus` / `test_units` /
+  `test_i18n` / `test_logistics` / `check_sdk` / `check_docs`），全部在临时隔离副本进行
+- 独立实测约 20 项：weather 钩子、VP 算术、阵营卡重叠、粗体谚文、混排字形、
+  可达层、主题切换、窗口缩放、LLM 抢核、字体像素比对等
+- 长局验证：283 命令回放重演 0 差异、`FALLBACK_CALLS == 0`；60 回合内存曲线；
+  v5 旧档与坏档的 `SaveError` 翻译
 
-未覆盖：真实鼠标操作下的多窗口并发、macOS/Linux 的字体可用性、
-大模型在真实 1.1GB 权重下的多轮连续决策稳定性（只做了单轮端到端）。
+未覆盖：macOS / Linux 上的字体可用性与实际字形覆盖、
+真实鼠标操作下的多窗口并发、大模型多轮连续决策的战术质量评估。
 
 ---
 
