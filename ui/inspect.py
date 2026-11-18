@@ -159,7 +159,7 @@ class InspectCard:
 
         yy = r.y + head_h
         for key, val, col in rows:
-            T.draw_text(surf, key, (r.x + pad, yy), 11, T.TEXT_FAINT)
+            T.draw_text(surf, key, (r.x + pad, yy), 11, T.TEXT_HINT)
             # 值右对齐：放大后长值（弹药清单）会压到键上，按可用宽度收一下
             avail = w - pad * 2 - T.text_width(key, 11) - T.m(8)
             T.draw_text(surf, T.ellipsize(val, 11, avail), (r.right - pad, yy), 11, col,

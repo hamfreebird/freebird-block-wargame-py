@@ -288,15 +288,29 @@ def collect_survivors(state, side: Side) -> list[dict]:
 
     只统计存活且仍可作战的单位；完全损毁的不带走。
     """
-    counts: dict[str, int] = {}
+    # v3.4.3：以前只按 template.id 聚合数量，apply_carryover 用模板新建单位，
+    # hp/弹药全满——与「打残了就是打残了」的文档直接矛盾。现在额外记录
+    # 该兵种幸存者的平均血量比例与弹药比例，重建时回填。
+    buckets: dict[str, list] = {}
     for u in state.units:
         if u.side is not side or not u.alive or u.is_decoy:
             continue
         # 航空兵需要母基地才能继续作战，不予继承
         if u.domain is Domain.AIR:
             continue
-        counts[u.template.id] = counts.get(u.template.id, 0) + 1
-    return [{"template": tid, "count": n} for tid, n in sorted(counts.items())]
+        buckets.setdefault(u.template.id, []).append(u)
+    out: list[dict] = []
+    for tid in sorted(buckets):
+        us = buckets[tid]
+        hp = max(0.0, sum(max(0.0, u.hp) for u in us) / len(us))
+        ratio = hp / max(0.001, us[0].template.hp)
+        ammo: dict[str, int] = {}
+        for u in us:
+            for wid, n in (u.ammo or {}).items():
+                ammo[wid] = min(ammo.get(wid, n), max(0, int(n)))
+        out.append({"template": tid, "count": len(us),
+                    "hp_ratio": round(min(1.0, ratio), 3), "ammo": ammo})
+    return out
 
 
 def apply_carryover_policy(survivors: list[dict], policy: str) -> list[dict]:
@@ -304,7 +318,7 @@ def apply_carryover_policy(survivors: list[dict], policy: str) -> list[dict]:
 
     * `all` —— 全部保留；
     * `none` —— 全部丢弃；
-    * `veterans` —— 只保留存活率过半的兵种（打残的部队不带走）。
+    * `veterans` —— 只保留平均血量过半的兵种（打残的部队不带走）。
 
     「打残了就是打残了」是战役模式的核心——但如果每一关都把残兵
     带走，玩家会在第三关面对一堆残废部队。因此提供「只继承精锐」
@@ -314,8 +328,10 @@ def apply_carryover_policy(survivors: list[dict], policy: str) -> list[dict]:
         return []
     if policy != CARRYOVER_VETERANS:
         return list(survivors)
-    # 精锐：只保留数量 >= 2 的兵种（说明该兵种基本没被打残）
-    return [s for s in survivors if int(s.get("count", 0)) >= 2]
+    # v3.4.3：以平均血量比例判定「精锐」，与文档一致。
+    # 旧实现是绝对数量 >= 2：2/10 的兵种算精锐，1/1 满员的反被丢弃。
+    return [s for s in survivors
+            if float(s.get("hp_ratio", 1.0)) >= 0.5]
 
 
 def apply_carryover(state, carryover: list[dict], side: Side) -> list[str]:
@@ -350,6 +366,12 @@ def apply_carryover(state, carryover: list[dict], side: Side) -> list[str]:
                          uid=state.alloc_uid())
             else:
                 u = Unit(template=tpl, side=side, x=spot[0], y=spot[1])
+            # v3.4.3：回填残血与余弹——「打残了就是打残了」
+            ratio = max(0.05, min(1.0, float(item.get("hp_ratio", 1.0))))
+            u.hp = round(max(1.0, tpl.hp * ratio), 2)
+            left = item.get("ammo") or {}
+            if isinstance(left, dict):
+                u.ammo = {wid: max(0, int(n)) for wid, n in left.items()}
             state.units.append(u)
             added.append(f"{u.name}×1")
             anchors.append(spot)

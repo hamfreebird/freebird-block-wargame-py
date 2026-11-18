@@ -122,8 +122,11 @@ def main() -> int:
     check(isinstance(raw.get("rng"), dict) and "internal" in raw["rng"],
           "rng 字段含完整的 random 内部状态（不只是种子）")
 
-    # 基准流：从存档那一刻克隆，之后不再受任何操作影响
-    ref = st.rng.clone()
+    # v3.4.3：期望流必须从存档 dict **独立构造**，不能用 st.rng.clone()——
+    # 变异 clone 为 return self 时旧测试照样通过（期望与实测同源，自证）。
+    from core.rng import GameRng
+    ref = GameRng(0)
+    ref.setstate(raw["rng"])
     expect = [ref.random() for _ in range(5)]
 
     st2 = load_game(save_path, ARMORY)

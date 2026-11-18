@@ -52,8 +52,12 @@ class MapView:
         # 是完整 App.draw 里最贵的一项（占 97%）。纯地形只依赖地图身份、缩略图
         # 尺寸与主题，烘成表面后命中帧不到 0.05ms。目标点/单位/视窗框是动态的，
         # 留在缓存层之上每帧叠加。ox/oy 不能进签名——平移镜头不该让静态层失效。
-        self._minimap_key: tuple | None = None
-        self._minimap_layer: pygame.Surface | None = None
+        # v3.4.3：改为按主题多份缓存 + 固定基准尺寸缩放。
+        # 原先 key 含 rect.size 和单一槽位，切主题/拖窗口都会逐格重画
+        # 整张 256 图（实测 358–390ms）。现在固定 164×164 生成一次，
+        # 各主题各存一份，实际尺寸用 smoothscale 缩放（<0.1ms）。
+        self._minimap_layers: dict[tuple, pygame.Surface] = {}
+        self._minimap_base = 164
         self._fx_layer: pygame.Surface | None = None
         self._fx_dirty: list[pygame.Rect] = []
         self._anim_layer: pygame.Surface | None = None
@@ -828,14 +832,23 @@ class MapView:
     def _draw_reachable(self, surf: pygame.Surface, reachable: dict | None) -> None:
         if not reachable:
             return
-        s = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
-        for (x, y), cost in reachable.items():
-            r = self.grid_to_rect(x, y)
-            rr = pygame.Rect(r.x - self.rect.x, r.y - self.rect.y, r.width, r.height)
-            if not s.get_rect().colliderect(rr):
-                continue
-            s.fill((70, 150, 200, 34), rr)
-        surf.blit(s, self.rect.topleft)
+        # v3.4.3：原先每帧分配一张约 5MB 全屏 SRCALPHA 表面再逐格 fill，
+        # 即使只有 4 个可达格也占 1.76ms/帧（整帧 39%）。缓存该层，
+        # 只在可达集 / 缩放 / 视口变化时重建。
+        key = (tuple(sorted(reachable)), self.rect.size, self.tile,
+               int(self.ox), int(self.oy))
+        layer = getattr(self, "_reach_layer", None)
+        if getattr(self, "_reach_key", None) != key or layer is None:
+            layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+            for (x, y), _cost in reachable.items():
+                r = self.grid_to_rect(x, y)
+                rr = pygame.Rect(r.x - self.rect.x, r.y - self.rect.y, r.width, r.height)
+                if not layer.get_rect().colliderect(rr):
+                    continue
+                layer.fill((70, 150, 200, 34), rr)
+            self._reach_layer = layer
+            self._reach_key = key
+        surf.blit(layer, self.rect.topleft)
 
     def _draw_path(self, surf: pygame.Surface, path: list | None) -> None:
         if not path or len(path) < 2:
@@ -1283,30 +1296,51 @@ class MapView:
         ox = rect.x + (rect.width - md.width * cell) / 2
         oy = rect.y + (rect.height - md.height * cell) / 2
 
-        # 静态地形层：签名含地图身份与主题，绝不能含 ox/oy（平移不该失效）。
-        # 目标点的归属会变，所以目标点放在动态层，不烘进缓存。
-        key = (id(md), md.width, md.height, rect.size, T.current_theme().id)
-        if self._minimap_key != key or self._minimap_layer is None:
-            layer = pygame.Surface(rect.size, pygame.SRCALPHA)
-            lx = (rect.width - md.width * cell) / 2
-            ly = (rect.height - md.height * cell) / 2
+        # 静态地形层按「地图身份 + 地块世代 + 主题」缓存，不含 rect.size、
+        # 不含 ox/oy——拖窗口 / 平移镜头都不该逐格重画。缩略图基准尺寸固定
+        # 164×164，实际显示时缩放（v3.4.3）。
+        base = self._minimap_base
+        base_cell = max(1, min(base / md.width, base / md.height))
+        key = (id(md), md.width, md.height, self.state.map_epoch, T.current_theme().id)
+        layer = self._minimap_layers.get(key)
+        if layer is None:
+            layer = pygame.Surface((base, base), pygame.SRCALPHA)
+            lx = (base - md.width * base_cell) / 2
+            ly = (base - md.height * base_cell) / 2
             for t in md.iter_tiles():
-                base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
-                col = T.elevation_shade(base, t.elevation)
+                base_col = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
+                col = T.elevation_shade(base_col, t.elevation)
                 pygame.draw.rect(layer, col,
-                                 pygame.Rect(int(lx + t.x * cell), int(ly + t.y * cell),
-                                             max(1, int(cell)), max(1, int(cell))))
-            self._minimap_layer = layer
-            self._minimap_key = key
-        surf.blit(self._minimap_layer, rect.topleft)
+                                 pygame.Rect(int(lx + t.x * base_cell), int(ly + t.y * base_cell),
+                                             max(1, int(base_cell)), max(1, int(base_cell))))
+            if len(self._minimap_layers) > 8:
+                self._minimap_layers.clear()
+            self._minimap_layers[key] = layer
+        # 实际尺寸与基准不同才缩放（命中态一次 smoothscale，<0.1ms）
+        if rect.width != base or rect.height != base:
+            layer = pygame.transform.smoothscale(layer, rect.size)
+        surf.blit(layer, rect.topleft)
 
         # 目标点走 state.objective_tiles（已按 tile_epoch 缓存），不要遍历
         # 全图——128×128 上那是每帧 16384 次迭代，比缓存未命中还贵。
+        # v3.4.3：与主视图同语义——中立走 side_neutral.edge（不再是 AMBER，
+        # 色盲主题下与敌方 1.04:1），并按归属区分形状。缩略图格子极小，
+        # 用边长差异 + 空心/实心代替主视图的方/三角/菱形。
         for t in self.state.objective_tiles:
-            pygame.draw.rect(surf, T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL
-                             else T.AMBER,
-                             pygame.Rect(int(ox + t.x * cell), int(oy + t.y * cell),
-                                         max(2, int(cell)), max(2, int(cell))))
+            col = (T.side_color(t.owner, "edge") if t.owner is not Side.NEUTRAL
+                   else T.side_color(Side.NEUTRAL, "edge"))
+            side = max(2, int(cell))
+            cx, cy = int(ox + t.x * cell + cell / 2), int(oy + t.y * cell + cell / 2)
+            r = pygame.Rect(cx - side // 2, cy - side // 2, side, side)
+            if t.owner is self.state.player_side:
+                pygame.draw.rect(surf, col, r)              # 己方：实心
+            elif t.owner is Side.NEUTRAL:
+                pygame.draw.rect(surf, col, r, 1)           # 中立：空心
+            else:
+                pygame.draw.rect(surf, col, r)              # 敌方：实心+内点
+                if side >= 4:
+                    pygame.draw.rect(surf, T.BG_MAP,
+                                     pygame.Rect(cx - 1, cy - 1, 2, 2))
         for u in self.state.units:
             if not u.alive or u.domain is Domain.SPACE:
                 continue

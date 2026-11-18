@@ -272,8 +272,11 @@ def test_error_isolation() -> None:
 
     # 坏模组不应污染武器库
     arm = load_armory(ARMORY)
-    check("test_laser" in arm.templates or "test_unit" in arm.templates
-          or True, "坏模组不会让武器库加载失败")
+    # v3.4.3：删掉恒真的 `or True`。原先的语义「坏模组不会让武器库加载失败」
+    # 由下面两条真实断言承担：① 正式兵种仍在；② 数量不塌。
+    # （好模组注入的 test_laser/test_unit 会出现在武器库里，这属于预期，
+    #  不能拿「不存在」当判据。）
+    check("m1a2" in arm.templates, "正式兵种没被坏模组挤掉")
     check(len(arm.templates) > 60, f"武器库仍然完整（{len(arm.templates)} 个兵种）")
 
 

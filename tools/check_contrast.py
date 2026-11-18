@@ -141,6 +141,11 @@ def check_theme(tid: str, verbose: bool) -> None:
     body = obj_src.split("def _draw_objectives", 1)[1].split("def _draw_forts", 1)[0]
     check("Side.NEUTRAL" in body and "player_side" in body and body.count("pts =", 0) >= 3,
           f"{tid} 目标点按归属使用三种形状（颜色仅辅助）")
+    # v3.4.3：缩略图过去仍是「一律方块 + 中立 AMBER」，自检只查主视图所以漏掉。
+    mm = obj_src.split("def draw_minimap", 1)[1].split("def draw_vector_class_icon", 1)[0]
+    check("side_neutral" in mm and "T.AMBER" not in mm
+          and "player_side" in mm and "draw.rect" in mm,
+          f"{tid} 缩略图目标点走同一套归属语义（不再是 AMBER 方块）")
     neutral = th.side_neutral["edge"]
     enemy = th.side_red["edge"]
     v = ratio(neutral, enemy)

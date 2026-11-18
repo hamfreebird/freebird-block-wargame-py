@@ -290,6 +290,10 @@ class App:
         self.campaign: CampaignDef | None = None
         self.campaign_progress: CampaignProgress | None = None
         self.campaign_pending: bool = False    # 通关后等待玩家确认进入下一关
+        # v3.4.3：失败时不推进战役，改为等待玩家重试本关。快照保存进入本关
+        # 前的 VP / carryover，避免败方残部被继承、历史 VP 被二次累加。
+        self.campaign_retry: bool = False
+        self._campaign_entry_snapshot: tuple[dict, list] | None = None
         self.campaigns: list[CampaignDef] = []
         self.show_campaign_menu: bool = False
 
@@ -449,7 +453,12 @@ class App:
         阵营卡片放在 432 起——放大后必须跟着卡片区一起走，
         否则会插到想定卡片中间。
         """
-        return self._menu_cards_area().bottom - T.m(86)
+        # v3.4.3：必须给按钮行留位置。以前只跟卡片区底边走，实测
+        # 1180×740 + xlarge 时红方卡 bottom=688 而按钮 top=651，三按钮重叠。
+        # 两张卡纵向排列，按最后一张的 bottom 反推顶边。
+        return min(self._menu_cards_area().bottom - T.m(86),
+                   self._menu_button_y()
+                   - T.m(self.SIDE_CARD_STEP + self.SIDE_CARD_H) - T.m(6))
 
     def _menu_side_rects(self) -> list[tuple[Side, pygame.Rect]]:
         """两个阵营卡片的矩形。宽度依赖右侧面板，窄窗口下保底 280。"""
@@ -530,6 +539,19 @@ class App:
 
     def _menu_settings_rect(self) -> pygame.Rect:
         return self._menu_btn(1018, 110)
+
+    def _menu_label(self, s, text: str, rect: pygame.Rect, base: int,
+                    color, bold: bool = False) -> None:
+        """主菜单按钮文字：按可用宽度自适应降字号（v3.4.3）。
+
+        以前用裸 draw_text，德语/俄语长词条会溢出按钮压到邻居；
+        widgets.Button 有降字号逻辑但主菜单没复用。这里统一收口。
+        """
+        size = base
+        avail = rect.width - T.m(8)
+        while size > T.FS_TINY and T.text_width(text, size) > avail:
+            size -= 1
+        T.draw_text(s, text, rect.center, size, color, bold=bold, anchor="center")
 
     # ------------------------------------------------------------------ #
     # 教学想定
@@ -737,7 +759,17 @@ class App:
                 self._sfx("defeat")
         if self.campaign is not None and self.campaign_progress is not None \
                 and self.state is not None and self.state.over:
-            self._campaign_step_complete()
+            # v3.4.3：失败不推进战役。原先只要 over 就结算，败方残部被收成
+            # 下一关继承兵力，玩家也没有重试入口。现在按胜负分流。
+            if self.state.winner is self.menu_side:
+                self._campaign_step_complete()
+            else:
+                self.campaign_pending = True
+                self.campaign_retry = True
+                _steps = self.campaign.steps
+                _idx = self.campaign_progress.step_index
+                _title = _steps[_idx].title if 0 <= _idx < len(_steps) else ""
+                self.set_status(tr("ui.st.step_failed_fmt") % (_title,), 8)
 
     # ------------------------------------------------------------------ #
     # 战役模式
@@ -799,6 +831,9 @@ class App:
         self.briefing = None
         # 玩家命令流——回放用（想定 + 种子 + 命令 = 可完整重演的一局）
         self.cmd_log = CommandLog()
+        # 进入本关前的进度快照——失败重试时恢复到这个点（v3.4.3）
+        self._campaign_entry_snapshot = (dict(prog.vp), list(prog.carryover))
+        self.campaign_retry = False
         # 继承上一关的幸存部队
         carried = apply_carryover(self.state, prog.carryover, self.menu_side)
         if carried:
@@ -807,10 +842,9 @@ class App:
                 tr("ui.log.campaign_carryover_fmt") % (
                     len(carried), camp.name, step.title),
                 "system")
-        # 累计上一关的胜负点
-        if prog.vp:
-            self.state.vp[Side.BLUE] += prog.vp.get("BLUE", 0)
-            self.state.vp[Side.RED] += prog.vp.get("RED", 0)
+        # v3.4.3：不再把历史累计 VP 注入本关。原先开局注入 + 结束时又把
+        # 整个 state.vp（已含历史）加回 prog.vp，等于历史每过一关翻一倍。
+        # 现在 state.vp 只承载「本关战果」，prog.vp 是各关战果的纯累加和。
         # 难度曲线：难度越高，红方在本关起始就握有一定优势。
         # 这让「编排难度」成为**可感知**的机制，而不只是个标签。
         diff_bonus = (step.difficulty - 2) * 3
@@ -877,10 +911,17 @@ class App:
         self.mode = "over"
 
     def _campaign_next_step(self) -> None:
-        """玩家确认后进入下一关。"""
+        """玩家确认后进入下一关；失败时改为重试本关（v3.4.3）。"""
         if not self.campaign_pending:
             return
         self.campaign_pending = False
+        if self.campaign_retry:
+            # 恢复到进入本关前的进度：VP 与 carryover 都不算这局的败果
+            prog = self.campaign_progress
+            if prog is not None and self._campaign_entry_snapshot is not None:
+                vp, carry = self._campaign_entry_snapshot
+                prog.vp, prog.carryover = dict(vp), list(carry)
+            self.campaign_retry = False
         self._start_campaign_step()
 
     # ------------------------------------------------------------------ #
@@ -1486,15 +1527,15 @@ class App:
         hover = start.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), start, border_radius=4)
         pygame.draw.rect(s, T.CYAN, start, 1, border_radius=4)
-        T.draw_text(s, i18n.tr("menu.start") + "  [Enter]", start.center, 16,
-                    T.button_text(T.CYAN, hover), bold=True, anchor="center")
+        self._menu_label(s, i18n.tr("menu.start") + "  [Enter]", start, 16,
+                     T.button_text(T.CYAN, hover), bold=True)
 
         edit_r = self._menu_edit_rect()
         hover = edit_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), edit_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, edit_r, 1, border_radius=4)
-        T.draw_text(s, i18n.tr("menu.editor") + "  [E]", edit_r.center, 13,
-                    T.button_text(T.CYAN, hover), anchor="center")
+        self._menu_label(s, i18n.tr("menu.editor") + "  [E]", edit_r, 13,
+                     T.button_text(T.CYAN, hover))
 
         # 快速上手：直接进入教学想定（首次运行时高亮）
         tut_r = self._menu_tutorial_rect()
@@ -1505,33 +1546,32 @@ class App:
                          tut_r, border_radius=4)
         pygame.draw.rect(s, T.GREEN if (hover or first_run) else T.BORDER_HI, tut_r, 1,
                          border_radius=4)
-        T.draw_text(s, i18n.tr("menu.tutorial") + "  [T]", tut_r.center, 13,
-                    T.button_text(T.GREEN, hover or first_run),
-                    bold=first_run, anchor="center")
+        self._menu_label(s, i18n.tr("menu.tutorial") + "  [T]", tut_r, 13,
+                     T.button_text(T.GREEN, hover or first_run), bold=first_run)
 
         # 战役入口
         camp_r = self._menu_campaign_rect()
         hover = camp_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.PURPLE, hover), camp_r, border_radius=4)
         pygame.draw.rect(s, T.PURPLE if hover else T.BORDER_HI, camp_r, 1, border_radius=4)
-        T.draw_text(s, tr("ui.campaign_title") + "  [C]", camp_r.center, 13,
-                    T.button_text(T.PURPLE, hover), anchor="center")
+        self._menu_label(s, tr("ui.campaign_title") + "  [C]", camp_r, 13,
+                     T.button_text(T.PURPLE, hover))
 
         # AI 观战入口（v3.2）：两个 AI 打一局给玩家看
         spec_r = self._menu_spectate_rect()
         hover = spec_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.AMBER, hover), spec_r, border_radius=4)
         pygame.draw.rect(s, T.AMBER if hover else T.BORDER_HI, spec_r, 1, border_radius=4)
-        T.draw_text(s, tr("ui.menu.spectate") + "  [V]", spec_r.center, 13,
-                    T.button_text(T.AMBER, hover), anchor="center")
+        self._menu_label(s, tr("ui.menu.spectate") + "  [V]", spec_r, 13,
+                     T.button_text(T.AMBER, hover))
 
         # 设置入口
         set_r = self._menu_settings_rect()
         hover = set_r.collidepoint(self.mouse)
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), set_r, border_radius=4)
         pygame.draw.rect(s, T.CYAN if hover else T.BORDER_HI, set_r, 1, border_radius=4)
-        T.draw_text(s, i18n.tr("menu.settings") + "  [O]", set_r.center, 13,
-                    T.button_text(T.CYAN, hover), anchor="center")
+        self._menu_label(s, i18n.tr("menu.settings") + "  [O]", set_r, 13,
+                     T.button_text(T.CYAN, hover))
 
 
         if first_run:
@@ -2333,6 +2373,7 @@ class App:
                     self._campaign_next_step()
                 elif k == pygame.K_ESCAPE:
                     self.campaign_pending = False
+                    self.campaign_retry = False
                     self.mode = "menu"
                     self._scan_campaigns()
                 return
@@ -4366,7 +4407,8 @@ class App:
         pygame.draw.rect(s, T.button_fill(T.CYAN, hover), btn, border_radius=4)
         pygame.draw.rect(s, T.CYAN, btn, 1, border_radius=4)
         if self.campaign_pending:
-            T.draw_text(s, tr("ui.next_stage"), btn.center, 14, T.WHITE, bold=True,
+            _label = "ui.retry_stage" if self.campaign_retry else "ui.next_stage"
+            T.draw_text(s, tr(_label), btn.center, 14, T.WHITE, bold=True,
                         anchor="center")
         else:
             T.draw_text(s, tr("ui.back_to_scenarios"), btn.center, 14, T.WHITE, bold=True,

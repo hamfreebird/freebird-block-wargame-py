@@ -126,8 +126,13 @@ _SKIP: set[str] = set()
 
 
 def _require_mentions(text: str, items, label: str) -> None:
-    missing = [i for i in items if i not in _SKIP and f"`{i}`" not in text
-               and f"| `{i}`" not in text and i not in text]
+    # v3.4.3：去掉 `i not in text` 裸子串兜底。以前删掉 API 表的整行，
+    # 只要同名字符串还出现在散文或示例代码里就算「覆盖」——变异测试坐实过。
+    # 现在只认两种结构化写法：`name` / `| `name` / `name(`，且必须出现在
+    # 表格行或反引号里。
+    missing = [i for i in items if i not in _SKIP
+               and not any(tok in text for tok in (
+                   f"`{i}`", f"| `{i}`", f"`{i}("))]
     if missing:
         fail(f"{label} 有 {len(missing)} 项没写进文档：{', '.join(missing)}")
     else:
@@ -203,6 +208,43 @@ def check_version(text: str) -> None:
         fail(f"版本不一致：SDK.md 写 v{doc_ver}，代码是 v{GAME_VERSION}")
 
 
+def check_jsonc_examples(text: str) -> None:
+    """实解析 SDK 的 jsonc 规则示例，防止「照抄即报错」（v3.4.3）。
+
+    §4.2 的示例原先用了不存在的条件类型 ``unit_lost``，而 check_sdk 只看
+    字面清单，所以长期过检。这里抽取所有含 "rules" 的 jsonc 块交给
+    parse_rules 真解析。
+    """
+    import json
+    from core import hooks
+
+    blocks = re.findall(r"```jsonc\s*\n(.*?)```", text, re.S)
+    checked = 0
+    for block in blocks:
+        if '"rules"' not in block:
+            continue
+        cleaned = "\n".join(re.sub(r"\s*//.*$", "", ln) for ln in block.splitlines()).strip()
+        doc = None
+        for candidate in (cleaned, "{" + cleaned + "}"):
+            try:
+                doc = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            break
+        rules = doc.get("rules") if isinstance(doc, dict) else None
+        if rules is None:
+            fail("jsonc 规则示例不是合法 JSON")
+            continue
+        try:
+            hooks.parse_rules(rules)
+            checked += 1
+            ok(f"jsonc 规则示例可解析（{len(rules)} 条）")
+        except hooks.RuleError as exc:
+            fail(f"jsonc 规则示例无法解析：{exc}")
+    if checked == 0:
+        fail("没有找到可解析的 jsonc 规则示例")
+
+
 def main() -> int:
     if not os.path.isfile(DOC):
         print(f"[FAIL] 找不到 {DOC}")
@@ -212,6 +254,7 @@ def main() -> int:
     check_toc(text)
     check_symbols(text)
     check_coverage(text)
+    check_jsonc_examples(text)
     check_version(text)
     print()
     if FAILS:

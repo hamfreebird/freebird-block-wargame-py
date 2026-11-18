@@ -217,7 +217,10 @@ class LLMConfig:
     model_path: str = ""
     server_path: str = ""
     server_url: str = ""
-    threads: int = max(2, (os.cpu_count() or 4) - 4)
+    # v3.4.3：原先 cpu_count-4（本机 8 线程）吃满 CPU，实测推理期间
+    # 完整 App.draw 帧时中位 6.5→11.5ms（+70%）、max 40ms。降到最多 3
+    # 线程：单次研判会慢一些，但预取发生在玩家回合，玩家无感。
+    threads: int = min(3, max(2, (os.cpu_count() or 4) // 3))
     context: int = 2048
     temperature: float = 0.15
     max_tokens: int = 96

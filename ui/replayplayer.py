@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from core.commands import CommandLog
+from core.i18n import tr  # v3.4.3：状态栏文案本地化
 from core.engine import GameState
 from core.enums import Side
 from core.replay import KIND_AI_VS_AI, ReplayFile, apply_command
@@ -114,8 +115,8 @@ class ReplayPlayer:
             st = self.state
             # 终局那次推进会让回合数比上限多 1，显示上截住，避免「第 19/18 回合」
             turn = min(st.turn_count, max(1, int(st.turn_limit or 1)))
-            return (f"第 {turn}/{st.turn_limit} 回合"
-                    f" · 已演 {self.executed} 个动作")
+            return (tr("ui.replay.turn_fmt") % (turn, st.turn_limit)
+                    + tr("ui.replay.actions_fmt") % self.executed)
         return f"{self.index}/{self.total}"
 
     def current_label(self) -> str:
@@ -123,42 +124,42 @@ class ReplayPlayer:
         if self.match is not None:
             info = self._last
             if not info:
-                return "准备就绪"
+                return tr("ui.replay.ready")
             side = info.get("side_label") or ""
             return f"{side}{info.get('unit', '')}· {info.get('text', '')}"[:64]
         if self.index == 0 or self.index > len(self.commands):
-            return "准备就绪"
+            return tr("ui.replay.ready")
         cmd = self.commands[self.index - 1]
         a = cmd.args
         kind = cmd.kind
         if kind == "move":
-            return f"机动 → ({a.get('x')}, {a.get('y')})"
+            return tr("ui.replay.move_fmt") % (a.get("x"), a.get("y"))
         if kind == "fire":
-            return f"开火 → 单位 {a.get('target')}"
+            return tr("ui.replay.fire_fmt") % a.get("target")
         if kind == "fire_facility":
-            return f"打击设施 ({a.get('x')}, {a.get('y')})"
+            return tr("ui.replay.facility_fmt") % (a.get("x"), a.get("y"))
         if kind == "end_turn":
-            return "结束回合"
+            return tr("ui.replay.end_turn")
         if kind == "radar":
-            return "雷达开关"
+            return tr("ui.replay.radar")
         if kind == "jam":
-            return "干扰开关"
+            return tr("ui.replay.jam")
         if kind == "datalink":
-            return "数据链开关"
+            return tr("ui.replay.datalink")
         if kind == "fortify":
-            return "构筑工事"
+            return tr("ui.replay.fortify")
         if kind == "decoy":
-            return f"投放诱饵（{a.get('kind')}）"
+            return tr("ui.replay.decoy_fmt") % a.get("kind")
         if kind == "smoke":
-            return "施放烟幕"
+            return tr("ui.replay.smoke")
         if kind == "profile":
-            return f"任务剖面 → {a.get('mission')}"
+            return tr("ui.replay.profile_fmt") % a.get("mission")
         if kind == "prepare":
-            return f"登记射界 ({a.get('x')}, {a.get('y')})"
+            return tr("ui.replay.prepare_fmt") % (a.get("x"), a.get("y"))
         if kind == "order":
-            return "下达指令"
+            return tr("ui.replay.order")
         if kind == "hold":
-            return "待机"
+            return tr("ui.replay.hold")
         return kind
 
 
