@@ -80,6 +80,9 @@ jobs:
           cp -v artifacts/*/* artifacts/ 2>/dev/null || true
       - uses: softprops/action-gh-release@v2
         with:
+          # v3.4.4：workflow_run 下 github.ref 是默认分支，必须显式传 tag。
+          # 之前没传导致 action-gh-release 报「GitHub Releases requires a tag」。
+          tag_name: ${{ github.event.workflow_run.head_branch || github.event.inputs.version || github.ref_name }}
           files: artifacts/*
           generate_release_notes: true
           body: |
