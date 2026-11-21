@@ -34,6 +34,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # v3.4.4：文档承诺 macOS 支持（配置路径 / Apple 字体候选），
+        # 但矩阵此前只有 2 OS。补一组 macOS 3.12 做最低限度验证。
+        include:
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +51,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements.txt
+
+      # v3.4.4：CI runner 此前没有任何 CJK 字体，中文全渲染成豆腐块，
+      # 而旧断言只比 mono/plain 像素相等——假绿。装字体让字形门禁真正生效。
+      - name: 安装中文字体（非 Windows）
+        if: runner.os != 'Windows'
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq fonts-noto-cjk
+          fi
+          # macOS 自带 PingFang / Arial Unicode，theme.py 已列出其路径
 
       - name: 安装依赖
         run: |

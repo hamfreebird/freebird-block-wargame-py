@@ -151,6 +151,10 @@ class GameState:
         self.vp: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
         self.gps: dict[Side, float] = {Side.BLUE: 1.0, Side.RED: 1.0}
         self.casualties: dict[Side, int] = {Side.BLUE: 0, Side.RED: 0}
+        # v3.4.4：已登记阵亡的 uid。kill_unit 的调用契约是「调用前
+        # destroyed 已置位」，所以不能用 destroyed 本身判重——同一单位
+        # 被两条路径重复登记时会重复计伤亡、重复广播、甚至覆盖胜负。
+        self._dead_registered: set[int] = set()
         # 战斗统计（用于战后回顾）：按阵营累计
         self.stats: dict[Side, dict[str, int]] = {
             Side.BLUE: {"shots": 0, "hits": 0, "intercepted": 0, "kills": 0, "damage": 0},
@@ -1850,6 +1854,12 @@ class GameState:
         ``count_casualty=False`` 给诱饵这类「不算编制」的目标用。
         调用前 ``unit.destroyed`` 应当已为 True——本方法不负责扣血。
         """
+        # v3.4.4：对局结束后、以及同一 uid 重复登记时早退。
+        # 原先双方全灭时第二条判定会覆盖第一条的 winner，且重复调用会
+        # 写出三条互相矛盾的胜利日志。
+        if self.over or unit.uid in self._dead_registered:
+            return
+        self._dead_registered.add(unit.uid)
         if count_casualty and not unit.is_decoy:
             self.casualties[unit.side] += 1
         self.invalidate_pos_index()
@@ -1857,9 +1867,23 @@ class GameState:
         self._check_elimination()
 
     def _check_elimination(self) -> None:
-        for side in (Side.BLUE, Side.RED):
-            if not self.units_of(side):
-                self._declare(side.foe, f"{side.label} 作战力量被全歼")
+        if self.over:
+            return
+        # 一次性看清双方——原先是循环里依次判定，双方同时全灭时
+        # 后一侧会覆盖前一侧宣布的 winner。
+        blue_alive = bool(self.units_of(Side.BLUE))
+        red_alive = bool(self.units_of(Side.RED))
+        if blue_alive and red_alive:
+            return
+        if not blue_alive and not red_alive:
+            self.over = True
+            self.winner = None
+            self.win_reason = "双方作战力量同时被全歼，战平"
+            self.phase = "over"
+            self.log_message(None, self.win_reason, "victory")
+            return
+        loser = Side.BLUE if not blue_alive else Side.RED
+        self._declare(loser.foe, f"{loser.label} 作战力量被全歼")
 
     def _check_end(self) -> bool:
         if self.over:
@@ -1879,6 +1903,8 @@ class GameState:
         return False
 
     def _declare(self, winner: Side, reason: str) -> None:
+        if self.over:                      # v3.4.4：胜负声明幂等
+            return
         self.over = True
         self.winner = winner
         self.win_reason = reason
@@ -1892,7 +1918,13 @@ class GameState:
     # -- AI 队列（由 core.ai 生成，逐条执行以便渲染动画） -----------------
     def begin_ai_phase(self, directive=None) -> None:
         from .ai import AIPlanner
+        # v3.4.4：已有 planner 且动作未排完时重复进入，会重建 planner、
+        # 重置队列使 AI 从头再行动一遍。注意 end_player_turn 只置 phase
+        # 不建 planner，所以「phase==ai 但尚无 planner」是合法调用路径。
         if self.over:
+            return
+        existing = getattr(self, "_ai_planner", None)
+        if existing is not None and hasattr(existing, "pending") and existing.pending():
             return
         d = directive if directive is not None else self.pending_directive
         self.pending_directive = None

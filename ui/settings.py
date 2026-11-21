@@ -99,10 +99,21 @@ class SettingsPanel:
             if e.key == pygame.K_ESCAPE:
                 self.close_requested = True
                 return True
-            if e.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB):
-                step = -1 if e.key == pygame.K_UP else 1
+            if e.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB,
+                         pygame.K_HOME, pygame.K_END):
                 n = len(self._focus_items())
-                self.focus_index = (self.focus_index + step) % n
+                if e.key == pygame.K_HOME:
+                    self.focus_index = 0
+                elif e.key == pygame.K_END:
+                    self.focus_index = n - 1
+                else:
+                    # v3.4.4：Shift+Tab 反向。旧实现只认 ↑ 为反向，
+                    # Shift+Tab 与 Tab 同向，违背通用键盘习惯。
+                    back = e.key == pygame.K_UP or (
+                        e.key == pygame.K_TAB and bool(e.mod & pygame.KMOD_SHIFT))
+                    self.focus_index = (self.focus_index + (-1 if back else 1)) % n
+                # 焦点项可能在滚动区外——不跟随就是盲操作
+                self._ensure_visible()
                 return True
             if e.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 self._focus_adjust(-1 if e.key == pygame.K_LEFT else 1)

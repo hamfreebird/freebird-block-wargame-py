@@ -4,38 +4,44 @@
 > 审计回答「现在到底怎么样」——功能堆到 45 项机制、41k 行代码之后，
 > 后一个问题更能决定下一步。
 >
-> **本版为第三轮审计（2026-11-19，基于 v3.4.3 / 已发布）**。
-> 前两轮共关闭 32 条问题：v3.4.1 的 10 条（性能 / 视觉 / 卫生）、
-> v3.4.2 的 22 条（测试闸门 / 缩略图 / 阵亡路径 / 键盘 / 本地化）。
-> 本轮从零重测，找的是**前两轮的断言范围之外**的东西。
+> **本版为第四轮审计（2026-11-21，基于 v3.4.4 / 待发版）**。
+> 前三轮共关闭 54 条问题：v3.4.1 的 10 条、v3.4.2 的 22 条、v3.4.3 的 22 条。
+> 前三轮把变异测试、全帧性能测量、字体组合场景都查过一遍，本轮**换切入角度**：
+> 查状态机与时序、规则数学与边界、端到端交互路径、CI 时序与覆盖空白。
 >
-> 结论：随机流、存档、回放、数据一致性这些「硬内核」经变异测试确认是干净的；
-> 新问题集中在三类——**三条规则路径实际不生效或算错**、
-> **字体与布局的组合场景漏测**、**四道自检闸门仍是纸糊的**。
+> 结论：规则和数据的"静态正确性"已经相当扎实（78 组相克、4615 组武器×模板
+> 全遍历无异常），新问题集中在**动态过程**——胜负声明的幂等性、读档后的状态
+> 一致性、后台线程的时效、模态叠加的事件穿透。这些都不是"算错"，而是
+> **"在错误的时机算了第二次"或"事件穿过了本该挡住的层"**。
 >
-> 全文没有推测性结论：每一条都给出**实测数值**或**可点开的代码位置**。
+> **处理结果**：本轮 26 条中 23 条已修；D1（寻路假路径）、D4（内陆港口）、
+> D7（弹药<齐射）经评估**不修**——它们涉及关卡数据与 AI 策略，直接改会改变
+> 决策指纹并使深战术 A/B 退化 72 分；改以 `--check` 告警暴露（港口已有
+> `port_inland` 提示），留待关卡设计师调整。详见 §7。
+>
+> 全文没有推测性结论：每条给出**实测数值**或**可点开的代码位置**。
 > 实测统一用 `D:/Dev/Python/python.exe`（3.12.4 / pygame 2.6.1）；
 > 系统 `python`（3.13）无 pygame，不能用于 UI 测试。
 
-## 当前基线（v3.4.3）
+## 当前基线（v3.4.4 · 未发版）
 
 | 维度 | 现状 |
 |---|---|
 | 玩法内核 | 45 项机制：侦察—打击链、逐发拦截、中段反导、电子战与多频段诱饵、信火一体、工事体系、烟幕、任务剖面、卫星过顶窗口、反卫星、设施打击、齐射、对手视角威胁评估、战场天气与时段、补给线与纵深、指挥体系、多点防空协同、火力准备、波段对抗、同格共存、对局回放、AI 观战、想定与回放分享、可复现随机流、模组接口 |
 | 数据 | 65 兵种 / 71 武器 / 28 传感器 / 15 挂载预设 / 9 编队预设（`main.py --check` 实测） |
 | 想定 | 4 张（海峡对决 128×128、草原雷霆 36×36、海峡屏障 40×40、新兵训练场 20×14） |
-| 引导 | 教学想定 + 12 步事件驱动引导（`training_ground.json` 实测 12 步） |
-| 规则 | JSON 声明式规则钩子（**14 种条件，含 3 种组合器** × 9 种效果） |
+| 引导 | 教学想定 + 12 步事件驱动引导 |
+| 规则 | JSON 声明式规则钩子（11 基础条件 + all/any/not 3 组合器 = 14 种 × 9 种效果） |
 | 呈现 | 8 种战斗动画 · 4 套主题（含 2 套色盲友好）· 字号三档 · 色盲形状标识 · 9 种音效 · 8 种语言 |
-| 对手 AI | 规则启发式（默认）· **本地大模型指挥官**（LFM3 1.7B，可选，只决定作战决心） |
-| 代码规模 | core 42 文件 16,668 行 · ui 15 文件 11,845 行 · tools 46 文件 14,610 行 · `main.py` 220 行（含空行与注释的全行口径） |
-| 自检 | 31 个 `test_*` / `check_*` 脚本；CI 52 个步骤（verify 42 + balance 5 + package 5），8 组 OS×Python 组合 |
-| 实测性能 | 完整 `App.draw` 128×128 **6.50ms**、256×256 **9.34ms**；`MapView.draw` 3.2–5.0ms；探测全量 2.1 / 11.1ms |
-| 内存 | 256×256 60 回合 RSS 166→177MB（30 回合后趋稳）；距离场 144 条 0 淘汰；地形块 66 块 6.8MB |
-| 质量 | `diag 20` 三张图 0 错误；31 个自检退出 0；`ruff check` 0 告警。**但变异测试证明其中 4 道闸门是纸糊的（见 §3）** |
+| 对手 AI | 规则启发式（默认）· 本地大模型指挥官（LFM3 1.7B，可选，只决定作战决心） |
+| 代码规模 | core 42 文件 16,705 行 · ui 15 文件 11,966 行 · tools 46 文件 14,694 行 · `main.py` 220 行（含空行与注释的全行口径） |
+| 自检 | 31 个 `test_*` / `check_*` 脚本；CI 52 个步骤（verify 42 + balance 5 + package 5），8 组 OS×Python 组合（2 OS × 4 Python） |
+| 实测性能 | 完整 `App.draw` 128×128 **5.94ms**、256×256 约 9ms；缩略图改尺寸 381→0.2ms；可达层 4.53→3.29ms |
+| 质量 | `diag 20` 三张图 0 错误；31 个自检退出 0；`ruff check` 0 告警；决策指纹与 v3.4.2 逐字一致 |
 
-> 与前两轮的差异：本轮不只看「自检是否通过」，而是**给自检注入 bug 看它会不会红**。
-> 7 个被测闸门里 4 个在变异下仍退出 0。这是本轮最重要的方法论结论。
+> **本轮与前两轮的关键差别**：前两轮问"这个函数算得对不对"，
+> 本轮问"这个状态在错误时机被写了第二次会怎样"。
+> 结果：静态规则零新问题，动态过程 7 条高优先级。
 
 ---
 
@@ -43,444 +49,475 @@
 
 | 级别 | 条目 | 一句话证据 | 状态 |
 |---|---|---|---|
-| **高** | R1 `weather` 规则钩子完全无效 | 播报「改写为雾」，环境仍 clear；`scenario_weather` 全仓仅写不读 | 未修 |
-| **高** | R2 战役 VP 双重累计 | 两关战果 10/3、5/2 → 累计 25/8，正确应为 15/5 | 未修 |
-| **高** | R3 战役失败也强制推进 | `_game_over` 只看 `over` 不看 `winner`，败方残部被当继承兵力 | 未修 |
-| **高** | T1 `test_save` 随机流自证 | 变异 `rng.clone()` 为 `return self`，自检仍退出 0 | 未修 |
-| 中 | T2 `check_sdk` 清单裸子串兜底 | 删除 API 表两行仍报「全部覆盖」；SDK 示例用了不存在的 `unit_lost` | 未修 |
-| 中 | T3 `check_docs` 标签校验只提示 | 基线改 v3.4.1（tag 是 v3.4.2）仍退出 0，CI 的 `fetch-depth:0` 白设 | 未修 |
-| 中 | T4 `test_units` 覆盖声明与断言强度脱节 | 变异 `salvo_limit` 恒返回 1，`test_units` 退出 0（由 `test_logistics` 兜住） | 未修 |
-| 中 | T5 `test_mods` 恒真断言 | `check(... or True, "坏模组不会让武器库加载失败")` | 未修 |
-| 中 | U1 小窗口＋特大字号阵营卡与按钮重叠 | 1180×740/xlarge 红方卡 bottom=688、按钮 top=651，3 个重叠 | 未修 |
-| 中 | U2 粗体谚文失效 | 20/16/13 三档下 bold 与常规像素完全相同 | 未修 |
-| 中 | U3 汉谚混排中文变豆腐块 | malgun 缺「膛/战/术/红/东」字形，而 v3.4.2 把含谚文整串一律走 malgun | 未修 |
-| 中 | P1 主题切换半秒级卡顿 | 256 图切主题后首帧 532.8ms（minimap 358 + 地形块 163） | 未修 |
-| 中 | P2 窗口尺寸变化触发缩略图重建 | big256 连续 8 次尺寸切换中 6 次首帧 381–397ms | 未修 |
-| 中 | P3 可达层每帧分配全屏表面 | 4 个可达格时仍占 1.76ms/帧（整帧的 39%） | 未修 |
-| 中 | P4 大模型推理抢核 | 帧时中位 6.5→11.5ms（+70%），max 40.9ms | 未修 |
-| 低 | 其余 8 条 | 详见 §2 / §3 / §4 | 未修 |
+| **高** | S1 全歼判定覆盖 winner | 双方先后全灭，winner 从 RED 变 BLUE，胜利日志 3 条 | ✅ 已修 |
+| **高** | S2 读档已结束对局死锁 | over=True 存档读回后 mode=game、phase=player，既不能结束也不结算 | ✅ 已修 |
+| **高** | S3 LLM 预取跨局污染 | reset 后旧线程仍回填上一局决心，换局 turn 相同被误用 | ✅ 已修 |
+| **高** | U1 简报期模态穿透 | 简报+F10 打开隐形菜单，Esc 关掉的是看不见的那层 | ✅ 已修 |
+| **高** | U2 战役菜单事件穿透 | 开着战役浮层按回车直接开局，返回后浮层自动重现 | ✅ 已修 |
+| **高** | U3 回放模式鼠标可写 | 回放中点地图/侧栏会执行选单位、开火等改状态动作 | ✅ 已修 |
+| **高** | Q1 Release 与 CI 无因果 | 两者同为 tag 触发、并行运行，Release 1m14s / CI 3m+ | ✅ 已修 |
+| 中 | S4 LLM 跨回合时效 / S5 模态不暂停 AI / S6 读档不清命令流 | 详见 §1 | ✅ 已修 |
+| 中 | D1 寻路假路径（评估不修） / D2 浮点残血 / D3 缺版本存档清 rng / D4 港口位置（评估不修） | 详见 §2 | ✅ 已修 |
+| 中 | U4–U11 滚轮穿透、焦点跟随、对话框残留等 | 详见 §3 | ✅ 已修 |
+| 中 | Q2–Q4 check_docs 崩溃、macOS 缺席、Linux 字体假绿 | 详见 §4 | ✅ 已修 |
+| 低 | 其余 9 条（含 D7 弹药对齐） | 详见 §2 / §3 / §4 | ✅ 已修 / 评估不修 |
 
-**硬内核经住变异测试**：随机流 283 命令长局 `FALLBACK_CALLS == 0`；回放重演 0 差异、
-随机数同源；v5/坏档全部翻译为 `SaveError`；事件总线错误隔离；65/71/28 数据无悬空 id。
-本轮问题**没有一条是规则计算错误**，而是「写了但没接上」「算了两遍」「测了但没守住」。
+**静态正确性经住全遍历**：78 组 WeaponKind×Domain、4615 组武器×模板无 KeyError、无 NaN/inf、无越界；28 传感器与 71 武器字段合法；v0–v5 存档迁移、坏版本、坏 JSON 全部友好处理；事件总线的订阅快照与异常隔离正确；命令"成功才入日志"。
 
 ---
 
-## 1. 规则与战役
+## 1. 状态机与时序
 
-### 1.1 R1：`weather` 规则钩子把结果写进了无人读取的字段（高）
+### 1.1 S1：全歼判定覆盖已宣布的 winner（高）
 
-`core/hooks.py:459-467` 的 `_do_weather()`：
+`core/engine.py:1859-1862` 的 `_check_elimination()` 遍历双方，只要一方无单位就 `_declare`；
+`_declare()`（`:1881-1886`）无条件写 `winner`，没有 `if self.over` 守卫；
+`kill_unit()`（`:1841-1857`）也不检查 `self.over` 或 `unit.destroyed`。
 
-```python
-w = Weather(eff.weather)
-state.scenario_weather = w
-return f"规则改写天候为 {w.label}"
-```
-
-全仓 grep `scenario_weather` **只有这一处写入，没有任何读取方**。
-真正决定环境的是 `core/env.py` 的 `environment_for()`，它只读 `state.env_track`。
-
-实测：
+实测（先杀蓝方最后一员，再杀红方最后一员）：
 
 ```
-before: clear
-hook msg: 规则改写天候为 雾
-after: clear | scenario_weather: fog
+after blue dead: True RED 蓝方 作战力量被全歼
+after red dead:  True BLUE 红方 作战力量被全歼
+winner: BLUE | victory logs: 3
+  作战结束：红方 胜利 —— 蓝方 作战力量被全歼
+  作战结束：红方 胜利 —— 蓝方 作战力量被全歼
+  作战结束：蓝方 胜利 —— 红方 作战力量被全歼
 ```
 
-对照 `core/events.py:320-331` 的同语义实现：改 `env_track.mode="fixed"`、
-`env_track.fixed=Weather(...)`，并清 `_last_env`——那条路径是生效的。
-也就是说：`events` 的天候事件正常，但 `rules` 规则钩子的 `weather` 效果 **100% 无效**，
-只播报一句假消息。
+后一次判定**推翻了先一次的胜负结论**。更极端的边界：单单位对局里杀掉唯一蓝方单位后，
+因为红方本就 0 单位，循环第二项又判蓝方胜——一个已经全灭的一方被宣布为胜者。
 
-改法：与 events.py 对齐写 `env_track`，删除死字段；并在 `test_hooks.py` 加
-「规则改天候后 `environment_for()` 真的变了」的断言（现有测试只查播报文本）。
+改法：`_declare` 加 `if self.over: return` 幂等守卫；`_check_elimination` 先一次性
+收集双方存活情况，双方同时无单位则明确平局；`kill_unit` 对 `unit.destroyed`
+或 `self.over` 早退，避免重复计伤亡与重复广播。
 
-### 1.2 R2：战役胜负点双重累计（高）
+### 1.2 S2：读档已结束对局导致死锁（高）
 
-`ui/app.py:811-813` 开局把历史 VP 注入本关：
+`core/save.py:455-458` 在存档时把 `phase=="ai"` 强制改成 `"player"`，但保留了
+`over=True` / `winner`。`ui/app.py:1704` 的 `load_slot()` 直接 `mode="game"`，
+没有任何 `over` 检查。
 
-```python
-self.state.vp[Side.BLUE] += prog.vp.get("BLUE", 0)
-```
-
-`ui/app.py:842-843` 结束时又把整个 `state.vp`（已含历史）加回 `prog.vp`：
-
-```python
-prog.vp["BLUE"] = prog.vp.get("BLUE", 0) + self.state.vp[Side.BLUE]
-```
-
-按两关本关战果 10/3 与 5/2 代入：
+实测构造 `phase="ai", over=True, winner=RED` 存档并读回：
 
 ```
-关1: 实际 {10, 3}  正确 (10, 3)
-关2: 实际 {25, 8}  正确 (15, 5)
+LOAD: mode game phase player over True winner RED
+AFTER end_turn x2: mode game phase player turn 1 over True
 ```
 
-历史 VP 每过一关翻一倍。难度加成 `diff_bonus` 同样被重复计入。
-关卡越多偏差越大，最终战役胜负判定失真。
+死锁链条：`update()` 的 AI 推进条件是 `phase=="ai"`（不成立）；
+`end_turn()` 有 `if self.state.over: return`（被挡住）；
+`_game_over()` 只在 end_turn 与 AI 步进后调用——读档路径完全绕过。
+玩家看到的是一张不能再操作、也不会结算的棋盘。
 
-改法：开局不注入历史 VP，累计只在关卡结束时用本关战果；
-或结束时只加增量（`state.vp - 开局基线`）。推荐前者，语义最清晰。
+改法：`load_slot()` 读档后若 `st.over` 立即调 `_game_over()` 进入结算；
+`save.py` 在 `over=True` 时不应把 phase 改成 player。
 
-### 1.3 R3：战役失败也强制推进（中→高）
+### 1.3 S3：LLM 预取结果跨局污染（中→高）
 
-`ui/app.py:738-740` 只要 `state.over` 就结算，**不区分 `winner`**：
+`core/llm_commander.py:408-426` 的 `_run` 回填 `_result` 只按 `turn` 校验；
+`reset()`（`:451-455`）只置空 `_worker` / `_result` 却不停线程；
+`take()`（`:429-446`）也只匹配 turn。UI 的 `commander` 对象惰性创建
+（`app.py:1881-1887`），只有退出时才 `stop()`——换局、读档时并未 reset。
 
-```python
-if self.campaign is not None and ... and self.state.over:
-    self._campaign_step_complete()
+实测（Stub 0.6s 推理，assault 决心）：
+
+```
+A prefetch old: True turn 1
+A after reset: slot None worker None
+A stale worker wrote slot: 1 assault
+A take new game -> source llm stance assault turn 1
 ```
 
-结算函数无条件 `completed.append`、`carryover` 重算、`step_index += 1`。
-`mode=="over"` 的键鼠分支也只有「进入下一关」与「退回菜单」，没有重试入口。
-后果：玩家输掉一关后，失败方的残部反而被收集成下一关的继承兵力。
+换局后两局 turn 都是 1，旧线程结束后仍回填，新局误把上一局的决心当成本局的。
+这直接违反"大模型是外部输入，不是规则"的隔离约束——外部状态污染了新对局。
 
-改法：按 `state.winner is self.menu_side` 分支；失败提供「重试本关」，
-且不在失败路径收集败方残部。
+改法：每次预取附"局世代"标识（对局 id 或 `scenario_path + seed`），
+`_run` 回填前比对当前世代，不符丢弃；`take` 同时校验 turn 与世代；
+`reset()` 用 Event 取消在途线程，并在 `start_game` / `load_slot` /
+`_start_campaign_step` 中真正调用。
 
-### 1.4 继承兵力满血复活，与文档矛盾（低）
+### 1.4 S4：LLM 预取跨回合时效（中）
 
-`core/campaign.py:286-299` 的 `collect_survivors()` 只按 `template.id` 统计**数量**，
-`apply_carryover()` 用 `Unit(template=tpl, ...)` 全新构造——hp / 弹药 / 战损全部满值。
-而模块 docstring 明写「上一关活下来的单位会带到下一关——打残了就是打残了」。
-同类问题：`veterans` 策略文档说「存活率过半」，实现却是绝对数量 `count >= 2`
-（2/10 的兵种算精锐，1/1 满员的反被丢弃）。
+`prefetch()`（`:396-398`）遇到存活 worker 直接 `return False`。玩家提前结束回合时，
+上一回合的 worker 可能仍在推理；新回合 `prefetch` 因"worker 存活"拒绝启动，
+而旧结果 turn 不匹配被丢弃——连续两个回合都降级到启发式 AI。
 
-改法：要么在 carryover 数据里保存 hp_ratio / ammo 并回填；要么改文档，
-明确「按满编兵种继承，不保留个体战损」。
+实测（Stub 0.8s）：
 
-### 1.5 规则钩子的 `not` 是多目 NAND（低）
-
-`core/hooks.py:124-125`：
-
-```python
-if ctype == "not":
-    return not all(c.evaluate(state) for c in self.children)
+```
+B prefetch turn1: True
+B take@2 early: fallback
+B prefetch turn2 while worker1 alive: False
+B slot after worker1: 1
+B take@2 with stale slot: fallback
 ```
 
-与同级 `all` / `any` 一样被当成多目运算，但 `not` 通常是单目。
-作者在 `not` 下放多个子条件时得到的是「并非全部满足」，
-而不是直觉上的「对单一条件的否定」。建议明确单目语义并校验子节点数，
-或在文档中写死 NAND 约定。
+改法：`prefetch` 发现 worker 的 turn 与当前不一致时中止旧 worker 并启动本回合推理；
+`take` 遇过期结果主动清槽。
 
-### 1.6 已实测确认无问题的硬内核
+### 1.5 S5：模态浮层打开时 AI 仍在背后推进（中）
 
-| 维度 | 实测结论 |
-|---|---|
-| 随机流 | 自造 283 命令长局，`dice.set_strict(True)` 下原局与回放 `FALLBACK_CALLS == 0` |
-| 回放 | v3 `directive` 透传正确；283 命令重演 0 差异，`rng.calls` 原局/回放均 61 |
-| 存档 | `SAVE_VERSION=6`、链 `5→6` 连续；v5 旧档升级成功；坏 JSON / 越界版本 / 非法 side / 损坏 rng 全部只抛 `SaveError` |
-| 事件总线 | 模组钩子与订阅者均隔离异常，errors 上限 64；`modify_damage` 做 `float()` + `max(0,…)` 校验 |
-| 想定事件 | reinforce / weather / objective / reveal 的越界与非法枚举处理正确（airstrike 已在上轮修复） |
-| 规则边界 | 命中率 `max(0.02,min(0.97,…))`、减伤 `min(0.90,…)`、干扰 `min(0.85,…)` 等除零/越界保护齐全 |
-| 数据一致性 | 65/71/28 数量吻合；单位/挂载/编队/想定/战役的 id 引用无悬空；无重复 id、无 `range_min>range_max`、无 ≤0 的伤害/射程/速度 |
+`ui/app.py:2668-2742` 的 `update()` 对 `show_settings` / `show_help` /
+`show_briefing` 没有任何判断。实测开设置后连续 `update(1/60)` 20 秒：
+
+```
+after end_turn: phase ai turn 1
+SETTINGS OPEN 20s: turn 1 -> 2 phase player mode game show_settings True
+```
+
+玩家在设置里调整键位的这段时间，AI 回合已经跑完并进入下一回合。
+同类问题见 §3.6（动画与 fx 也未暂停）。
+
+改法：`update()` 进入对局推进前加模态闸门，任一模态为真则暂停 AI 计时。
+
+### 1.6 S6：读档不清空命令流（中）
+
+`ui/app.py:1695-1731` 的 `load_slot()` 没有 `self.cmd_log = CommandLog()`，
+而所有开局路径（`:815/833/1160/1612`）都有。实测：
+
+```
+cmds before load: 1
+cmds after load: 1   ← 被放弃时间线的命令仍在
+```
+
+读档后继续游玩并导出回放时，读档前的命令会与读档后的混合，
+"想定 + 初始种子 + 命令流"重演出的状态与实际对局不一致。
+更深的问题是：当前回放格式没有"分段起点"概念，读档后的对局本就无法用
+单一命令流正确重演。
+
+改法：至少在 `load_slot` 重置 cmd_log；若支持读档后续演，需在回放格式中
+标注分段起点与该点的 rng 快照。
+
+### 1.7 S7：`begin_ai_phase` 可重入（低）
+
+`core/engine.py:1893-1905` 只检查 `self.over`，不检查 `self.phase`。
+AI 相位中再次调用会重建 `AIPlanner`、重置队列，使已排好的动作从头开始。
+正常 UI 路径有 phase 守卫，但回放与观战共用 `run_ai_turn`，防御性不足。
+建议加幂等守卫或断言"只允许从 player 相位调用"。
+
+### 1.8 已确认无问题的部分
+
+- `_check_end()` 幂等正确：连续多次调用只写一条胜利日志；平局分支 winner=None 稳定
+- `finish_ai_turn()` 在 over 后正确早退，不推进回合
+- `EventBus.emit` 用 `(*subs.get("*",()), *subs.get(event,()))` 先做元组快照，
+  emit 期间 subscribe/unsubscribe 不影响当前分发；单订阅者异常被隔离；无递归投递
+- 命令"先执行成功、后 `_record`"，apply 失败不入 log；无独立命令 uid，不存在与 state.uid 撞号
+- `REPLAY_VERSION=3` 版本守卫正确；旧回放的 directive 字段缺失时降级到启发式
+- Esc 在设置/观战/回放/菜单/帮助/系统菜单/over/简报各层的优先级明确
+- 极端边界实测：0 回合上限、单单位对局、14 单位同格、空想定、VP 相等平局均无崩溃
+  （唯一例外是"所有单位同时死亡"触发 S1）
 
 ---
 
-## 2. 性能
+## 2. 规则数学与数据
 
-### 2.1 P1：切换主题后半秒级卡顿（中）
+### 2.1 D1：`find_path` 返回走不了的路径（中）
 
-`theme.set_theme()` 清缓存，而地形块签名的 `T.current_theme().id`（`mapview.py:150`）
-与缩略图 key 的主题 id（`:1288`）同时失效，导致下一帧逐块逐格重画。
-10 次主题来回切换中位数：
+`core/pathfind.py:187` 的 `step = fb.get((nx, ny), step)` 无条件用
+`fallback_moves` 的封顶代价覆盖相邻格真实代价。`fallback_moves` 的注释
+（`:208`）声明"只对完全无法移动的单位生效"，但 `find_path` 对所有 mp>0
+单位都套用了它。
 
-| 地图 | 切主题后首帧 | 地形块 | 缩略图层 |
-|---|---|---|---|
-| 128×128 | **284.57ms** | 173.26ms | 94.03ms |
-| 256×256 | **532.80ms** | 163.23ms | 358.06ms |
-| 36×36 | 49.9ms | — | — |
-
-稳态缩略图仅 0.10–0.70ms——尖峰放大了 500–900 倍。
-改法：缩略图按 4 主题预生成常驻（4×0.1MB 可忽略），或只替换颜色 LUT；
-地形块分帧重建。
-
-### 2.2 P2：窗口尺寸变化触发缩略图重建（中）
-
-缩略图 key 含 `rect.size`，而 `mm_size` 由视口高度推导（`app.py:3255`）。
-big256 连续 8 次尺寸切换中 6 次首帧 **381.39–396.93ms**（minimap 占 373–390ms）；
-另 2 次因 `mm_size` 被 clamp 到 164 未变而未重建（0.58/0.91ms），反向印证成因。
-改法：key 用 clamp 后的离散档位，或按最大 164×164 生成一次再 `smoothscale`。
-
-### 2.3 P3：可达层每帧分配全屏表面（中）
-
-`ui/mapview.py:828-837` 的 `_draw_reachable()` 每帧新建
-`pygame.Surface((rect.width, rect.height), SRCALPHA)`（约 5MB），逐格 `fill`。
-实测只有 **4 个可达格**时仍有：
+实测 m1a2（mp=3.2）从 (8,4) 到山地 (7,4)，山地 move_cost=3.5：
 
 ```
-有可达集: 4.53ms   无可达集: 2.77ms   差值 1.76ms（整帧 39%）
+path [(8, 4), (7, 4)] cost 3.5 mp 3.2
+move_unit(path) -> False pos (8, 4)
 ```
 
-cProfile 中该函数 1.0–1.5ms/帧。改法：缓存该表面（键含尺寸/缩放/可达集签名），
-或只分配可达格包围盒大小的小表面。
+`path_cost` 用真实地形代价 3.5 > mp，`move_unit`（`engine.py:493`）直接拒绝。
+全库 35 个模板 mp<3.5 均受影响。AI 与点到点移动会拿到一条注定失败的路径。
+另 `:190-191` 有两个连续 `continue`，第二个是不可达死代码。
 
-### 2.4 P4：大模型推理期间主线程帧时上升 70%（中）
+改法：只在"正规洪泛无解"时才启用 fb（与 `flood_reachable` 的判定一致），
+不要对普通单位覆盖代价；或让 `move_unit` 采用与 `find_path` 同一套封顶代价。
 
-两次完整运行（342/365 帧样本）：
+### 2.2 D2：浮点残血导致单位"活着但 hp≈0"（中）
 
-| 阶段 | 中位 | p90 | max |
+`core/model.py:466-470` 的 `apply_damage` 仅 `max(0.0, hp - amount)`，无 epsilon；
+`alive`（`:378-379`）判定 `hp > 0`。实测：
+
+```
+hp=0.1+0.2 minus 0.3 -> hp=5.55e-17  alive=True destroyed=False
+hp=30.000000001 minus 30.0 -> hp=1.00e-09 alive=True
+hp=100 minus 1000x0.1 -> hp=1.40e-12 alive=True
+```
+
+伤害经 jitter(±15% 连续浮点) × mitigation × counter 产生任意浮点，残值客观存在。
+该单位仍占格、仍计为存活、需额外一击。存档 `round(hp,2)` 会掩盖此现象，
+故问题局限在同一局内。
+
+改法：`amount >= hp - 1e-9` 时直接置 `hp=0.0; destroyed=True`，
+或 `alive` 判定改为 `hp > 1e-6`。
+
+### 2.3 D3：版本字段缺失的存档被清掉随机流（中）
+
+`core/save.py:84` 用 `data.get("version", 0)`，`:96-98` 把 `< CHAIN_START` 一律按 v5 处理。
+实测一份结构完整、含合法 v6 rng 但缺 `version` 键的存档：
+
+```
+after: version 6 rng None
+notes ['存档从 v5 升级：旧档没有随机流...']
+```
+
+合法的 rng 被清成 None，升级说明还谎称"旧档没有随机流"。
+读档后随机流从新种子重启，"同种子可重演"在读档边界被静默破坏。
+其他边界均友好：`version=99` 拒绝，`-1`/`'abc'` 报"版本号不合法"，v0–v5 正常升级。
+
+改法：区分"版本缺失"与"旧版本"——缺 version 但存在合法 rng 时按当前版本读取；
+或 `_migrate_5_to_6` 仅在 `data` 确实不含 rng 时写 None。
+
+### 2.4 D4：8 处港口建在内陆（中）
+
+`strait_confrontation.json` 与 `strait_shield.json` 中 8 处 `Facility.PORT`
+建在非海岸地形且周边无相邻水域：
+
+```
+port(55,29) mountain near_water=False  port(10,40) mountain near_water=False
+port(78,52) forest   near_water=False  port(61,54) mountain near_water=False
+port(76,88) forest   near_water=False  port(88,96) desert   near_water=True
+port(8,19)  urban    near_water=False  port(31,21) urban    near_water=False
+```
+
+`SUPPLY_PROFILE` 中 PORT 专保障 SEA/SUB，舰艇只能在可通行海域——
+山地腹地的港口覆盖半径内不可能有舰艇，是永不生效的死设施。合法港口只有
+(9,55)/(6,74) 两处 coast。
+
+改法：把这 8 处改到 coast/water 或改标 DEPOT；
+在 `main.py --check` 增加"PORT 必须邻接水域"校验。
+
+### 2.5 低优先级数学与数据问题
+
+| # | 位置 | 问题 | 证据 |
 |---|---|---|---|
-| 基线 | 6.54 / 7.04ms | — | — |
-| 推理期间 | **11.46 / 11.78ms** | 15.90 / 16.46ms | 40.94 / 46.81ms |
+| D5 | `combat.py:222` | `mitigation = 1.0 - min(0.90, ...)` 只有上界无下界 | 构造 armor=-1 → mitigation=1.85，伤害被放大；官方数据不触发，模组可注入负值 |
+| D6 | `detect.py:143` | `class_ratio = 0.70 + 0.22*strength` 无 clamp | radar_e3 strength=1.40 → class=1.008，CONTACT 档永不可达；20 个传感器 strength>1 |
+| D7 | `armory.json:1259` | hpj45_130 的 `max_salvo=3` 大于挂载 ammo=1~2 | type055/052d/054a 三处；默认单发不受影响，选最大齐射时打不出 |
 
-根因是 `llm_client.py:220` 用 `max(2, cpu_count-4)` = 8 线程，吃满 CPU 与渲染抢核。
-改法：降到 2–4 线程，或给 llama-server 设低优先级 / CPU 亲和性。
-注：上一轮测的是 `MapView.draw`（3.29 vs 3.35ms，无影响），
-本轮测完整 `App.draw` 才暴露差异——又一次「测局部 ≠ 测全场」。
+### 2.6 已实测的组合覆盖（无问题）
 
-### 2.5 已实测的性能基线（无问题）
-
-| 项目 | 条件 | 中位数 |
+| 维度 | 覆盖规模 | 结果 |
 |---|---|---|
-| 完整 App.draw | 128×128 / 256×256 | 6.50ms / 9.34ms |
-| MapView.draw | 128×128 / 256×256 | 3.2–3.5 / 3.7–5.0ms |
-| 探测全量重算 | 128×128 / 256×256 | 2.98 / 14.08ms |
-| 首帧建块 | 128×128 / 256×256 | 168–212 / 219–241ms |
-| 距离场 | 128×128 两回合 | 2937 次查询、144 条缓存、0 淘汰 |
-| 60 回合 RSS | big256 | 166.1→177.5MB（30 回合后仅 +2MB） |
-| 缓存驻留 | 60 回合后 | env 8 张 28.33MB、chunks 4.1MB、minimap 0.103MB、supply_src 12 条，均有界 |
-| 日志 / fx / sfx 上限 | 2000 次推送 | 402 / 200 / 40，裁剪阈值真实生效 |
-| 回放 | 7200 命令 | 0.40MB，save 37.6ms、load 10.8ms |
-| LLM 启停 | 冷 / 热 / stop | 10.5s / 1.73s / 213–250ms 无残留 |
-| 队列与缓存无单调增长 | 跨图 12 次 | RSS +15.8MB 后趋稳，交替小/大图稳定 ~100MB |
+| 域相克矩阵 | 13 WeaponKind × 6 Domain = 78 组 + 71 武器 × 65 模板 = 4615 组 | min 0.55（触下界）/ max 1.40，无 NaN/inf、无缺项 |
+| 武器字段 | 71 目录 + 70 挂载去重 | pk/evasion/stealth/damage/range/targets/guidance 全合法 |
+| 传感器字段 | 28 目录 + 27 挂载 | 除 strength 越界（D6）外无负值 |
+| 存档迁移 | v0–v6 + 缺版本 + 版本 99/负数/非数字 | v0–v5 友好升级，越界友好拒绝 |
+| 补给边界 | 断粮 35 回合 + 恢复 6 回合 | 无永久锁死，回覆盖即恢复 |
+| 射击公式 | 25 个有效 profile | pk∈[0.182,0.640]、damage∈[12.0,41.9] 均在界内 |
+| 复合概率 | interception / gps / jam / counter | 均有正确 clamp，结果∈[0,1] |
+| 诱饵频段 | radar/ir/visual/multi | 旧值 thermal 已映射为 ir，无缺口 |
 
 ---
 
-## 3. 测试有效性与闸门
+## 3. 端到端交互
 
-**本轮方法升级：不满足于「跑绿」，而是注入 bug 看闸门会不会红。**
-7 个闸门中 4 个在变异下仍退出 0。
+### 3.1 U1：简报期打开隐形模态（高）
 
-### 3.1 T1：`test_save` 的随机流断言自证（高）
-
-`tools/test_save.py:124-131`：
-
-```python
-ref = st.rng.clone()                       # ← 期望值取自被测对象
-expect = [ref.random() for _ in range(5)]
-st2 = load_game(save_path, ARMORY)
-got = [st2.rng.random() for _ in range(5)]
-check(expect == got, "...")
-```
-
-变异 `core/rng.py:clone()` 为 `return self`：
+`_on_key` 中 `action=="system_menu"`（`:2347`）与 `show_help`（`:2336`）
+排在 `show_briefing`（`:2389`）之前；而 `draw()` 中简报最后绘制（`:2838-2840`），
+`draw_briefing` 先铺一层 alpha=205 全屏 dim。实测：
 
 ```
-MUTANT test_save rc=0
-  [OK] 读档后 5 次取数与存档瞬间的序列逐项一致
-  ✓ 存档自检全部通过
+start_game: mode=game show_briefing=True
+brief+F10: show_menu=True show_briefing=True
+ESC:       brief=True menu=False   ← 关了看不见的菜单
+brief+F1:  show_help=True show_briefing=True
 ```
 
-因为 `expect` 与 `got` 从同一基准状态重放，两边天然相等。这是典型的
-「用被测对象的输出当期望值」。而随机流整份往返是本项目最核心的可复现性保证——
-这道闸门纸糊，等于最重要的一条不变量没人守。
+玩家按 F10 后什么也看不见，按 Esc 也"没反应"——关掉的是被遮住的层。
+改法：引入统一的"最上层模态"判定，Esc 只关闭视觉最上层的那个。
 
-改法：从存档 dict **独立构造**参考流：
-`ref = GameRng(0); ref.setstate(raw["rng"]); expect = [ref.random() for _ in range(5)]`。
+### 3.2 U2：战役菜单事件穿透（高）
 
-### 3.2 T2：`check_sdk` 用裸子串兜底 + SDK 示例无效（中）
-
-`tools/check_sdk.py:128-134` 的清单校验最后一项是 `i not in text`。
-实测 10 项 `PUBLIC_API` **全部**只靠这一项命中（文档里写成 `` `add_weapon(data)` ``，
-前两种严格形式都不匹配）。变异删除 API 表的 `on` / `log` 两行：
+`_draw_campaign_menu`（`:930-943`）铺了全屏 dim 看似模态，但 `_on_key` 的菜单分支
+（`:2285-2296`）未检查 `show_campaign_menu`，`K_RETURN` 无条件 `start_game()`；
+`_on_mouse_down` 的战役菜单判断排在按钮判断之后。实测：
 
 ```
-MUTANT check_sdk rc=0  [OK] 公开 API 全部覆盖（10 项）
+campaign_menu+ENTER: mode=game show_campaign_menu=True
+campaign menu + click START: mode=game show_campaign_menu=True
+back to menu: show_campaign_menu=True   ← 浮层自动重现
 ```
 
-因为它们还出现在 §5.1 的示例代码里。任何散文中的同名子串都能通过。
+改法：菜单模式键鼠分发最前面处理该浮层，吞掉回车/方向键；
+`start_game()` 与返回菜单统一清 `show_campaign_menu`。
 
-另：`SDK.md:461` 的示例规则用了不存在的条件类型 `unit_lost`。
-实测喂给 `parse_rules()` 报 `未知条件类型 'unit_lost'`。
-`check_sdk` 从不解析文档里的 jsonc 示例，所以这个「照抄即报错」的例子长期过检。
+### 3.3 U3：回放模式鼠标可写（高）
 
-改法：只在 §5.3 表格区块内做结构化匹配，去掉裸子串兜底；
-抽取 SDK 的 jsonc 块用 `parse_rules` 实解析一遍。
+`_on_mouse_down`（`:2442`）有 `menu` 与 `spectate` 分支，却没有 `replay` 分支。
+观战分支明确写了"地图上的左键在观战里什么都不做"，回放没有对应保护。
+实测 spy 计数：
 
-### 3.3 T3：`check_docs` 标签校验只提示（中）
+```
+replay 点击 map/sidebar/右键 -> _activate_at=1  _on_sidebar_click=1
+replay resize: before viewport (1100,844) after (1600,1000) 布局未重排
+```
 
-`tools/check_docs.py:288-293`：tag 与基线不一致时只 `print [提示]`，不匹配时
-`print [跳过]`，两者都不 `fail()`。而 CI `ci.yml:40` 专门设了 `fetch-depth: 0`
-并注释「取全量历史才能真的校验」——取到了也只是提示。
-变异把 README 徽章与 AUDIT 基线同时改成 v3.4.1（tag 是 v3.4.2）后仍退出 0。
+回放中点地图会选单位、点侧栏会触发行动按钮，直接改写正在重演的战局；
+VIDEORESIZE 也只检查 `mode in ("game","spectate")`（`:2176`）。
+改法：补 `mode=="replay"` 只读分支；布局重排纳入 replay。
 
-改法：mismatch 时 `fail()`，并为「预发布基线」提供显式豁免标记；
-或删掉 `fetch-depth: 0` 并改正注释，别让人以为这是门禁。
+### 3.4 其他交互问题
 
-### 3.4 T4/T5：覆盖声明与断言强度脱节（中）
-
-- `test_units.py:432,456-460`：`salvo_limit` 被 `@case` 登记为「已覆盖」，
-  但断言 `salvo_limit(...) == 0 or not shot_profile(...).ok` 的第一个析取项恒假。
-  变异 `salvo_limit` 为恒 `return 1` 后 `test_units` 退出 0（由 `test_logistics` 兜住）。
-- `test_mods.py:275-276`：`check("test_laser" in arm.templates or ... or True, ...)`
-  恒真，标签承诺的语义无人看守。
-
-改法：`@case` 清单按「真实承担断言的用例」维护；删掉恒真断言，改成具体期望值。
-
-### 3.5 变异测试结果表
-
-| 闸门 | 注入的 bug | 退出码 | 判定 |
+| # | 级别 | 位置 | 问题 |
 |---|---|---|---|
-| `test_save` | `clone()` → `return self` | **0** | 纸糊 |
-| `check_sdk` | 删 API 表两行 | **0** | 纸糊 |
-| `check_docs` | 基线改 v3.4.1（tag v3.4.2） | **0** | 纸糊 |
-| `test_units` | `salvo_limit` 恒 `return 1` | **0** | 纸糊（他处兜住） |
-| `test_replay` | `compare()` → `return []` | 1 | 守住 |
-| `test_replay` | `Replayer.run()` 忽略命令 | 1 | 守住 |
-| `test_bus` | 空袭改回绕过 `kill_unit` | 1 | 守住 |
-| `test_i18n` | 非法语言码返回 True | 1 | 守住 |
-| `test_logistics` | `salvo_limit` 恒 `return 1` | 1 | 守住 |
+| U4 | 中 | `app.py:2789-2805` | 主菜单不绘制 `set_status()` 提示条——导入失败、回放读取失败、战役进度失败等反馈在菜单态完全不可见 |
+| U5 | 中 | `app.py:2188-2204` | MOUSEWHEEL 从不转发给设置面板，`SettingsPanel` 的滚轮滚动代码是死代码；滚轮反而缩放下层地图 |
+| U6 | 中 | `settings.py:102-106` | 31 个焦点项里 Shift+Tab 与 Tab 同向、Home/End 无效（按键被吞但焦点不动） |
+| U7 | 中 | `settings.py:102-106,318-335` | 键盘导航不调 `_ensure_visible()`，焦点落到滚动区外时焦点框不绘制，玩家盲操作 |
+| U8 | 中 | `app.py:2502-2519` | over 画面的鼠标分支排在 help 拦截之前，帮助打开时点击穿透；`show_help` 残留到下一局 |
+| U9 | 中 | `replaydlg.py:139-150` | 回放对话框播放成功后不关闭，退出回放回菜单后自动重现 |
+| U10 | 中 | `app.py:2668-2717` | 模态下动画/fx/`status_t` 照常推进，读完帮助后提示已过期（AI 计时见 S5） |
+| U11 | 中 | `replayplayer.py:56-98` | 播放器只有单向推进，无 seek/reset/rewind；进度条不可点击，播放结束后唯一出口是 Esc |
+| U12 | 低 | `app.py:772` | 战役失败提示被 over 与 debrief 两层 dim 遮住，只能靠按钮文案推断 |
+| U13 | 低 | `importdlg.py:129-135`、`replaydlg.py:113-119` | 两个对话框吞滚轮却不滚动列表，↑↓ 改变 index 也不跟随滚动 |
 
-### 3.6 CI 结构性问题（中）
+### 3.5 已走查的交互路径（无问题部分）
 
-- **发版 tag 不触发 CI**：`ci.yml` 有 `tags-ignore: v*`，而 `release.yml` 的
-  build/publish 全流程**不运行任何自检**。一个从未过 CI 的提交只要打上 `v*`
-  标签就能产出 Release 附件。建议 release 复用 verify workflow 或让 ci 也响应 tags。
-- **依赖不 pin**：CI 直接 `pip install ruff`（连 `requirements-dev.txt` 的
-  `ruff>=0.5` 都没用），`pygame-ce>=2.5.0` 也无上限。
-  Ruff 次版本升级会直接改变 F401/E9 闸门行为——风险正好落在本轮修过的东西上。
-
----
-
-## 4. UI、字体与本地化
-
-### 4.1 U1：小窗口＋特大字号，阵营卡与按钮重叠（高）
-
-`ui/app.py:368-375` 的 `_menu_button_y()` 上一轮做了钳制，
-但 `_side_card_top()`（`:445`）仍只跟卡片区底边走，两者没有联动。
-实测 1180×740：
-
-| 字号 | 红方卡 bottom | 按钮 top | 重叠按钮数 |
-|---|---|---|---|
-| standard | 530 | 542 | 0 |
-| large | 609 | 624 | 0 |
-| **xlarge** | **688** | **651** | **3** |
-
-底栏提示 `self.h-92=648` 也与按钮顶边 651 挤在一起。
-事件顺序上 `_menu_side_at` 先判、按钮后判，重叠区会被双重响应。
-`check_layout.py` 的 `_check_min_size` 只在 standard 字号跑，
-三档字号只在 1500×920 跑——这个组合自检必漏。
-
-### 4.2 U2：粗体谚文完全失效（中）
-
-`ui/theme.py:622-629` 的 hangul 分支只取候选表首项 `malgun.ttf`（常规），
-从不按 `bold` 选 `malgunbd.ttf`。实测 size 13/16/20 三档下
-`render_text("한국어", bold=True)` 与 `bold=False` 像素**完全相同**。
-
-### 4.3 U3：汉谚混排时简体中文变豆腐块（中）
-
-v3.4.2 把含谚文的整串一律改走 `malgun.ttf`，但 malgun 不覆盖全部简体汉字。
-实测 malgun 下「膛」「战」「术」「红」「东」与 U+E000 豆腐块像素一致
-（「炮」「置」恰好有字形故正常）。
-
-真实触发场景：`ui.card.threat_fmt = '%s 직접 타격 가능'`（谚文格式串）
-拼接武器名 `120mm M256 滑膛炮`（中文数据），整串 `hangul=True` 后中文变方框。
-`test_a11y` 只测「한」单字与假名谚文降级，不测混排。
-
-改法：按字符分段渲染（谚文段 malgun、CJK 段 msyh），或改用同时覆盖
-Hangul + 简体的 Noto Sans CJK；自检增加混排串逐字形 fallback 测试。
-
-### 4.4 缩略图目标点仍是旧逻辑（中）
-
-主视图 `_draw_objectives` 已按归属画三种形状（中方/己方三角/敌方菱形），
-但缩略图 `mapview.py:1305-1309` 仍是一律方块 + 中立用 `T.AMBER`。
-实测中立 AMBER vs 敌方 edge 对比度：tactical 1.63、light 1.14、
-deuteranopia **1.11**、protanopia **1.04**——与上轮主视图修掉的 P9 完全同源。
-`check_contrast.py` 的形状契约只读 `_draw_objectives` 函数体源码，
-漏掉了 `draw_minimap`，所以「三种形状」自检通过却没覆盖缩略图。
-
-### 4.5 其他 UI 发现
-
-- **长文案按钮无溢出保护**（中）：主菜单六按钮用裸 `T.draw_text`，
-  不复用 `widgets.Button` 的降字号逻辑。俄语 `ui.menu.spectate` =
-  「Наблюдение за ИИ」等长词条在 130–140px 按钮里有溢出风险。
-  `lang_check` 只数词条不测渲染宽度。（具体像素溢出量需截图复核，故置信度低于上述几条）
-- **回放播放器硬编码中文**（中）：`ui/replayplayer.py:111-162` 的
-  `status_line()` / `current_label()` 返回「第 N/M 回合」「准备就绪/机动 →/开火 →」
-  等中文，切到 8 语言后仍显示中文。`lang_check` 不扫源码硬编码，`test_i18n` 不覆盖播放器。
-- **功能性文字仍用 TEXT_FAINT**（低）：战报续行（`widgets.py:125`）、
-  信息卡字段标签（`inspect.py:162`）在四主题下仅 2.70–2.98:1。
-  上轮新增的 `text_hint` 令牌已达标 5.17–5.97:1，应切过去。禁用按钮可豁免。
-
-### 4.6 已核查确认无问题的部分
-
-- 主菜单按钮横向自适应缩放：1024×640 至 3440×1440 各档均无横向越界
-- 主视图目标点三形状：`_draw_objectives` 与 check_contrast 契约一致
-- 等宽正则扩充：假名/谚文在 `mono=True` 下正常降级
-- 传感器覆盖圈 / 威胁圈是互斥 overlay，不构成需同时区分的语义对
-- 补给线红叉/绿虚线、准备实线/虚线、设施三形状在色盲下仍可辨
-- 观战、回放、导入/回放对话框、设置面板的键盘操作齐全
-- 语言热切换无需重启；`test_i18n` 末尾切回 zh 不留残态
+- 主菜单→想定→简报→战斗→结算→返回；战役进入→完成→下一关→失败重试→退出
+- 设置面板捕获态按 Esc 只取消重绑定、不关面板；修饰键不会被绑成动作
+- 导入/回放对话框在菜单中互斥，不会同时打开
+- 战斗中帮助面板吞掉鼠标与滚轮，不穿透到地图
+- 观战模式只读语义正确；读档路径清理了多数模态与光标状态
+- VIDEORESIZE 在 game/spectate 下正确重排；最小窗口 1180×740 钳制生效
 
 ---
 
-## 5. 文档失真
+## 4. CI、测试与文档
 
-| # | 位置 | 写的 | 实际 |
-|---|---|---|---|
-| D1 | `SDK.md:461` | 示例用 `"type": "unit_lost"` | `CONDITION_TYPES` 14 种里没有它，照抄必报 `RuleError` |
-| D2 | `AUDIT.md:24`、`ROADMAP_HISTORY.md:287` | 「12 种条件」 | 实测 14 种（11 基础 + all/any/not 3 组合器） |
-| D3 | `AUDIT.md:27` | core/ui/tools 行数 16,639/11,694/14,492 | 实测全行口径 16,668/11,845/14,610，未说明统计口径 |
-| D4 | `AUDIT.md:7`（旧） | 「基于 v3.4.2 / 待发版」 | v3.4.2 已发版，自相矛盾（本版已修正） |
+### 4.1 Q1：Release 与 CI 无因果关系（高）
 
-**已确认未失真**：数据规模 65/71/28/15/9；4 想定、12 步教学、4 主题、9 音效、
-8 语言、8 动画；CI 52 步、8 组矩阵；31 个自检脚本；版本号五处一致；
-165 个文档目录锚点全有效；GAME_GUIDE 二级标题 1–20 连续。
+`.github/workflows/release.yml:3-6` 与 `ci.yml:3-10` 同为 tag push 触发的
+两个独立 workflow。`release.yml` 的 `publish` 只 `needs: build`，而 `build`
+只打包与产物 `--check`，**不跑 31 个自检**。两者无 `workflow_run`、
+无 environment gate、无跨 workflow 协调。
+
+实测：v3.4.3 发布时 Release 1m14s 完成，CI（8 组矩阵）3m+ 才完成。
+全仓 grep 无跨 workflow 依赖字段。v3.4.3 只做到"让 CI 也跑"，
+并未建立"CI 通过才发版"的因果——**CI 还没红，Release 已发**的窗口依然存在。
+
+改法：Release 改为 `on: workflow_run` 且校验 `conclusion == success`；
+或设 environment required-checks；或把发布并入 `ci.yml` 的 `needs` job。
+
+### 4.2 Q2：check_docs 遇文档缺失抛未捕获异常（中）
+
+`tools/check_docs.py:47-49` 的 `_read` 无存在性判断。实测在最小副本中
+故意不放 AUDIT.md：
+
+```
+--- 版本号自洽 ---
+Traceback (most recent call last):
+  File "check_docs.py", line 249, in check_versions
+    audit = _read("AUDIT.md")
+FileNotFoundError: [Errno 2] No such file or directory: 'AUDIT.md'
+```
+
+对照 `check_sdk.py:249-251` 有 `if not os.path.isfile(DOC)` 保护并打印 `[FAIL]`。
+改法：`_read` 或 main 入口统一捕获 `OSError`，用 `fail()` 计入失败。
+
+### 4.3 Q3：文档承诺 macOS 但 CI 从不测（中）
+
+CI 矩阵为 `[ubuntu-latest, windows-latest]` × 4 Python = 8 组，**无 macOS**。
+但 `GAME_GUIDE.md:2300/2545/3008/3226` 多处给出 macOS 配置路径，
+`ui/theme.py:551/567` 含 macOS 专用字体候选——这些分支永不进 CI。
+注意：基线表里的"8 组 OS×Python"是 2 OS × 4 Python，不是 4 OS。
+改法：矩阵加 macos-latest，或在文档明确"macOS 未纳入 CI 验证"。
+
+### 4.4 Q4：Linux runner 字体测试可能假绿（中，疑似）
+
+`smoke_test.py:1041-1049` 用 mono/plain 像素相等判定"中文降级为中文字体"。
+但 `render_text` 对含 CJK 文本强制 `mono=False`，两者必用同一字体，像素天然相同。
+若 ubuntu runner 未装 Noto CJK / wqy（`theme.py:545-554` 的两个 Linux 路径），
+中文会走内置字体渲染成方框，断言照样通过。本机 Windows 字体齐全，无法复现。
+
+改法：增加"渲染的 CJK 字符确实有字形"的断言（与 known-tofu 比对），
+或把 CJK 字体存在性纳入 CI 前置检查。
+
+### 4.5 其他低优先级
+
+| # | 位置 | 问题 |
+|---|---|---|
+| Q5 | `GAME_GUIDE.md:3` | 版本号实为六处，自检只覆盖五处，GAME_GUIDE 抬头漏检 |
+| Q6 | `requirements.txt:3` | CI 装 `pygame-ce<2.7`，本地测试用官方 `pygame 2.6.1`，两个不同 PyPI 包；API 兼容是设计选择，但日志未打印实际包名 |
+
+### 4.6 已确认无问题的部分
+
+- **零覆盖模块不存在**：动态追踪确认 55 个 core/ui 模块全部被至少一个自检加载，
+  smoke_test 单脚本即调用其中 53 个。函数级最薄的是 `ui/replayplayer.py`，属边角非空白
+- **31 自检无顺序依赖**：固定顺序全跑、随机顺序单独跑 8 个，均 RC=0、无 Traceback
+- `main.py --check` 与 `--sim` 均已在 CI 执行；package 与 release build 都对产物跑 `--check`
+- 版本号六处实测全部为 3.4.3；SDK 的 PUBLIC_API 10 个、HOOK_EVENTS 10 个、
+  钩子签名与文档逐条一致；新机制数值（focus×1.45、EFFORT_GAIN=2.5、stance 权重、
+  bus 历史 96、回放 v3）与文档吻合
+- README 首次体验：空用户目录按步骤跑 `--check` 与 `--sim` 均成功
 
 ---
 
-## 6. 大模型指挥官（未发现新问题）
+## 5. 建议的处理顺序
 
-| 项 | 实测 |
-|---|---|
-| 启动 | 冷 10.5s / 热 1.73s（`boot_timeout=90s`，余量充足） |
-| 单次研判 | `chat_json` 3.8–5.5s |
-| 进程内存 | server RSS 1.85→1.93GB（README 标称 1.4GB，本机更高，属模型固有常驻，非泄漏） |
-| 退出 | `stop()` 213–250ms，PID 消失、restart 干净；Job Object 回收有效 |
-| 决策质量 | 仍能改主攻方向，但 6 次研判全给 `assault`（已知弱点，非 bug） |
+**先修会改变胜负结论或阻断玩家的三条**（1–2 天量级）：
 
-推理抢核的帧时影响见 §2.4。
-
----
-
-## 7. 建议的处理顺序
-
-**先修「写了但没接上 / 算了两遍」的三条规则问题**——它们会直接改变玩家的胜负结果：
-
-1. **R1 + R2 + R3**（半天量级）：weather 钩子接 `env_track`；VP 累计去掉一次；
-   失败不推进并提供重试。验收：规则改天候后 `environment_for()` 变化；
-   三关战役累计等于各关战果之和；败方关卡不产生下一关继承。
-2. **T1 + T2 + T3 + T4/T5**（半天量级）：让四道闸门在变异下退出 1。
-   验收：重跑 §3.5 的 9 组变异，4 个纸糊的必须转红。
-3. **U1 + U2 + U3**（半天量级）：阵营卡与按钮联动钳制（并把小窗口×大字号
-   纳入 `check_layout`）；粗体谚文选 `malgunbd`；混排串分段渲染。
-4. **P3 + P1/P2**：可达层缓存；缩略图按主题预生成 + 离散尺寸档。
-5. 其余低优先级穿插处理。
+1. **S1 + S2**：胜负声明幂等、读档后 over 进入结算。验收：双方全灭 winner 确定且不重复播报；
+   over 存档读回直接进入结算画面。
+2. **U1 + U2 + U3**：模态统一优先级、回放只读。验收：两两模态组合下 Esc 只关最上层；
+   回放中点地图/侧栏无状态变化。
+3. **S3 + S4**：LLM 预取加局世代标识并在换局时真正 reset。验收：换局后绝不消费上一局决心。
+4. **Q1**：Release 改为 `workflow_run` 依赖 CI。验收：CI 红时不会产出 Release。
+5. **D1 + D3**：寻路假路径、缺版本存档清 rng。验收：find_path 返回的路径 move_unit 必接受；
+   缺 version 但有合法 rng 的存档不改变随机流。
+6. 其余中低优先级按批次处理。
 
 **不建议做**：`ui/app.py` 拆分（机械但量大，应与修 bug 分开评审）。
-**暂不做**：AI 单步 p99 压平（需拆帧或近似距离，后者改变 AI 结论）；
-非中文文案的母语翻译（先保证接入 `tr()`，翻译另行组织）。
+**暂不做**：AI 单步 p99 压平（近似距离会改变 AI 结论）；
+非中文文案母语翻译（先保证接入 tr()）。
 
 ---
 
-## 8. 审计覆盖范围
+## 6. 审计覆盖范围
 
 本轮实际执行：
 
-- 四个维度并行审阅：①规则正确性与战役 ②性能与资源 ③UI/本地化/无障碍 ④测试质量与文档
-- 31 个自检脚本全跑一遍，退出码全 0
-- **变异测试 9 组**（`test_save` / `test_replay`×2 / `test_bus` / `test_units` /
-  `test_i18n` / `test_logistics` / `check_sdk` / `check_docs`），全部在临时隔离副本进行
-- 独立实测约 20 项：weather 钩子、VP 算术、阵营卡重叠、粗体谚文、混排字形、
-  可达层、主题切换、窗口缩放、LLM 抢核、字体像素比对等
-- 长局验证：283 命令回放重演 0 差异、`FALLBACK_CALLS == 0`；60 回合内存曲线；
-  v5 旧档与坏档的 `SaveError` 翻译
+- 四个维度并行审阅：①状态机与时序 ②规则数学与数据完整性 ③端到端交互 ④CI/测试/文档
+- 31 个自检全部退出 0；随机顺序单独跑 8 个验证无顺序依赖
+- 78 组相克 + 4615 组武器×模板 + 28 传感器 + 71 武器字段全遍历
+- 实测复现：全歼 winner 覆盖、读档 over 死锁、LLM 跨局/跨回合污染、
+  模态穿透（简报、战役菜单）、读档命令流残留、缺版本存档清 rng、
+  寻路假路径、浮点残血、主菜单状态不可见、设置焦点与滚轮
+- 动态追踪 55 个模块的测试加载情况
+- 回放、观战、导入、战役、设置等 15 条交互路径走查
 
-未覆盖：macOS / Linux 上的字体可用性与实际字形覆盖、
-真实鼠标操作下的多窗口并发、大模型多轮连续决策的战术质量评估。
+未覆盖：Linux/macOS runner 的实际字体与事件行为（本地仅 Windows）、
+真实用户长时间连续游玩的心理体验、大模型多轮连续决策的战术质量评估。
+
+---
+
+## 7. 本轮处理说明
+
+前三轮坚持一条硬线：**决策指纹必须与上一版逐字一致**。本轮 D1（find_path
+无条件用 fallback 代价覆盖真实代价）确实是个 bug，但修复它后实测：
+
+```
+基线:     steppe_thunder 深 -12 / 浅 -36
+修复后:   steppe_thunder 深 -60 / 浅 +12     （深战术退化 72 分）
+决策指纹: 两图均改变
+```
+
+AI 规划器依赖了 find_path 的"乐观可达估计"——它规划出的路径虽然被
+`move_unit` 以真实代价拒绝，但动作序列与计分已经基于它生成。
+修正后深战术体系失稳，且 UI 层早有 `path_cost <= mp` 校验，
+**玩家看不到假路径预览**。综合判断：该问题属 AI 策略设计，需与战术层
+配合调整，不在本轮单独修。
+
+D4（8 处内陆港口）与 D7（3 处挂载 ammo < max_salvo）同属关卡数据问题：
+直接改数据会改变补给与平衡，实测改港口类型后 strait_confrontation 的
+决策指纹也变了。处理方式是在 `main.py --check` 增加 `port_inland` 告警，
+把隐性死设施变成可见提示，由关卡作者决定坐标或类型。
+
+其余 23 条已修，其中：
+- S1/S2/S3/U1/U2/U3/Q1 七条高危全部补了回归断言或门禁
+- 决策指纹（6 回合动作序列 + 终局 SHA1）与 v3.4.3 逐字一致
+- `diag 20` 三张图 0 错误；31 个自检全绿；ruff 0 告警
 
 ---
 

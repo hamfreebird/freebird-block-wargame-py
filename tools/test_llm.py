@@ -252,6 +252,26 @@ def test_commander_flow() -> None:
     check(stale.source == "fallback", "上一回合的决心不会被误用")
 
 
+def test_generation_isolation() -> None:
+    """v3.4.4：换局后绝不消费上一局的决心。"""
+    print("\n--- 跨局隔离 ---")
+    st = fresh(turns=1)
+    _s, _u, ctx = build_prompt(st, Side.RED)
+    oid = ctx["main_allowed"][0]
+    payload = {"stance": "assault", "main_effort": oid, "feint": False}
+    cmd = LLMCommander(FakeClient(payload))
+    check(cmd.prefetch(st, Side.RED), "旧局 prefetch 起了线程")
+    for _ in range(100):
+        if cmd._result is not None:
+            break
+        time.sleep(0.02)
+    check(cmd._result is not None, "旧局结果已回填")
+    cmd.reset()                      # 换局
+    new_st = fresh(turns=1)          # 新局 turn 也是 1
+    d = cmd.take(new_st, Side.RED, timeout=0.1)
+    check(d.source == "fallback", "换局后不误用上一局的决心")
+
+
 def test_fallback_paths() -> None:
     print("\n--- 降级 ---")
     st = fresh(turns=2)
@@ -347,6 +367,7 @@ def main() -> int:
     test_prompt_hides_unknown()
     test_schema_scope()
     test_commander_flow()
+    test_generation_isolation()
     test_fallback_paths()
     test_weights_affect_ai()
     test_replay_carries_directive()

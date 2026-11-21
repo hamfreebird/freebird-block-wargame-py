@@ -472,7 +472,7 @@
  "ui.replay.finished": "재생 완료",
  "ui.replay.fire_fmt": "사격 → 부대 %s",
  "ui.replay.fortify": "진지 구축",
- "ui.replay.hint": "Space 일시정지 · ←→ 속도 · End 건너뛰기 · Esc 종료",
+ "ui.replay.hint": "스페이스 일시정지 · ←→ 속도 · End 건너뛰기 · Home/R 처음부터 · 바 클릭 · Esc 종료",
  "ui.replay.hold": "대기",
  "ui.replay.jam": "전파방해 전환",
  "ui.replay.move_fmt": "이동 → (%s, %s)",

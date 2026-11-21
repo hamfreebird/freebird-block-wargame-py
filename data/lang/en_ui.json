@@ -472,7 +472,7 @@
  "ui.replay.finished": "Finished",
  "ui.replay.fire_fmt": "Fire → unit %s",
  "ui.replay.fortify": "Fortify",
- "ui.replay.hint": "Space pause · ←→ speed · End skip · Esc exit",
+ "ui.replay.hint": "Space pause · ←→ speed · End skip · Home/R restart · click bar to seek · Esc exit",
  "ui.replay.hold": "Hold",
  "ui.replay.jam": "Jamming toggle",
  "ui.replay.move_fmt": "Move → (%s, %s)",

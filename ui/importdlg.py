@@ -128,10 +128,18 @@ class ImportDialog:
                 return True
             if e.key == pygame.K_UP:
                 self.index = max(0, self.index - 1)
+                self._ensure_visible()
                 return True
             if e.key == pygame.K_DOWN:
                 self.index = min(max(0, len(self.items) - 1), self.index + 1)
+                self._ensure_visible()
                 return True
+            return True
+
+        if e.type == pygame.MOUSEWHEEL:
+            # v3.4.4：以前吞掉滚轮却不滚动，超长列表无法用鼠标选中
+            self.scroll = max(0, self.scroll - e.y)
+            self._ensure_visible()
             return True
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
@@ -168,6 +176,15 @@ class ImportDialog:
         self._refresh()
 
     # ------------------------------------------------------------------ #
+    def _ensure_visible(self) -> None:
+        """让当前选中项落在可视窗口内（v3.4.4）。"""
+        vis = 8                       # 与 draw 的估算一致，draw 里再按实际高度钳制
+        if self.index < self.scroll:
+            self.scroll = self.index
+        elif self.index >= self.scroll + vis:
+            self.scroll = self.index - vis + 1
+        self.scroll = max(0, self.scroll)
+
     def draw(self, s: pygame.Surface) -> None:
         sw, sh = s.get_size()
         w = min(680, sw - 100)

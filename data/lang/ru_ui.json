@@ -472,7 +472,7 @@
  "ui.replay.finished": "Завершён",
  "ui.replay.fire_fmt": "Огонь → юнит %s",
  "ui.replay.fortify": "Укрепиться",
- "ui.replay.hint": "Пробел пауза · ←→ скорость · End в конец · Esc выход",
+ "ui.replay.hint": "Пробел пауза · ←→ скорость · End конец · Home/R сначала · клик по шкале · Esc выход",
  "ui.replay.hold": "Ожидание",
  "ui.replay.jam": "Переключить помехи",
  "ui.replay.move_fmt": "Ход → (%s, %s)",

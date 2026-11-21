@@ -472,7 +472,7 @@
  "ui.replay.finished": "已播完",
  "ui.replay.fire_fmt": "开火 → 单位 %s",
  "ui.replay.fortify": "构筑工事",
- "ui.replay.hint": "空格 暂停 · ←→ 调速 · End 快进 · Esc 退出",
+ "ui.replay.hint": "空格 暂停 · ←→ 调速 · End 快进 · Home/R 回到开头 · 点进度条跳转 · Esc 退出",
  "ui.replay.hold": "待机",
  "ui.replay.jam": "干扰开关",
  "ui.replay.move_fmt": "机动 → (%s, %s)",

@@ -1,8 +1,12 @@
 name: Release
 
+# v3.4.4：Release 不再由 tag push 直接触发。原先 release 与 CI 并行跑，
+# Release 1m14s 就发布、CI 8 组矩阵要 3m+——存在「CI 还没红但包已发出」的窗口。
+# 现在只在 CI 对 tag 成功完成后才发布；workflow_dispatch 供紧急手动重发。
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -26,6 +30,12 @@ permissions:
 jobs:
   build:
     name: 构建 ${{ matrix.os }}
+    # v3.4.4：只有 CI 对 tag 成功完成才发布。workflow_dispatch 手动触发
+    # 时 github.event.workflow_run 为空，此时也允许（供紧急重发）。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -33,6 +43,9 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run 下 github.ref 是默认分支；必须检出真正打标签的提交
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -70,7 +83,7 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
           body: |
-            ## 方块兵棋 ${{ github.ref_name }}
+            ## 方块兵棋 ${{ github.event.workflow_run.head_branch || github.event.inputs.version || github.ref_name }}
 
             现代战争方块兵棋，Python + pygame 实现。
 

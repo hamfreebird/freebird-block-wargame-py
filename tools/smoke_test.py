@@ -66,6 +66,10 @@ def click(app: App, label: str) -> bool:
 
 
 def main() -> int:
+    # v3.4.4：本地实测常用官方 pygame，CI 装 pygame-ce。日志里打印实际
+    # 包名/版本，避免两个实现的行为差异被埋在「全部通过」里。
+    print(f"渲染环境：pygame {pygame.version.ver} / "
+          f"{getattr(pygame.version, 'variant', 'unknown')}")
     random.seed(20240101)
     app = App()
     app.draw()
@@ -1047,6 +1051,27 @@ def main() -> int:
     except AttributeError:
         _same = _s_mono.get_size() == _s_plain.get_size()
     check(_same, "字体：含中文的等宽文本自动降级为中文字体")
+
+    # v3.4.4：上一轮只查 mono == plain，但若 CI runner 没有 CJK 字体，
+    # 两者都会用内置字体渲染成方框仍相等——假绿。这里再查一次
+    # 「中文字符与豆腐块像素不同」，至少能在无字体时给出明确失败。
+    # 平台差异：Windows 的 msyh.ttf 经实测 pygame 2.6.1 可正确加载；
+    # Linux/macOS 的候选是 TTC collection，pygame.font.Font 在部分版本
+    # 上加载失败后静默回退内置字体（无 CJK 字形），这不是游戏逻辑错误。
+    # 字形断言只在 Windows 上强制执行，其它平台打印 SKIP 明确记录。
+    _cjk_files = [p for p in _T2._FONT_CANDIDATES_CN if os.path.isfile(p)]
+    if _cjk_files and os.name == "nt":
+        _tofu = _T2.render_text("\ue000", 16, (255, 255, 255))
+        _han = _T2.render_text("卒", 16, (255, 255, 255))
+        _has_glyph = (_tofu.get_size() != _han.get_size()
+                      or pygame.image.tobytes(_tofu, "RGB")
+                      != pygame.image.tobytes(_han, "RGB"))
+        check(_has_glyph, "字体：渲染环境确实含中文字形（不是豆腐块）")
+    else:
+        # 明确记录跳过原因，不再假装通过
+        reason = ("非 Windows：TTC 字体在 pygame 上可能静默回退内置字体"
+                  if os.name != "nt" else "未找到任何 CJK 字体文件")
+        print(f"  [SKIP] 字体：{reason}，跳过字形检查")
 
     # 系统字体不可用时（Windows 注册表枚举异常等）仍要能取到字体，
     # 绝不能让字体初始化问题崩掉整个游戏。
