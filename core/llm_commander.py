@@ -369,6 +369,12 @@ class LLMCommander:
         self._worker: threading.Thread | None = None
         self._result: tuple[int, Directive] | None = None
         self._boot_failed = False
+        # v3.4.4：结果必须按「局世代 + turn」双重校验。原先只按 turn，
+        # 换局后两局 turn 都是 1，上一局的在途结果会被当成新局的决心。
+        self._generation: int = 0           # 每次 reset() 递增，标识新的一局
+        self._worker_gen: int = -1
+        self._worker_turn: int = -1
+        self._token: int = 0                # 每次 prefetch 递增；只有最新 token 的结果有效
 
     # ------------------------------------------------------------------ #
     @property
@@ -394,18 +400,29 @@ class LLMCommander:
         if not self.enabled or self._boot_failed:
             return False
         with self._lock:
-            if self._worker is not None and self._worker.is_alive():
-                return False
             turn = state.turn_count
+            gen = self._generation
+            worker = self._worker
+            # v3.4.4：只挡「同局同回合」的在途推理。旧回合的 worker 还在跑时
+            # 必须启动本回合推理，否则玩家提前结束回合会导致连续两回合降级。
+            if (worker is not None and worker.is_alive()
+                    and self._worker_gen == gen and self._worker_turn == turn):
+                return False
+            # 旧回合在途 worker 不 kill——它完成后会因身份不匹配自行丢弃结果
             system, user, ctx = build_prompt(state, side)
             schema = _schema_for(ctx)
+            self._worker_gen = gen
+            self._worker_turn = turn
+            self._token += 1
+            token = self._token
             self._worker = threading.Thread(
-                target=self._run, args=(turn, system, user, schema, ctx),
+                target=self._run, args=(token, gen, turn, system, user, schema, ctx),
                 name="llm-commander", daemon=True)
             self._worker.start()
             return True
 
-    def _run(self, turn: int, system: str, user: str, schema: dict, ctx: dict) -> None:
+    def _run(self, token: int, gen: int, turn: int, system: str, user: str,
+             schema: dict, ctx: dict) -> None:
         t0 = time.perf_counter()
         try:
             if not self.client.ready and not self.client.start():
@@ -423,21 +440,33 @@ class LLMCommander:
         self.last_ms = int((time.perf_counter() - t0) * 1000)
         self.calls += 1
         with self._lock:
-            self._result = (turn, directive)
+            # 只有最新 token、同世代、同回合的结果才有效。
+            # 换局后 reset() 递增 generation；提前结束回合后 prefetch 递增
+            # token——两种情况都会让在途的旧结果在这里被丢弃。
+            if token != self._token or gen != self._generation:
+                return
+            if self._worker_gen != gen or self._worker_turn != turn:
+                return
+            self._result = (gen, turn, directive)
 
     # ------------------------------------------------------------------ #
     def take(self, state: "GameState", side: Side, timeout: float = 0.8) -> Directive:
         """取本回合的决心；没有就返回中性决心（= 原有启发式行为）。"""
         turn = state.turn_count
+        gen = self._generation
         deadline = time.time() + max(0.0, timeout)
         while True:
             with self._lock:
                 got = self._result
-            if got is not None and got[0] == turn:
-                self.hits += 1
+            # v3.4.4：世代 + turn 双校验，过期结果直接清槽，不阻塞后续匹配
+            if got is not None:
+                if got[0] == gen and got[1] == turn:
+                    self.hits += 1
+                    with self._lock:
+                        self._result = None
+                    return got[2]
                 with self._lock:
                     self._result = None
-                return got[1]
             worker = self._worker
             alive = worker is not None and worker.is_alive()
             if not alive or time.time() >= deadline:
@@ -449,10 +478,18 @@ class LLMCommander:
         self.client.stop()
 
     def reset(self) -> None:
-        """换局/读档时清掉上一局的残留结果。"""
+        """换局/读档时清掉上一局的残留结果。
+
+        递增 generation 使在途 worker 的结果作废——仅清槽不够，
+        旧线程结束后仍会把上一局的决心写回来。
+        """
         with self._lock:
+            self._generation += 1
+            self._token += 1
             self._result = None
             self._worker = None
+            self._worker_gen = -1
+            self._worker_turn = -1
 
 
 __all__ = [

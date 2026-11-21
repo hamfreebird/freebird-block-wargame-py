@@ -81,7 +81,16 @@ def migrate_save(data: dict[str, Any]) -> list[str]:
     返回空列表表示存档本来就是当前版本、未做任何改动。版本高于当前程序
     或迁移链缺环时抛 :class:`SaveError`——猜结构比明确拒绝危险得多。
     """
-    raw = data.get("version", 0)
+    # v3.4.4：缺 version 与「真的是旧版本」要区分开。原先缺键按 0 处理，
+    # 再被当成 v5 迁移，把存档里已有的合法 rng 清成 None——同种子可重演
+    # 在读档边界被静默破坏。若结构已是当前版本（含合法 rng），直接读取。
+    if "version" not in data:
+        rng = data.get("rng")
+        if isinstance(rng, dict) and "internal" in rng:
+            data["version"] = SAVE_VERSION
+            return []
+        raise SaveError("存档缺少版本号，且没有可识别的随机流字段")
+    raw = data["version"]
     try:
         version = int(raw)
     except (TypeError, ValueError):

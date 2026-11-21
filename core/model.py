@@ -464,9 +464,14 @@ class Unit:
         self.fired = self.shots_left <= 0
 
     def apply_damage(self, amount: float) -> float:
-        self.hp = max(0.0, self.hp - amount)
-        if self.hp <= 0:
+        # v3.4.4：浮点残值（如 0.1+0.2-0.3=5.55e-17）会让单位
+        # 「活着但 hp≈0」——仍占格、仍计为存活、需额外一击。
+        # 伤害达到（或几乎达到）当前 hp 时直接判毁。
+        if amount >= self.hp - 1e-9:
+            self.hp = 0.0
             self.destroyed = True
+        else:
+            self.hp = max(0.0, self.hp - amount)
         return amount
 
     def to_dict(self) -> dict[str, Any]:

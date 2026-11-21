@@ -472,7 +472,7 @@
  "ui.replay.finished": "Beendet",
  "ui.replay.fire_fmt": "Feuer → Einheit %s",
  "ui.replay.fortify": "Befestigen",
- "ui.replay.hint": "Leertaste Pause · ←→ Tempo · End vorspulen · Esc beenden",
+ "ui.replay.hint": "Leertaste Pause · ←→ Tempo · Ende Sprung · Pos1/R Neustart · Balken klicken · Esc Ende",
  "ui.replay.hold": "Halten",
  "ui.replay.jam": "Störung umschalten",
  "ui.replay.move_fmt": "Bewegung → (%s, %s)",

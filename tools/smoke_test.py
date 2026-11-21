@@ -66,6 +66,10 @@ def click(app: App, label: str) -> bool:
 
 
 def main() -> int:
+    # v3.4.4：本地实测常用官方 pygame，CI 装 pygame-ce。日志里打印实际
+    # 包名/版本，避免两个实现的行为差异被埋在「全部通过」里。
+    print(f"渲染环境：pygame {pygame.version.ver} / "
+          f"{getattr(pygame.version, 'variant', 'unknown')}")
     random.seed(20240101)
     app = App()
     app.draw()
@@ -1047,6 +1051,16 @@ def main() -> int:
     except AttributeError:
         _same = _s_mono.get_size() == _s_plain.get_size()
     check(_same, "字体：含中文的等宽文本自动降级为中文字体")
+
+    # v3.4.4：上一轮只查 mono == plain，但若 CI runner 没有 CJK 字体，
+    # 两者都会用内置字体渲染成方框仍相等——假绿。这里再查一次
+    # 「中文字符与豆腐块像素不同」，至少能在无字体时给出明确失败。
+    _tofu = _T2.render_text("\ue000", 16, (255, 255, 255))
+    _han = _T2.render_text("卒", 16, (255, 255, 255))
+    _has_glyph = (_tofu.get_size() != _han.get_size()
+                  or pygame.image.tobytes(_tofu, "RGB")
+                  != pygame.image.tobytes(_han, "RGB"))
+    check(_has_glyph, "字体：渲染环境确实含中文字形（不是豆腐块）")
 
     # 系统字体不可用时（Windows 注册表枚举异常等）仍要能取到字体，
     # 绝不能让字体初始化问题崩掉整个游戏。

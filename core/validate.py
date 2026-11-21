@@ -142,7 +142,27 @@ def validate_scenario(source) -> ValidationReport:
     _check_balance(rep, scenario)
     _check_events(rep, scenario)
     _check_meta(rep, scenario)
+    _check_facilities(rep, scenario)
     return rep
+
+
+def _check_facilities(rep: ValidationReport, scenario) -> None:
+    """港口必须邻接水域，否则是永不生效的死设施（v3.4.4）。
+
+    只报提示不报错——这是关卡设计问题，改坐标会改变补给与平衡，
+    应由关卡作者决定，而不是被校验器强制改数据。
+    """
+    md = scenario.map
+    for t in md.iter_tiles():
+        if t.facility is not Facility.PORT:
+            continue
+        near_water = any(
+            0 <= t.x + dx < md.width and 0 <= t.y + dy < md.height
+            and md.at(t.x + dx, t.y + dy).terrain is Terrain.WATER
+            for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)))
+        if not near_water:
+            rep.add("warn", "port_inland",
+                    f"港口 ({t.x},{t.y}) 不邻接水域，无法补给舰艇", t.x, t.y)
 
 
 def _check_units(rep: ValidationReport, scenario) -> None:

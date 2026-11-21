@@ -34,6 +34,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # v3.4.4：文档承诺 macOS 支持（配置路径 / Apple 字体候选），
+        # 但矩阵此前只有 2 OS。补一组 macOS 3.12 做最低限度验证。
+        include:
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
         with:

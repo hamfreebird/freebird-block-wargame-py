@@ -472,7 +472,7 @@
  "ui.replay.finished": "Terminé",
  "ui.replay.fire_fmt": "Tir → unité %s",
  "ui.replay.fortify": "Fortifier",
- "ui.replay.hint": "Espace pause · ←→ vitesse · End sauter · Esc quitter",
+ "ui.replay.hint": "Espace pause · ←→ vitesse · Fin saut · Début/R recommencer · clic barre · Esc quitter",
  "ui.replay.hold": "Tenir",
  "ui.replay.jam": "Basculer brouillage",
  "ui.replay.move_fmt": "Déplacement → (%s, %s)",

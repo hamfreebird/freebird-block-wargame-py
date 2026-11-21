@@ -219,7 +219,7 @@ def shot_profile(state: "GameState", attacker: Unit, target: Unit, weapon: Weapo
         ent = target.entrench * (0.10 + target.template.entrench_bonus)
         # 野战工事（堑壕/掩体/雷场）：归属方在阵地上额外减伤
         fort = tgt_tile.fort_cover_for(target.side) if tgt_tile else 0.0
-        mitigation = 1.0 - min(0.90, target.template.armor * 0.85 + cover + ent + fort)
+        mitigation = 1.0 - min(0.90, max(0.0, target.template.armor * 0.85 + cover + ent + fort))
         dmg = weapon.damage * mitigation
         # 火力准备：射界内预先标定的射击毁伤更高
         if prep_dmg != 1.0:

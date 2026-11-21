@@ -96,6 +96,43 @@ class ReplayPlayer:
             self.step()
             guard += 1
 
+    def reset(self) -> None:
+        """回到开头重播（v3.4.4）。"""
+        self._rewind_to(0)
+
+    def seek(self, index: int) -> None:
+        """跳到指定命令步（v3.4.4）。命令流只能从头重演。"""
+        self._rewind_to(max(0, min(int(index), self.total)))
+
+    def _rewind_to(self, index: int) -> None:
+        """重建初始状态并重放前 index 条命令。"""
+        if self.match is not None:
+            replay = self.replay
+            self.match = SpectatorMatch(self.scenario, seed=replay.seed,
+                                        player_side=Side(replay.player_side))
+            self.state = self.match.state
+            self._last = {}
+            for _ in range(index):
+                info = self.match.step()
+                if info is None:
+                    break
+                self._last = info
+        else:
+            replay = self.replay
+            self.state = GameState(self.scenario, Side(replay.player_side),
+                                   seed=replay.seed)
+            self._last = {}
+            for cmd in list(self.commands)[:index]:
+                try:
+                    apply_command(self.state, cmd)
+                except Exception:
+                    self.failed += 1
+        self.index = index
+        self.executed = index
+        self.acc = 0.0
+        self.finished = False
+        self.paused = False
+
     # -- 状态 -------------------------------------------------------------
     @property
     def total(self) -> int:

@@ -462,6 +462,27 @@ def test_mod_hooks() -> None:
           f"API 版本保持 1.x 兼容（{mods_mod.API_VERSION}）")
 
 
+def test_elimination_idempotent() -> None:
+    """双方全歼时胜负声明幂等、不重复播报（v3.4.4）。"""
+    print("\n--- 全歼判定幂等 ---")
+    st = GameState(load_scenario(MAP, ARMORY), Side.BLUE)
+    blues = [u for u in st.units if u.side is Side.BLUE]
+    reds = [u for u in st.units if u.side is Side.RED]
+    for u in blues[:-1] + reds[:-1]:
+        u.destroyed = True
+    for u in (blues[-1], reds[-1]):
+        u.destroyed = True
+        st.kill_unit(u, "test")
+    winner_after_first = st.winner
+    st.kill_unit(blues[-1], "test-again")       # 重复登记必须被挡住
+    check(st.winner == winner_after_first,
+          "重复阵亡登记不改变胜负结论")
+    victory = [e.text for e in st.log if "作战结束" in e.text]
+    check(len(victory) == 1, f"全歼只播报一次胜利（实际 {len(victory)} 条）")
+    # 注意：胜负已定后第二次击毁被早退挡住，这是有意的——对局结束后
+    # 不再记账；「每个阵亡只计一次」由既有 test_kill_paths 在正常对局中守。
+
+
 def main() -> int:
     print("事件总线自检（v3.3）")
     test_catalogue()
@@ -471,6 +492,7 @@ def main() -> int:
     test_kill_paths()
     test_other_events()
     test_mod_hooks()
+    test_elimination_idempotent()
 
     print("\n" + "=" * 46)
     if FAILS:

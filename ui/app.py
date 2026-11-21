@@ -831,6 +831,9 @@ class App:
         self.briefing = None
         # 玩家命令流——回放用（想定 + 种子 + 命令 = 可完整重演的一局）
         self.cmd_log = CommandLog()
+        # v3.4.4：关卡切换也是换局，在途决心作废
+        if self.commander is not None:
+            self.commander.reset()
         # 进入本关前的进度快照——失败重试时恢复到这个点（v3.4.3）
         self._campaign_entry_snapshot = (dict(prog.vp), list(prog.carryover))
         self.campaign_retry = False
@@ -953,10 +956,12 @@ class App:
             T.draw_text(s, tr("ui.campaign_empty"), (r.x + T.m(22), r.y + T.m(86)),
                         12, T.TEXT_DIM)
         y = r.y + T.m(76)
-        for c in camps:
+        for i, c in enumerate(camps):
             prog = load_progress(self._campaign_root(), c.id)
             row = pygame.Rect(r.x + T.m(16), y, r.width - T.m(32), row_h)
-            hover = row.collidepoint(self.mouse)
+            # v3.4.4：键盘选中项也要高亮，否则 ↑↓ 是盲操作
+            hover = row.collidepoint(self.mouse) or (
+                i == getattr(self, "_campaign_sel", 0))
             pygame.draw.rect(s, T.PANEL_HI if hover else T.PANEL_SUNK, row, border_radius=4)
             pygame.draw.rect(s, T.PURPLE if hover else T.BORDER, row, 1, border_radius=4)
             T.draw_text(s, T.ellipsize(c.name, 15, row.width - T.m(180), bold=True),
@@ -980,6 +985,21 @@ class App:
                             anchor="topright")
             self._campaign_rows.append((row, c))
             y += step
+
+    def _cycle_campaign_selection(self, step: int) -> None:
+        """战役浮层的键盘上下选择（v3.4.4）。"""
+        rows = getattr(self, "_campaign_rows", [])
+        if rows:
+            self._campaign_sel = (getattr(self, "_campaign_sel", 0) + step) % len(rows)
+
+    def _activate_campaign_selection(self) -> None:
+        """战役浮层的键盘确认（v3.4.4）。"""
+        rows = getattr(self, "_campaign_rows", [])
+        if not rows:
+            return
+        i = min(getattr(self, "_campaign_sel", 0), len(rows) - 1)
+        self.show_campaign_menu = False
+        self.start_campaign(rows[i][1])
 
     def _click_campaign_menu(self, pos: tuple[int, int]) -> None:
         for row, c in getattr(self, "_campaign_rows", []):
@@ -1585,6 +1605,10 @@ class App:
             yy += 20
         if self.error:
             T.draw_text(s, self.error, (60, self.h - 44), 12, T.RED)
+        # v3.4.4：主菜单原先只画 error、不画 status。导入失败、回放读取失败、
+        # 战役进度异常等反馈全走 set_status()，在菜单态完全不可见。
+        if self.status_t > 0 and self.status:
+            T.draw_text(s, self.status, (60, self.h - 66), 12, T.TEXT)
 
         # 导入 / 回放浮层（模态，画在最上层）
         # 两个浮层都要画——漏掉任何一个都会让对应按钮「点了没反应」。
@@ -1618,6 +1642,10 @@ class App:
         self.cursor_visible = False       # 见战役入口处的说明：光标不跨局保留
         self.show_menu = False
         self.show_settings = False
+        # v3.4.4：帮助浮层不能跨局残留——旧代码里 over 画面打开帮助后
+        # 返回菜单、再开新局，帮助会意外弹出来。
+        self.show_help = False
+        self.show_campaign_menu = False
         self.ai_timer = 0.0
         self.status = ""
         # 教学引导：仅当想定真的带教学脚本时才启用。
@@ -1635,6 +1663,10 @@ class App:
         self.show_briefing = True
         # 大模型这时开始加载（约 5 秒）——玩家读简报的时间正好用来起服务
         self._llm_noted = ""
+        # v3.4.4：换局必须让在途的大模型推理作废，否则上一局的决心
+        # 会被误当成新局的（两局 turn 都是 1）。
+        if self.commander is not None:
+            self.commander.reset()
         self._prefetch_directive()
         self._note_mods()
 
@@ -1701,6 +1733,12 @@ class App:
             return
         self.state = st
         self.side = st.player_side
+        # v3.4.4：读档是新命令流的起点。原先不清 cmd_log，读档前被放弃
+        # 时间线的命令会混进导出回放，重演结果与实际对局不一致。
+        self.cmd_log = CommandLog()
+        # v3.4.4：over 存档读回必须直接进结算。原先 mode=game 且 phase=player，
+        # end_turn 被 over 挡住、AI 因 phase≠ai 不推进、_game_over 又只在
+        # end_turn/AI 步进后调用——玩家得到一张既不能操作也不结算的棋盘。
         self.mode = "game"
         self.show_menu = False
         self.show_help = False
@@ -1727,7 +1765,13 @@ class App:
         else:
             self.set_status(msg)
         self._llm_noted = ""
-        self._prefetch_directive()
+        if self.commander is not None:
+            self.commander.reset()
+        if st.over:
+            # over 存档不启动新的预取，直接进入结算画面
+            self._game_over()
+        else:
+            self._prefetch_directive()
         self._note_mods()
 
     def _layout_game(self) -> None:
@@ -2186,6 +2230,13 @@ class App:
             if self.log_drag and self.mapview:
                 self.mapview.pan(e.rel[0], e.rel[1])
         elif e.type == pygame.MOUSEWHEEL:
+            # v3.4.4：设置面板是模态，滚轮必须转发给它（键位列表滚动）。
+            # 原先滚轮穿透到下层：战斗中缩放地图、菜单中滚动想定列表。
+            if self.show_settings and self.settings_panel is not None:
+                self.settings_panel.handle_event(e)
+                return
+            if self.show_briefing:
+                return
             if self.show_help:
                 # 帮助面板是模态：滚轮只滚它，不再缩放下面的地图
                 self.help_scroll = max(0, self.help_scroll - e.y * 48)
@@ -2218,6 +2269,26 @@ class App:
                     self.settings_panel.close_requested = False
                     self.close_settings()
                 return
+
+        # v3.4.4：最上层模态统一闸门。简报在所有面板之后绘制（draw() 末尾），
+        # 视觉上压在系统菜单/帮助之上，但旧代码的 _on_key 让 F10/F1 穿透打开
+        # 隐形面板，Esc 关掉的是被遮住那层，玩家看来就是「按了没反应」。
+        if self.mode != "menu" and self.show_briefing and self.briefing is not None:
+            if k in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_KP_ENTER,
+                     pygame.K_SPACE):
+                self.show_briefing = False
+                self.briefing = None
+            return
+        # 战役选择浮层铺了全屏 dim，必须是模态：吞掉所有按键。
+        # 旧代码里回车直接开局且浮层残留，返回菜单后自动重现。
+        if self.mode == "menu" and self.show_campaign_menu:
+            if k == pygame.K_ESCAPE:
+                self.show_campaign_menu = False
+            elif k in (pygame.K_UP, pygame.K_DOWN):
+                self._cycle_campaign_selection(-1 if k == pygame.K_UP else 1)
+            elif k in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._activate_campaign_selection()
+            return
 
         # v3.4.2：缩放原先只有滚轮，纯键盘用户无法调整视野。
         # +/= 放大、- 缩小，锚点取视口中心（与滚轮以鼠标为锚点不同，
@@ -2271,6 +2342,10 @@ class App:
                 p.speed = max(0.25, p.speed / 1.5)
             elif k == pygame.K_END:
                 p.skip_to_end()
+            elif k == pygame.K_r:
+                p.reset()               # v3.4.4：播完后可重播
+            elif k == pygame.K_HOME:
+                p.seek(0)
             return
 
         if self.mode == "menu":
@@ -2447,6 +2522,35 @@ class App:
                 if getattr(self.settings_panel, "close_requested", False):
                     self.settings_panel.close_requested = False
                     self.close_settings()
+            return
+        # v3.4.4：帮助 / 系统菜单 / 简报是模态，必须最先拦截。
+        # 原先 over 画面的鼠标分支排在 help 之前，帮助开着时点击会穿透。
+        # 菜单态有自己的浮层处理链（导入/回放/战役），不能在这里吞掉。
+        if self.mode != "menu" and self.show_help:
+            return                      # 帮助模态：吞掉点击，不改变状态
+        if self.mode != "menu" and self.show_menu:
+            if e.button == 1:
+                for rect, action, arg in self.menu_rects:
+                    if rect.collidepoint(pos):
+                        self._sys_menu_activate(action, arg)
+                        break
+            return
+        if self.mode != "menu" and self.show_briefing and self.briefing is not None:
+            from ui.briefing import briefing_button_rect
+            if e.button == 1 and briefing_button_rect((self.w, self.h)).collidepoint(pos):
+                self.show_briefing = False
+                self.briefing = None
+            return
+        # v3.4.4：回放只读。观战有「左键什么都不做」的分支，回放漏了——
+        # 点地图会选单位/开火、点侧栏会触发行动，直接改写正在重演的战局。
+        # 唯一例外是控制条的进度条（点选跳转）与重播按钮。
+        if self.mode == "replay":
+            if e.button == 1:
+                bar = getattr(self, "_replay_bar_rect", None)
+                p = self.replay_player
+                if bar is not None and p is not None and bar.collidepoint(pos):
+                    frac = (pos[0] - bar.x) / max(1, bar.width)
+                    p.seek(int(max(0.0, min(1.0, frac)) * p.total))
             return
         if self.mode == "menu":
             if e.button == 1:
@@ -2666,6 +2770,10 @@ class App:
     # 更新
     # ================================================================== #
     def update(self, dt: float) -> None:
+        # v3.4.4：菜单/结算等模式也要让状态提示过期。原先 update 在这些
+        # 模式直接 return，菜单态显示 status 后永远不会消失。
+        if self.mode not in ("game", "spectate", "replay") and self.status_t > 0:
+            self.status_t -= dt
         if self.mode == "replay":
             p = self.replay_player
             if p is not None:
@@ -2707,15 +2815,22 @@ class App:
         if self.mode != "game" or self.state is None:
             return
         st = self.state
-        st.tick_fx(dt)
+        # v3.4.4：模态浮层期间冻结对局时钟——AI、动画与提示 TTL 都不走。
+        # 原先玩家在设置里调键位是 AI 在背后跑完一整个回合；读完帮助后
+        # 状态提示也已过期。hover 与教学轮询仍照常，避免界面僵死。
+        ui_paused = bool(self.show_settings or self.show_help
+                         or self.show_briefing or self.show_menu
+                         or self.campaign_pending or st.over)
+        if not ui_paused:
+            st.tick_fx(dt)
         # 消费音效信号队列
         if st.sfx_events:
             for name in st.sfx_events[:6]:
                 self._sfx(name)
             del st.sfx_events[:]
-        if self.status_t > 0:
+        if self.status_t > 0 and not ui_paused:
             self.status_t -= dt
-        if self.mapview:
+        if self.mapview and not ui_paused:
             keys = pygame.key.get_pressed()
             sp = 420 * dt
             if keys[pygame.K_LEFT] and not keys[pygame.K_LSHIFT]:
@@ -2727,7 +2842,7 @@ class App:
             if keys[pygame.K_DOWN]:
                 self.mapview.pan(0, -sp)
 
-        if st.phase == "ai":
+        if st.phase == "ai" and not ui_paused:
             self.ai_timer += dt * (6.0 if (self.fast or pygame.key.get_pressed()[pygame.K_SPACE]) else 1.0)
             if self.ai_timer >= self.ai_delay:
                 self.ai_timer = 0.0
@@ -2854,6 +2969,7 @@ class App:
         pygame.draw.rect(s, T.BORDER, pygame.Rect(0, r.y, w, 1))
         # 进度条
         bar = pygame.Rect(r.x + 16, r.y + 26, w - 320, 8)
+        self._replay_bar_rect = bar      # v3.4.4：供点击跳转使用
         pygame.draw.rect(s, T.PANEL, bar, border_radius=4)
         if bar.width > 0:
             done = pygame.Rect(bar.x, bar.y, int(bar.width * p.progress), bar.height)
@@ -4362,6 +4478,11 @@ class App:
         if self.debrief is not None:
             self._debrief_btn = debrief_button_rect((self.w, self.h))
             draw_debrief(s, self.debrief, self.mouse, self._debrief_btn)
+            # v3.4.4：战役失败提示原先放在 status 通道，被 over/debrief
+            # 两层全屏 dim 盖住——玩家只能靠按钮文案猜是哪关失败。
+            if self.campaign_retry and self.status:
+                T.draw_text(s, self.status, (self.w // 2, self.h - 118), 13,
+                            T.AMBER, anchor="center")
             return
         r = pygame.Rect(self.w // 2 - 260, self.h // 2 - 190, 520, 380)
         T.panel(s, r, T.PANEL, T.BORDER_HI, radius=6)

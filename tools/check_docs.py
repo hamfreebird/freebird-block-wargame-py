@@ -45,8 +45,14 @@ def ok(msg: str) -> None:
 
 
 def _read(name: str) -> str:
-    with open(os.path.join(ROOT, name), encoding="utf-8") as f:
-        return f.read()
+    # v3.4.4：文档缺失要计入 FAIL，不能抛未捕获的 FileNotFoundError。
+    # 对照 check_sdk.py 有 isfile 保护并打印 [FAIL]。
+    try:
+        with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+            return f.read()
+    except OSError as exc:
+        fail(f"找不到或无法读取 {name}：{exc.strerror or exc}")
+        return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -247,6 +253,15 @@ def check_versions() -> None:
     print("--- 版本号自洽 ---")
     readme = _read("README.md")
     audit = _read("AUDIT.md")
+    guide = _read("GAME_GUIDE.md")
+
+    # v3.4.4：GAME_GUIDE 抬头版本此前漏检——当前值正确，但改错不会被发现。
+    mg = re.search(r"版本：\d{4}-\d{2} · v(\d+\.\d+\.\d+)", guide)
+    if not mg:
+        fail("GAME_GUIDE.md 抬头找不到「版本：YYYY-MM · vX.Y.Z」")
+        guide_ver = None
+    else:
+        guide_ver = mg.group(1)
 
     # README 徽章
     m = re.search(r"release-v(\d+\.\d+\.\d+)-", readme)
@@ -270,6 +285,11 @@ def check_versions() -> None:
             ok(f"README 徽章与 AUDIT 基线一致（v{badge}）")
         else:
             fail(f"版本号不一致：README 徽章 v{badge} vs AUDIT 基线 v{base}")
+    if guide_ver and base:
+        if guide_ver == base:
+            ok(f"GAME_GUIDE 抬头与 AUDIT 基线一致（v{guide_ver}）")
+        else:
+            fail(f"版本号不一致：GAME_GUIDE 抬头 v{guide_ver} vs AUDIT 基线 v{base}")
 
     # git tag
     try:

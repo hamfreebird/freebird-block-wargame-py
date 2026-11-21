@@ -472,7 +472,7 @@
  "ui.replay.finished": "再生終了",
  "ui.replay.fire_fmt": "射撃 → 部隊 %s",
  "ui.replay.fortify": "陣地構築",
- "ui.replay.hint": "スペース 一時停止 · ←→ 速度 · End 早送り · Esc 終了",
+ "ui.replay.hint": "空格 一時停止 · ←→ 速度 · End 早送り · Home/R 最初から · バークリック · Esc 終了",
  "ui.replay.hold": "待機",
  "ui.replay.jam": "妨害切替",
  "ui.replay.move_fmt": "移動 → (%s, %s)",
