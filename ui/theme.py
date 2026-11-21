@@ -549,6 +549,8 @@ _FONT_CANDIDATES_CN = [
     r"C:\Windows\Fonts\Deng.ttf",
     r"C:\Windows\Fonts\simsun.ttc",
     "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/Library/Fonts/Arial Unicode.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
 ]

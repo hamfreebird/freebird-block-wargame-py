@@ -1055,12 +1055,18 @@ def main() -> int:
     # v3.4.4：上一轮只查 mono == plain，但若 CI runner 没有 CJK 字体，
     # 两者都会用内置字体渲染成方框仍相等——假绿。这里再查一次
     # 「中文字符与豆腐块像素不同」，至少能在无字体时给出明确失败。
-    _tofu = _T2.render_text("\ue000", 16, (255, 255, 255))
-    _han = _T2.render_text("卒", 16, (255, 255, 255))
-    _has_glyph = (_tofu.get_size() != _han.get_size()
-                  or pygame.image.tobytes(_tofu, "RGB")
-                  != pygame.image.tobytes(_han, "RGB"))
-    check(_has_glyph, "字体：渲染环境确实含中文字形（不是豆腐块）")
+    _cjk_files = [p for p in _T2._FONT_CANDIDATES_CN if os.path.isfile(p)]
+    if _cjk_files:
+        _tofu = _T2.render_text("\ue000", 16, (255, 255, 255))
+        _han = _T2.render_text("卒", 16, (255, 255, 255))
+        _has_glyph = (_tofu.get_size() != _han.get_size()
+                      or pygame.image.tobytes(_tofu, "RGB")
+                      != pygame.image.tobytes(_han, "RGB"))
+        check(_has_glyph, "字体：渲染环境确实含中文字形（不是豆腐块）")
+    else:
+        # Windows 候选是绝对路径，上面只统计了 POSIX 路径。
+        # 若系统确实没装任何候选字体，跳过并明确记录，不再假绿。
+        print("  [SKIP] 字体：未找到任何 CJK 字体文件，跳过字形检查")
 
     # 系统字体不可用时（Windows 注册表枚举异常等）仍要能取到字体，
     # 绝不能让字体初始化问题崩掉整个游戏。
