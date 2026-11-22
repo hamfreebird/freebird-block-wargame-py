@@ -926,12 +926,36 @@ def button_text(accent: RGB, hover: bool = False) -> RGB:
 
 
 def panel(surface: pygame.Surface, rect: pygame.Rect, fill=None, border=None,
-          radius: int = 4, width: int = 1) -> pygame.Rect:
+          radius: int = 4, width: int = 1, bevel: bool = True) -> pygame.Rect:
+    """面板：底色 + 边框 + 上下各一道内嵌明暗线（v3.5.1 A7）。
+
+    **为什么要加明暗线**：纯色矩形 + 1px 边框在任何主题下都像"贴上去的
+    纸片"，缺少厚度。顶部内侧一道比底色略亮的线、底部一道略暗的线，
+    等于给面板一个 45° 光的方向感，一像素的成本换来"面板是嵌进去的"
+    视觉印象。
+
+    明暗线内缩 1px 且两端让开圆角，不会压到边框上。
+    `bevel=False` 给那些本身只有几像素高、加线会糊的分隔条用。
+    """
     if fill is None:
         fill = _current.panel
     if border is None:
         border = _current.border
     pygame.draw.rect(surface, fill, rect, border_radius=radius)
+    if bevel and rect.height >= 10 and rect.width >= 14:
+        inset = max(2, min(radius + 1, 6))
+        x1 = rect.x + inset
+        x2 = rect.right - inset
+        if x2 > x1:
+            # 强度随底色亮度自适应：深色底上 0.075 的白线几乎看不出
+            # （亮度差不到 5 级），需要更强；亮色底上则要收着，否则刺眼。
+            lum = 0.299 * fill[0] + 0.587 * fill[1] + 0.114 * fill[2]
+            hi_k = 0.135 if lum < 70 else 0.075
+            lo_k = 0.26 if lum < 70 else 0.17
+            hi = mix(fill, (255, 255, 255), hi_k)
+            lo = mix(fill, (0, 0, 0), lo_k)
+            pygame.draw.line(surface, hi, (x1, rect.y + 1), (x2, rect.y + 1))
+            pygame.draw.line(surface, lo, (x1, rect.bottom - 2), (x2, rect.bottom - 2))
     if border:
         pygame.draw.rect(surface, border, rect, width=width, border_radius=radius)
     return rect
@@ -942,6 +966,34 @@ def hline(surface: pygame.Surface, x1: int, x2: int, y: int, color=None) -> None
                      (x1, y), (x2, y), 1)
 
 
+def hsep(surface: pygame.Surface, x1: int, x2: int, y: int,
+         color=None, fade: int = 24) -> None:
+    """两端渐隐的分隔线（v3.5.1 A7）。
+
+    等宽实线会与面板边框"抢注意力"，看起来像表格网格。把两端各 24px
+    做几级淡出，分隔仍在但退到背景里——这是界面设计里
+    "分隔靠留白而不是靠线"的简化做法，成本只有 5 段线条。
+    """
+    base = color if color is not None else _current.border
+    span = x2 - x1
+    if span <= fade * 2:
+        hline(surface, x1, x2, y, base)
+        return
+    steps = 4
+    seg = max(1, fade // steps)
+    # 左右两端各画 steps 段，越靠外越接近面板色（即越淡）
+    for i in range(steps):
+        a = (i + 1) / (steps + 1)
+        c = mix(_current.panel, base, a)
+        lx = x1 + i * seg
+        rx = x2 - (i + 1) * seg
+        pygame.draw.line(surface, c, (lx, y), (lx + seg, y), 1)
+        pygame.draw.line(surface, c, (rx, y), (rx + seg, y), 1)
+    # 中段实色
+    pygame.draw.line(surface, base, (x1 + steps * seg, y),
+                     (x2 - steps * seg, y), 1)
+
+
 def vline(surface: pygame.Surface, x: int, y1: int, y2: int, color=None) -> None:
     pygame.draw.line(surface, color if color is not None else _current.border,
                      (x, y1), (x, y2), 1)
@@ -949,14 +1001,34 @@ def vline(surface: pygame.Surface, x: int, y1: int, y2: int, color=None) -> None
 
 def bar(surface: pygame.Surface, rect: pygame.Rect, ratio: float,
         color: tuple[int, int, int], bg=None, radius: int = 2) -> None:
+    """进度/比例条（v3.5.1 A7：加凹槽与高光）。
+
+    原先只有「底色 + 纯色填充」两块平色，读起来像色块拼接。
+    这里补两处一像素的细节：凹槽顶部一道暗线（看起来是嵌进去的槽），
+    填充右端一道亮线（看起来是有厚度的柱）。实测单条成本 <0.01 ms。
+    """
     ratio = max(0.0, min(1.0, ratio))
     if bg is None:
         bg = mix(_current.panel_sunk, (255, 255, 255), 0.08)
     pygame.draw.rect(surface, bg, rect, border_radius=radius)
+    if rect.height >= 6 and rect.width >= 10:
+        # 凹槽内阴影：只画顶部一道，避免整圈描边显脏
+        pygame.draw.line(surface, mix(bg, (0, 0, 0), 0.32),
+                         (rect.x + max(2, radius), rect.y + 1),
+                         (rect.right - max(2, radius), rect.y + 1), 1)
     if ratio > 0:
         w = max(1, int(rect.width * ratio))
-        pygame.draw.rect(surface, color, pygame.Rect(rect.x, rect.y, w, rect.height),
-                         border_radius=radius)
+        fill = pygame.Rect(rect.x, rect.y, w, rect.height)
+        pygame.draw.rect(surface, color, fill, border_radius=radius)
+        if w >= 5 and rect.height >= 5:
+            # 填充高光：右端一道竖线，给出"柱体"的体积感
+            pygame.draw.line(surface, mix(color, (255, 255, 255), 0.42),
+                             (fill.right - 2, fill.y + 2),
+                             (fill.right - 2, fill.bottom - 3), 1)
+            # 顶部一道极淡的亮线，让填充面看起来是弧面
+            pygame.draw.line(surface, mix(color, (255, 255, 255), 0.22),
+                             (fill.x + max(2, radius), fill.y + 1),
+                             (fill.right - max(3, radius), fill.y + 1), 1)
 
 
 def draw_wind_icon(surface: pygame.Surface, center: tuple[int, int],

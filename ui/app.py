@@ -949,7 +949,7 @@ class App:
                     T.TEXT, bold=True)
         T.draw_text(s, tr("ui.campaign_desc"),
                     (r.x + T.m(22), r.y + T.m(42)), 11, T.TEXT_FAINT)
-        T.hline(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(64), T.BORDER)
+        T.hsep(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(64), T.BORDER)
 
         self._campaign_rows: list[tuple[pygame.Rect, CampaignDef]] = []
         if not camps:
@@ -3141,7 +3141,8 @@ class App:
                     T.TEXT, bold=True)
         T.draw_text(s, tr("ui.quick_save_hint"), (r.right - T.m(22), r.y + T.m(20)),
                     T.FS_SMALL, T.TEXT_FAINT, anchor="topright")
-        T.hline(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(48), T.BORDER)
+        # v3.5.1 A7：标题与内容之间用两端渐隐的分隔线，避免与面板边框抢注意力
+        T.hsep(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(48), T.BORDER)
 
         self.menu_rects = []
         y = r.y + T.m(58)

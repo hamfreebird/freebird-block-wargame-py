@@ -2,12 +2,12 @@
 
 **要守住的性质**：
 
-1. **地形材质真实存在**——纹理接错、振幅归零、取样越界，都会让地形
-   退回纯色块。用"地块区域的亮度标准差"作为客观指标：纯色块的标准差
-   接近 0，有材质时至少两位数。这比截图比对稳健——截图会因平台字体、
-   GL 驱动差异误报，而色差统计只看我们自己画的像素。
-2. **四套主题都能带材质渲染**——主题是运行时切换的，某套主题的
-   地形色若与纹理冲突（比如亮色主题下纹理对比被冲淡），必须能发现。
+1. **地形明暗仍然分层**——v3.5.1 起地形回到纯色块（贴图观感不达标，
+   已按实测反馈回退），但海拔明度与坡向明暗必须仍在，否则地形会退化成
+   一张平坦的单色图。用"地块区域的亮度标准差"作客观指标：完全平铺的
+   单色标准差接近 0，有起伏时在两位数。
+2. **四套主题都能正常渲染**——主题运行时切换，某套主题的令牌若缺失或
+   冲突必须能发现。
 3. **单位立体效果只在够大时启用**——20px 以下加描边会糊成一团，
    这是刻意设的门槛，需要防止后人误删。
 4. **纹理缓存只生成一次**——重复生成会让开局卡顿。
@@ -40,7 +40,6 @@ pygame.display.set_mode((64, 64))
 from core.engine import GameState  # noqa: E402
 from core.enums import Side, Terrain, UnitClass  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
-from ui import terrain_tex as TEX  # noqa: E402
 from ui import theme as T  # noqa: E402
 from ui.mapview import MapView  # noqa: E402
 
@@ -74,15 +73,9 @@ def _luma_stats(surf: pygame.Surface, rect: pygame.Rect) -> tuple[float, float]:
 
 def test_texture_fields() -> None:
     print("\n--- 纹理生成 ---")
-    texs = TEX.textures()
-    check(len(texs) == len(list(Terrain)), f"九种地形都有纹理（{len(texs)}）")
-    for t, tex in texs.items():
-        vals = [pygame.image.tobytes(tex, "RGB")[i] for i in range(0, tex.get_width() * tex.get_height() * 3, 3 * 11)]
-        spread = max(vals) - min(vals)
-        check(spread >= 20, f"{t.value} 纹理有足够对比度（{spread} 级）")
-    light, dark = next(iter(TEX.offsets().values()))
-    check(light.get_width() == TEX.TEX_SIZE * 2,
-          "偏移层已平铺 2×2（防止取样越界）")
+    # 地形已回退为纯色块：只校验九种地形都有配色，不再校验纹理
+    colors = T.TERRAIN_COLORS
+    check(len(colors) == len(list(Terrain)), f"九种地形都有配色（{len(colors)}）")
 
 
 def test_terrain_has_material() -> None:
@@ -97,8 +90,9 @@ def test_terrain_has_material() -> None:
         mv.tile = 26
         mv.draw(surf)
         _, sd = _luma_stats(surf, pygame.Rect(60, 60, 300, 300))
-        # 纯色块的标准差通常 < 3；带材质应在 6 以上
-        check(sd >= 6.0, f"{tid}：地形区域有材质纹理（标准差 {sd:.1f}）")
+        # 海拔明度 + 坡向明暗 + 装饰仍在时标准差 > 4；
+        # 完全平铺的单色图会接近 0
+        check(sd >= 4.0, f"{tid}：地形仍有明暗层次（标准差 {sd:.1f}）")
     T.set_theme("tactical")
 
 
@@ -120,20 +114,17 @@ def test_unit_icon_stages() -> None:
           "26px 图标带 2px 描边留白（30 = 26 + 4）")
 
 
-def test_texture_cache() -> None:
-    print("\n--- 纹理缓存 ---")
-    TEX._TEX_SIZE_CACHE = None
-    TEX._TEXTURES.clear()
-    TEX._OFFSETS.clear()
-    import time
-    t0 = time.perf_counter()
-    TEX.offsets()
-    first = (time.perf_counter() - t0) * 1000
-    t0 = time.perf_counter()
-    TEX.offsets()
-    again = (time.perf_counter() - t0) * 1000
-    check(again < 1.0, f"二次取用命中缓存（{again:.2f} ms，首次 {first:.0f} ms）")
-    check(first < 600, f"首次生成在可接受范围（{first:.0f} ms < 600）")
+def test_chunk_cache() -> None:
+    print("\n--- 地形块缓存 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.BLUE, seed=3)
+    mv = MapView(pygame.Rect(0, 0, 600, 400), st)
+    mv.tile = 26
+    surf = pygame.Surface((600, 400))
+    mv.draw(surf)
+    n1 = len(mv._chunks)
+    mv.draw(surf)
+    check(n1 > 0 and len(mv._chunks) == n1, f"块缓存命中不重建（{n1} 块）")
 
 
 def main() -> int:
@@ -141,7 +132,7 @@ def main() -> int:
     test_texture_fields()
     test_terrain_has_material()
     test_unit_icon_stages()
-    test_texture_cache()
+    test_chunk_cache()
 
     print("\n" + "=" * 46)
     if FAILS:
