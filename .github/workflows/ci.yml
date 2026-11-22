@@ -191,6 +191,11 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: python tools/test_a11y.py
 
+      - name: 视觉回归自检（地形材质存在性 / 四主题 / 图标立体门槛）
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python tools/test_visual.py
+
       - name: 分享与观战自检（想定包校验和 / 回放内嵌想定 / AI 对战可复现）
         env:
           SDL_VIDEODRIVER: dummy
