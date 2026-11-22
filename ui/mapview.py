@@ -10,13 +10,12 @@ import math
 import pygame
 
 from core.enums import Detection, Domain, Facility, Side, Terrain, UnitClass
-from core.env import env_tint, environment_for
+from core.env import TimeOfDay, env_tint, environment_for
 from core.model import Tile, Unit, pos_epoch, tile_epoch
 from core import anim as anim_mod
 from core.icons import icon_bitmap
 
 from . import theme as T
-from . import terrain_tex as TEX
 
 TILE_STEPS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 46, 52, 60]
 
@@ -28,18 +27,6 @@ CHUNK_TILES = 16
 # （tile=10 时 102KB，tile=60 时 3.7MB），按块数封顶要么浪费内存、
 # 要么在大 tile 下反复重建（LRU 抖动会让帧率崩掉）。
 CHUNK_CACHE_BYTES = 64 * 1024 * 1024
-
-# v3.5 A1：地形贴图集。
-# 每格单独做「底色 fill + 纹理 BLEND_MULT」是两次 surface 操作，
-# 256 格/块实测要 1.3 ms；改成按明度分档预生成整格贴图后每格只需一次
-# blit（0.3 ms/块）。明度分 16 档是因为色差 1/16 叠在噪声纹理上不可见，
-# 而档位越少缓存越小。变体 2 种用于打散重复感。
-SHADE_BUCKETS = 16
-SHADE_MIN = 0.55
-SHADE_MAX = 1.50
-TILE_VARIANTS = 2
-#: 贴图集体积上限：超过就整体清空（换缩放/换肤才会增长，抖动可接受）。
-TILE_ATLAS_BYTES = 24 * 1024 * 1024
 
 
 class MapView:
@@ -53,9 +40,6 @@ class MapView:
         self._chunk_lru: list[tuple[int, int]] = []
         self._chunk_bytes = 0
         self._chunk_epoch: tuple | None = None
-        # v3.5 A1：地形贴图集（见 TILE_ATLAS_BYTES 说明）
-        self._tile_atlas: dict[tuple, pygame.Surface] = {}
-        self._tile_atlas_bytes = 0
         self._token_cache: dict[tuple, pygame.Surface] = {}
         self._token_epoch_cache: tuple | None = None
         self._vector_icons: dict[tuple, pygame.Surface] = {}
@@ -64,6 +48,8 @@ class MapView:
         self._smoke_cache: dict[tuple, pygame.Surface] = {}
         self._smoke_key: tuple | None = None
         self._smoke_list: list[Tile] = []
+        # v3.5.1 A4：城市灯火的光斑精灵（按亮度档缓存）
+        self._lamp_cache: dict[int, pygame.Surface] = {}
         # 缩略图：地形逐格重画在 128×128 上实测 98ms/帧、256×256 上 377ms/帧，
         # 是完整 App.draw 里最贵的一项（占 97%）。纯地形只依赖地图身份、缩略图
         # 尺寸与主题，烘成表面后命中帧不到 0.05ms。目标点/单位/视窗框是动态的，
@@ -183,38 +169,6 @@ class MapView:
         y0 = cy * CHUNK_TILES
         return x0, y0, min(md.width, x0 + CHUNK_TILES), min(md.height, y0 + CHUNK_TILES)
 
-    def _flat_sprite(self, terrain: Terrain, base, shade: float) -> pygame.Surface:
-        """取整格**底色**（海拔明度 × 坡向明暗），按明度分档缓存。
-
-        v3.5 A1 起底色与材质分开：纹理必须在块级连续取样，否则每一格
-        都是同一块纹理图案，大面积同地形会形成明显的"地砖"重复感
-        （实测水域最刺眼）。所以这里只出纯色，纹理在 _build_chunk 里
-        按世界坐标整块叠加。
-
-        `shade` 量化到 SHADE_BUCKETS 档——量化误差 1/16 叠在纹理噪声上
-        肉眼不可辨，换来的是查表而不是逐格算色。
-        """
-        ts = self.tile
-        span = SHADE_MAX - SHADE_MIN
-        b = int((shade - SHADE_MIN) / span * SHADE_BUCKETS)
-        b = 0 if b < 0 else (SHADE_BUCKETS - 1 if b >= SHADE_BUCKETS else b)
-        mid = SHADE_MIN + (b + 0.5) / SHADE_BUCKETS * span
-        key = (ts, T.current_theme().id, terrain, b)
-        sp = self._tile_atlas.get(key)
-        if sp is not None:
-            return sp
-        col = (max(0, min(255, int(base[0] * mid))),
-               max(0, min(255, int(base[1] * mid))),
-               max(0, min(255, int(base[2] * mid))))
-        sp = pygame.Surface((ts, ts))
-        sp.fill(col)
-        if self._tile_atlas_bytes > TILE_ATLAS_BYTES:
-            self._tile_atlas.clear()
-            self._tile_atlas_bytes = 0
-        self._tile_atlas[key] = sp
-        self._tile_atlas_bytes += ts * ts * 4
-        return sp
-
     def _build_chunk(self, cx: int, cy: int) -> pygame.Surface:
         """构建单块地形。
 
@@ -229,9 +183,6 @@ class MapView:
         h = max(1, y1 - y0)
         surf = pygame.Surface((w * ts, h * ts))
         surf.fill(T.BG_MAP)
-        # 块级纹理相位偏移，避免相邻块纹理对齐（见取样处说明）
-        cseed_x = ((cx * 6151) ^ (cy * 7877)) % 96
-        cseed_y = ((cy * 3571) ^ (cx * 4409)) % 96
 
         for ty in range(y0, y1):
             for tx in range(x0, x1):
@@ -241,8 +192,7 @@ class MapView:
                 lx = (tx - x0) * ts
                 ly = (ty - y0) * ts
                 base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
-                # 海拔明度与坡向明暗合成一个系数，交给贴图集分档（v3.5 A1）
-                shade = 0.74 + min(1.0, t.elevation / 2800.0) * 0.54
+                col = T.elevation_shade(base, t.elevation)
                 # 山体阴影：按西北方向高差做明暗，形成柔和的地形起伏
                 if t.terrain is not Terrain.WATER:
                     # 中心差分求坡度，避免单侧差分产生条带状伪影
@@ -255,23 +205,13 @@ class MapView:
                     gy = ((d_.elevation if d_ else t.elevation)
                           - (u_.elevation if u_ else t.elevation)) / 2.0
                     dh = gx * 0.7 + gy * 0.7
-                    shade *= 1.0 + max(-0.13, min(0.13, dh / 2600.0))
-                sp = self._flat_sprite(t.terrain, base, shade)
-                surf.blit(sp, (lx, ly))
-                # 材质层：按世界像素坐标取样，相邻格纹理天然接续
-                if ts >= 14:
-                    layers = TEX.offsets().get(t.terrain)
-                    if layers is not None:
-                        light, dark = layers
-                        tex_w = light.get_width()
-                        # 取样用**世界像素坐标** + 每块随机偏移：世界坐标
-                        # 保证块内连续，块偏移保证相邻块不会对齐到同一相位
-                        # （否则 16 格一块的周期会在大面积同地形上显形）。
-                        area = pygame.Rect((tx * ts + cseed_x) % tex_w,
-                                           (ty * ts + cseed_y) % tex_w, ts, ts)
-                        surf.blit(light, (lx, ly), area, special_flags=pygame.BLEND_ADD)
-                        surf.blit(dark, (lx, ly), area, special_flags=pygame.BLEND_SUB)
-                self._decorate(surf, t, pygame.Rect(lx, ly, ts, ts), sp.get_at((1, 1))[:3])
+                    f = 1.0 + max(-0.13, min(0.13, dh / 2600.0))
+                    col = (max(0, min(255, int(col[0] * f))),
+                           max(0, min(255, int(col[1] * f))),
+                           max(0, min(255, int(col[2] * f))))
+                r = pygame.Rect(lx, ly, ts, ts)
+                pygame.draw.rect(surf, col, r)
+                self._decorate(surf, t, r, col)
 
         # 海岸线：陆地与水域相邻处提亮一道细边
         if ts >= 10:
@@ -423,29 +363,21 @@ class MapView:
         return c
 
     def _decorate(self, surf: pygame.Surface, t: Tile, r: pygame.Rect, col) -> None:
-        """逐格符号细节：树点、山三角、建筑方块、丘陵弧线。
-
-        这些符号按 **tile 坐标哈希**取随机位置——不能烘进贴图集，
-        否则整片森林的树点会排成完全相同的图案。
-        """
         ts = self.tile
         h = (t.x * 73856093 ^ t.y * 19349663) & 0xFFFF
         dark = T.mix(col, (0, 0, 0), 0.26)
         light = T.mix(col, (255, 255, 255), 0.13)
 
         if t.terrain is Terrain.WATER:
-            # v3.5：水面不再画逐格横线——每格一条会在整片水域上
-            # 排成规则条纹，比没有装饰更像"地砖"。水感交给材质纹理。
-            return
-        if t.terrain is Terrain.FOREST:
+            yy = r.y + ts // 2 + (h % 3) - 1
+            pygame.draw.line(surf, T.mix(col, (0, 0, 0), 0.14),
+                             (r.x + 2, yy), (r.x + ts - 3, yy), 1)
+        elif t.terrain is Terrain.FOREST:
             for i in range(3):
                 px = r.x + 3 + ((h >> (i * 3)) % max(1, ts - 7))
                 py = r.y + 3 + ((h >> (i * 3 + 5)) % max(1, ts - 7))
                 pygame.draw.circle(surf, dark, (px, py), max(1, ts // 13))
         elif t.terrain is Terrain.MOUNTAIN:
-            # 每格都画三角会在山区排成整齐的三角矩阵；按哈希保留约 70%
-            if (h & 0xFF) < 76:
-                return
             cx, cy = r.centerx, r.centery
             w = ts // 3
             pygame.draw.polygon(surf, dark, [(cx - w, cy + w // 2), (cx, cy - w),
@@ -454,13 +386,10 @@ class MapView:
                                               (cx + w // 3, cy + w // 2)])
         elif t.terrain is Terrain.URBAN:
             s_ = max(3, ts // 5)
-            # 按哈希微移，避免相邻格的四块建筑完全对齐成网格
-            ox = (h >> 2) % 3
-            oy = (h >> 5) % 3
             for i in range(2):
                 for j in range(2):
                     pygame.draw.rect(surf, dark, pygame.Rect(
-                        r.x + 2 + ox + i * (s_ + 2), r.y + 2 + oy + j * (s_ + 2), s_, s_))
+                        r.x + 2 + i * (s_ + 2), r.y + 2 + j * (s_ + 2), s_, s_))
         elif t.terrain is Terrain.HILLS:
             pygame.draw.arc(surf, dark, pygame.Rect(r.x + 2, r.y + ts // 3, ts - 4, ts // 2),
                             0.2, 2.9, max(1, ts // 15))
@@ -577,6 +506,93 @@ class MapView:
                     self._env_cache.clear()
                 self._env_cache[key] = layer
             surf.blit(layer, self.rect.topleft)
+        # v3.5.1 A4：城市灯火。必须画在色调层**之后**——否则刚点亮的
+        # 暖黄会被那层深蓝压成脏灰，"夜里的城市"就看不出来了。
+        self._draw_city_lights(surf)
+
+    def _urban_tiles(self) -> list:
+        """全图城市格，按地图身份缓存（v3.5.1 A4）。
+
+        只在夜间用到，但每帧都要筛视口。全图 urban 通常几十到几百格，
+        遍历一遍约 0.05 ms，比维护块级索引简单得多，也够快。
+        """
+        key = (id(self.state.map), self.state.map_epoch)
+        if getattr(self, "_urban_key", None) != key:
+            self._urban_key = key
+            self._urban_list = [t for t in self.state.map.iter_tiles()
+                                if t.terrain is Terrain.URBAN]
+        return self._urban_list
+
+    def _lamp_sprite(self, level: int) -> pygame.Surface:
+        """预生成的路灯光斑（v3.5.1 A4）。
+
+        为什么不用 `draw.circle`：圆锥形的实心圆看起来像"色块"，
+        而灯需要**外淡内亮**的衰减。7×7 的径向渐变精灵一次生成、
+        反复 blit，比逐帧算半径与颜色便宜，而且用 `BLEND_ADD` 叠加
+        才能真正"发光"（普通 alpha 混合会盖住地形）。
+        """
+        key = level
+        sp = self._lamp_cache.get(key)
+        if sp is not None:
+            return sp
+        sp = pygame.Surface((7, 7), pygame.SRCALPHA)
+        span = 24 + level * 26          # 中心强度：24–102
+        for dy in range(-3, 4):
+            for dx in range(-3, 4):
+                d2 = dx * dx + dy * dy
+                if d2 > 10:
+                    continue
+                a = int(span * max(0.0, 1.0 - d2 / 10.0))
+                if a <= 0:
+                    continue
+                # 暖黄：R 最高、G 次之、B 很低
+                sp.set_at((dx + 3, dy + 3), (255, 214, 148, a))
+        self._lamp_cache[key] = sp
+        return sp
+
+    def _draw_city_lights(self, surf: pygame.Surface) -> None:
+        """夜间/晨昏的城市灯火（v3.5.1 A4）。
+
+        三个时段强度不同：黎明残留 35%、黄昏刚亮 55%、夜间全亮。
+        白天直接返回，零成本。
+
+        有意跳过有单位的格子：灯火画在色调层之上（否则会被压暗），
+        若士兵正站在城里，光斑会糊在棋子上。
+        """
+        env = environment_for(self.state)
+        tod = env.time_of_day
+        if tod is TimeOfDay.DAY:
+            return
+        strength = {TimeOfDay.DAWN: 0.35, TimeOfDay.DUSK: 0.55,
+                    TimeOfDay.NIGHT: 1.0}.get(tod, 0.0)
+        if strength <= 0:
+            return
+        ts = self.tile
+        if ts < 10:
+            return                      # 格子太小时光斑会糊成噪点
+        r = self.rect
+        # 视口换算一次，循环里只做加减
+        left, top = r.left - self.ox, r.top - self.oy
+        right, bottom = r.right - self.ox, r.bottom - self.oy
+        for t in self._urban_tiles():
+            px = t.x * ts
+            py = t.y * ts
+            if px + ts < left or px > right or py + ts < top or py > bottom:
+                continue
+            if self.state.units_at(t.x, t.y):
+                continue
+            sx = int(r.x + self.ox + px)
+            sy = int(r.y + self.oy + py)
+            h = (t.x * 73856093 ^ t.y * 19349663) & 0xFFFF
+            n = 3 + (h % 2)             # 每格 3–4 点，密度适中
+            span = max(1, ts - 6)
+            for i in range(n):
+                lx = sx + 3 + ((h >> (i * 4)) % span)
+                ly = sy + 3 + ((h >> (i * 4 + 7)) % span)
+                # 亮度档位：哈希 + 时段强度，避免整片亮度一致
+                lv = int(((h >> (i * 2)) & 0x3) * strength)
+                sp = self._lamp_sprite(min(3, lv))
+                surf.blit(sp, (lx - 3, ly - 3), special_flags=pygame.BLEND_ADD)
 
     def _weather_layer(self, kind: str) -> pygame.Surface:
         """取天气图案（雨丝 / 雪花）。
