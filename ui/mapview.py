@@ -16,6 +16,7 @@ from core import anim as anim_mod
 from core.icons import icon_bitmap
 
 from . import theme as T
+from . import terrain_tex as TEX
 
 TILE_STEPS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 46, 52, 60]
 
@@ -27,6 +28,18 @@ CHUNK_TILES = 16
 # （tile=10 时 102KB，tile=60 时 3.7MB），按块数封顶要么浪费内存、
 # 要么在大 tile 下反复重建（LRU 抖动会让帧率崩掉）。
 CHUNK_CACHE_BYTES = 64 * 1024 * 1024
+
+# v3.5 A1：地形贴图集。
+# 每格单独做「底色 fill + 纹理 BLEND_MULT」是两次 surface 操作，
+# 256 格/块实测要 1.3 ms；改成按明度分档预生成整格贴图后每格只需一次
+# blit（0.3 ms/块）。明度分 16 档是因为色差 1/16 叠在噪声纹理上不可见，
+# 而档位越少缓存越小。变体 2 种用于打散重复感。
+SHADE_BUCKETS = 16
+SHADE_MIN = 0.55
+SHADE_MAX = 1.50
+TILE_VARIANTS = 2
+#: 贴图集体积上限：超过就整体清空（换缩放/换肤才会增长，抖动可接受）。
+TILE_ATLAS_BYTES = 24 * 1024 * 1024
 
 
 class MapView:
@@ -40,6 +53,9 @@ class MapView:
         self._chunk_lru: list[tuple[int, int]] = []
         self._chunk_bytes = 0
         self._chunk_epoch: tuple | None = None
+        # v3.5 A1：地形贴图集（见 TILE_ATLAS_BYTES 说明）
+        self._tile_atlas: dict[tuple, pygame.Surface] = {}
+        self._tile_atlas_bytes = 0
         self._token_cache: dict[tuple, pygame.Surface] = {}
         self._token_epoch_cache: tuple | None = None
         self._vector_icons: dict[tuple, pygame.Surface] = {}
@@ -167,6 +183,38 @@ class MapView:
         y0 = cy * CHUNK_TILES
         return x0, y0, min(md.width, x0 + CHUNK_TILES), min(md.height, y0 + CHUNK_TILES)
 
+    def _flat_sprite(self, terrain: Terrain, base, shade: float) -> pygame.Surface:
+        """取整格**底色**（海拔明度 × 坡向明暗），按明度分档缓存。
+
+        v3.5 A1 起底色与材质分开：纹理必须在块级连续取样，否则每一格
+        都是同一块纹理图案，大面积同地形会形成明显的"地砖"重复感
+        （实测水域最刺眼）。所以这里只出纯色，纹理在 _build_chunk 里
+        按世界坐标整块叠加。
+
+        `shade` 量化到 SHADE_BUCKETS 档——量化误差 1/16 叠在纹理噪声上
+        肉眼不可辨，换来的是查表而不是逐格算色。
+        """
+        ts = self.tile
+        span = SHADE_MAX - SHADE_MIN
+        b = int((shade - SHADE_MIN) / span * SHADE_BUCKETS)
+        b = 0 if b < 0 else (SHADE_BUCKETS - 1 if b >= SHADE_BUCKETS else b)
+        mid = SHADE_MIN + (b + 0.5) / SHADE_BUCKETS * span
+        key = (ts, T.current_theme().id, terrain, b)
+        sp = self._tile_atlas.get(key)
+        if sp is not None:
+            return sp
+        col = (max(0, min(255, int(base[0] * mid))),
+               max(0, min(255, int(base[1] * mid))),
+               max(0, min(255, int(base[2] * mid))))
+        sp = pygame.Surface((ts, ts))
+        sp.fill(col)
+        if self._tile_atlas_bytes > TILE_ATLAS_BYTES:
+            self._tile_atlas.clear()
+            self._tile_atlas_bytes = 0
+        self._tile_atlas[key] = sp
+        self._tile_atlas_bytes += ts * ts * 4
+        return sp
+
     def _build_chunk(self, cx: int, cy: int) -> pygame.Surface:
         """构建单块地形。
 
@@ -181,6 +229,9 @@ class MapView:
         h = max(1, y1 - y0)
         surf = pygame.Surface((w * ts, h * ts))
         surf.fill(T.BG_MAP)
+        # 块级纹理相位偏移，避免相邻块纹理对齐（见取样处说明）
+        cseed_x = ((cx * 6151) ^ (cy * 7877)) % 96
+        cseed_y = ((cy * 3571) ^ (cx * 4409)) % 96
 
         for ty in range(y0, y1):
             for tx in range(x0, x1):
@@ -190,7 +241,8 @@ class MapView:
                 lx = (tx - x0) * ts
                 ly = (ty - y0) * ts
                 base = T.TERRAIN_COLORS.get(t.terrain, T.TERRAIN_COLORS[Terrain.PLAIN])
-                col = T.elevation_shade(base, t.elevation)
+                # 海拔明度与坡向明暗合成一个系数，交给贴图集分档（v3.5 A1）
+                shade = 0.74 + min(1.0, t.elevation / 2800.0) * 0.54
                 # 山体阴影：按西北方向高差做明暗，形成柔和的地形起伏
                 if t.terrain is not Terrain.WATER:
                     # 中心差分求坡度，避免单侧差分产生条带状伪影
@@ -203,13 +255,23 @@ class MapView:
                     gy = ((d_.elevation if d_ else t.elevation)
                           - (u_.elevation if u_ else t.elevation)) / 2.0
                     dh = gx * 0.7 + gy * 0.7
-                    f = 1.0 + max(-0.13, min(0.13, dh / 2600.0))
-                    col = (max(0, min(255, int(col[0] * f))),
-                           max(0, min(255, int(col[1] * f))),
-                           max(0, min(255, int(col[2] * f))))
-                r = pygame.Rect(lx, ly, ts, ts)
-                pygame.draw.rect(surf, col, r)
-                self._decorate(surf, t, r, col)
+                    shade *= 1.0 + max(-0.13, min(0.13, dh / 2600.0))
+                sp = self._flat_sprite(t.terrain, base, shade)
+                surf.blit(sp, (lx, ly))
+                # 材质层：按世界像素坐标取样，相邻格纹理天然接续
+                if ts >= 14:
+                    layers = TEX.offsets().get(t.terrain)
+                    if layers is not None:
+                        light, dark = layers
+                        tex_w = light.get_width()
+                        # 取样用**世界像素坐标** + 每块随机偏移：世界坐标
+                        # 保证块内连续，块偏移保证相邻块不会对齐到同一相位
+                        # （否则 16 格一块的周期会在大面积同地形上显形）。
+                        area = pygame.Rect((tx * ts + cseed_x) % tex_w,
+                                           (ty * ts + cseed_y) % tex_w, ts, ts)
+                        surf.blit(light, (lx, ly), area, special_flags=pygame.BLEND_ADD)
+                        surf.blit(dark, (lx, ly), area, special_flags=pygame.BLEND_SUB)
+                self._decorate(surf, t, pygame.Rect(lx, ly, ts, ts), sp.get_at((1, 1))[:3])
 
         # 海岸线：陆地与水域相邻处提亮一道细边
         if ts >= 10:
@@ -361,21 +423,29 @@ class MapView:
         return c
 
     def _decorate(self, surf: pygame.Surface, t: Tile, r: pygame.Rect, col) -> None:
+        """逐格符号细节：树点、山三角、建筑方块、丘陵弧线。
+
+        这些符号按 **tile 坐标哈希**取随机位置——不能烘进贴图集，
+        否则整片森林的树点会排成完全相同的图案。
+        """
         ts = self.tile
         h = (t.x * 73856093 ^ t.y * 19349663) & 0xFFFF
         dark = T.mix(col, (0, 0, 0), 0.26)
         light = T.mix(col, (255, 255, 255), 0.13)
 
         if t.terrain is Terrain.WATER:
-            yy = r.y + ts // 2 + (h % 3) - 1
-            pygame.draw.line(surf, T.mix(col, (0, 0, 0), 0.14),
-                             (r.x + 2, yy), (r.x + ts - 3, yy), 1)
-        elif t.terrain is Terrain.FOREST:
+            # v3.5：水面不再画逐格横线——每格一条会在整片水域上
+            # 排成规则条纹，比没有装饰更像"地砖"。水感交给材质纹理。
+            return
+        if t.terrain is Terrain.FOREST:
             for i in range(3):
                 px = r.x + 3 + ((h >> (i * 3)) % max(1, ts - 7))
                 py = r.y + 3 + ((h >> (i * 3 + 5)) % max(1, ts - 7))
                 pygame.draw.circle(surf, dark, (px, py), max(1, ts // 13))
         elif t.terrain is Terrain.MOUNTAIN:
+            # 每格都画三角会在山区排成整齐的三角矩阵；按哈希保留约 70%
+            if (h & 0xFF) < 76:
+                return
             cx, cy = r.centerx, r.centery
             w = ts // 3
             pygame.draw.polygon(surf, dark, [(cx - w, cy + w // 2), (cx, cy - w),
@@ -384,10 +454,13 @@ class MapView:
                                               (cx + w // 3, cy + w // 2)])
         elif t.terrain is Terrain.URBAN:
             s_ = max(3, ts // 5)
+            # 按哈希微移，避免相邻格的四块建筑完全对齐成网格
+            ox = (h >> 2) % 3
+            oy = (h >> 5) % 3
             for i in range(2):
                 for j in range(2):
                     pygame.draw.rect(surf, dark, pygame.Rect(
-                        r.x + 2 + i * (s_ + 2), r.y + 2 + j * (s_ + 2), s_, s_))
+                        r.x + 2 + ox + i * (s_ + 2), r.y + 2 + oy + j * (s_ + 2), s_, s_))
         elif t.terrain is Terrain.HILLS:
             pygame.draw.arc(surf, dark, pygame.Rect(r.x + 2, r.y + ts // 3, ts - 4, ts // 2),
                             0.2, 2.9, max(1, ts // 15))
@@ -1070,10 +1143,17 @@ class MapView:
         self._draw_vector_class_icon(surf, rect, cls, color)
 
     def _vector_icon_bitmap(self, cls: UnitClass, color, size: int):
-        """烘焙并缓存矢量兵种图形。
+        """烘焙并缓存矢量兵种图形（v3.5 A3：带投影与描边）。
 
         矢量绘制是棋子渲染中最贵的一环（多边形 + 圆弧，每次十几条指令）。
         同一兵种在同一尺寸下的图形完全相同，烘焙成位图后每次只做一次 blit。
+
+        **立体感来自三层**：投影让棋子"离开地面"，外描边把它从任意地形
+        上"抠"出来（原先单色图形压在材质纹理上会糊成一片）。三层都在
+        烘焙时完成，运行时仍是单次 blit，零额外帧成本。
+
+        **20 px 以下不叠立体**：实测 16 px 的线框图形加 1 px 描边后
+        已无法辨识轮廓。小图标本来就靠颜色区分，保持平面更清楚。
         """
         if size <= 0:
             return None
@@ -1082,8 +1162,24 @@ class MapView:
         if cached is not None:
             return cached
         try:
-            bmp = pygame.Surface((size, size), pygame.SRCALPHA)
-            self._draw_vector_class_icon(bmp, pygame.Rect(0, 0, size, size), cls, color)
+            core = pygame.Surface((size, size), pygame.SRCALPHA)
+            self._draw_vector_class_icon(core, pygame.Rect(0, 0, size, size), cls, color)
+            if size < 20:
+                bmp = core
+            else:
+                pad = 2               # 给描边与投影留位
+                bmp = pygame.Surface((size + pad * 2, size + pad * 2), pygame.SRCALPHA)
+                # 1) 投影：整体下移 2px 的暗色副本
+                shadow = core.copy()
+                shadow.fill((0, 0, 0, 120), special_flags=pygame.BLEND_RGBA_MULT)
+                bmp.blit(shadow, (pad, pad + 2))
+                # 2) 外描边：四方向偏移的深色副本，先铺底
+                edge = core.copy()
+                edge.fill((0, 0, 0, 165), special_flags=pygame.BLEND_RGBA_MULT)
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    bmp.blit(edge, (pad + dx, pad + dy))
+                # 3) 主体压在最上
+                bmp.blit(core, (pad, pad))
         except Exception:
             return None
         if len(self._vector_icons) > 200:
