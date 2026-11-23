@@ -114,6 +114,37 @@ def test_unit_icon_stages() -> None:
           "26px 图标带 2px 描边留白（30 = 26 + 4）")
 
 
+def test_city_glow() -> None:
+    """城市光晕必须"低色差、格内均匀"（v3.5.2）。
+
+    v3.5.1 的暖黄光点与底色差近 200 级，实测被判定为"贴了几颗 LED"。
+    这里守住两条：峰值增量克制、格内不能退化成圆斑。
+    """
+    print("\n--- 城市光晕 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.RED, seed=4)
+    mv = MapView(pygame.Rect(0, 0, 400, 300), st)
+    mv.tile = 26
+    sp = mv._glow_sprite(0)
+    ts = 26
+    mg = (sp.get_width() - ts) // 2
+    check(mg >= 3, f"光晕有边缘外溢（{mg}px）")
+    peak = max(sp.get_at((mg + ts // 2, mg + ts // 2))[:3])
+    check(peak <= 50, f"峰值增量克制（{peak} 级 ≤ 50，与底色同量级）")
+    # 格内四角与中心的差异：均匀（差异小）说明没有圆斑
+    cx, cy = mg + ts // 2, mg + ts // 2
+    corners = [sp.get_at((mg + 2, mg + 2))[:3],
+               sp.get_at((mg + ts - 3, mg + 2))[:3],
+               sp.get_at((mg + 2, mg + ts - 3))[:3],
+               sp.get_at((mg + ts - 3, mg + ts - 3))[:3]]
+    center = sp.get_at((cx, cy))[:3]
+    spread = max(max(abs(c[i] - center[i]) for i in range(3)) for c in corners)
+    check(spread <= 10, f"格内亮度均匀，无圆斑（四角与中心差 {spread} 级 ≤ 10）")
+    # 外圈角落应几乎不叠加（真正的外溢衰减到 0）
+    edge = max(sp.get_at((0, 0))[:3])
+    check(edge <= 6, f"外圈边缘衰减到接近 0（{edge} 级 ≤ 6）")
+
+
 def test_chunk_cache() -> None:
     print("\n--- 地形块缓存 ---")
     sc = load_scenario(MAP, ARMORY)
@@ -132,6 +163,7 @@ def main() -> int:
     test_texture_fields()
     test_terrain_has_material()
     test_unit_icon_stages()
+    test_city_glow()
     test_chunk_cache()
 
     print("\n" + "=" * 46)

@@ -48,8 +48,8 @@ class MapView:
         self._smoke_cache: dict[tuple, pygame.Surface] = {}
         self._smoke_key: tuple | None = None
         self._smoke_list: list[Tile] = []
-        # v3.5.1 A4：城市灯火的光斑精灵（按亮度档缓存）
-        self._lamp_cache: dict[int, pygame.Surface] = {}
+        # v3.5.2：城市光晕精灵（按 tile 与亮度档缓存）
+        self._glow_cache: dict[tuple, pygame.Surface] = {}
         # 缩略图：地形逐格重画在 128×128 上实测 98ms/帧、256×256 上 377ms/帧，
         # 是完整 App.draw 里最贵的一项（占 97%）。纯地形只依赖地图身份、缩略图
         # 尺寸与主题，烘成表面后命中帧不到 0.05ms。目标点/单位/视窗框是动态的，
@@ -523,41 +523,61 @@ class MapView:
                                 if t.terrain is Terrain.URBAN]
         return self._urban_list
 
-    def _lamp_sprite(self, level: int) -> pygame.Surface:
-        """预生成的路灯光斑（v3.5.1 A4）。
+    def _glow_sprite(self, level: int) -> pygame.Surface:
+        """整格柔光 + 边缘外溢（v3.5.2）。
 
-        为什么不用 `draw.circle`：圆锥形的实心圆看起来像"色块"，
-        而灯需要**外淡内亮**的衰减。7×7 的径向渐变精灵一次生成、
-        反复 blit，比逐帧算半径与颜色便宜，而且用 `BLEND_ADD` 叠加
-        才能真正"发光"（普通 alpha 混合会盖住地形）。
+        **为什么要换掉原来的光点**：v3.5.1 用 7×7 暖黄小点
+        `(255,214,148)` 加色叠加，与城市底色 (51,55,65) 差了近 200 级——
+        看上去像"在地图上贴了几颗黄色 LED"，而不是城市在夜里透出的光。
+
+        现在由三部分组成：
+
+        1. **格内完全均匀**——不做径向衰减。若每格画一个圆形亮斑，
+           成片的城市会变成规则点阵，比光点更难看（第一版实测就是这个结果）。
+        2. **格外柔和外溢**——精灵比格子大，外圈按立方衰减到接近 0。
+           真实的光会溢到墙外，城市边缘因此有过渡而不是硬切。
+        3. **幅度克制**——峰值增量 30–39 级、R:G:B ≈ 1 : 0.94 : 0.84，
+           与底色 (51,55,65) 同量级，观感是"这块地面比周围亮一点、暖一点"。
+
+        `BLEND_ADD` 只用 RGB、忽略 alpha，所以衰减必须体现在 RGB 值上：
+        外圈直接写字面很小的值，而不是靠 alpha 淡出。
         """
-        key = level
-        sp = self._lamp_cache.get(key)
+        key = (self.tile, level)
+        sp = self._glow_cache.get(key)
         if sp is not None:
             return sp
-        sp = pygame.Surface((7, 7), pygame.SRCALPHA)
-        span = 24 + level * 26          # 中心强度：24–102
-        for dy in range(-3, 4):
-            for dx in range(-3, 4):
-                d2 = dx * dx + dy * dy
-                if d2 > 10:
-                    continue
-                a = int(span * max(0.0, 1.0 - d2 / 10.0))
-                if a <= 0:
-                    continue
-                # 暖黄：R 最高、G 次之、B 很低
-                sp.set_at((dx + 3, dy + 3), (255, 214, 148, a))
-        self._lamp_cache[key] = sp
+        ts = self.tile
+        mg = max(3, ts // 8)             # 外溢宽度
+        size = ts + mg * 2
+        sp = pygame.Surface((size, size), pygame.SRCALPHA)
+        base = 30 + level * 3            # 峰值增量 30–39 级
+        r = base
+        g = int(base * 0.94)
+        b = int(base * 0.84)
+        rings = 6
+        half = size // 2
+        # 从外到内：立方衰减，最外圈接近 0
+        for i in range(rings, 0, -1):
+            rad = max(1, int(half * i / rings))
+            k = (rings - i + 1) / rings
+            v = int(base * k * k * k)
+            if v <= 0:
+                continue
+            pygame.draw.circle(sp, (v, int(v * 0.94), int(v * 0.84), 255),
+                               (half, half), rad)
+        # 格内覆盖为均匀（去掉圆斑感）
+        sp.fill((r, g, b, 255), pygame.Rect(mg, mg, ts, ts))
+        self._glow_cache[key] = sp
         return sp
 
     def _draw_city_lights(self, surf: pygame.Surface) -> None:
-        """夜间/晨昏的城市灯火（v3.5.1 A4）。
+        """夜间/晨昏的城市光晕（v3.5.2）。
 
-        三个时段强度不同：黎明残留 35%、黄昏刚亮 55%、夜间全亮。
+        三个时段强度不同：黎明 0.35、黄昏 0.55、夜间 1.0。
         白天直接返回，零成本。
 
-        有意跳过有单位的格子：灯火画在色调层之上（否则会被压暗），
-        若士兵正站在城里，光斑会糊在棋子上。
+        画在色调层之后——否则刚透出的那点微光会被深蓝压掉。
+        跳过有单位的格子：光晕盖在棋子上会让描边发灰。
         """
         env = environment_for(self.state)
         tod = env.time_of_day
@@ -569,7 +589,7 @@ class MapView:
             return
         ts = self.tile
         if ts < 10:
-            return                      # 格子太小时光斑会糊成噪点
+            return                      # 格子太小时光晕会糊成一片脏斑
         r = self.rect
         # 视口换算一次，循环里只做加减
         left, top = r.left - self.ox, r.top - self.oy
@@ -584,15 +604,11 @@ class MapView:
             sx = int(r.x + self.ox + px)
             sy = int(r.y + self.oy + py)
             h = (t.x * 73856093 ^ t.y * 19349663) & 0xFFFF
-            n = 3 + (h % 2)             # 每格 3–4 点，密度适中
-            span = max(1, ts - 6)
-            for i in range(n):
-                lx = sx + 3 + ((h >> (i * 4)) % span)
-                ly = sy + 3 + ((h >> (i * 4 + 7)) % span)
-                # 亮度档位：哈希 + 时段强度，避免整片亮度一致
-                lv = int(((h >> (i * 2)) & 0x3) * strength)
-                sp = self._lamp_sprite(min(3, lv))
-                surf.blit(sp, (lx - 3, ly - 3), special_flags=pygame.BLEND_ADD)
+            # 亮度档 0–3：只做轻微抖动，避免整片完全相同
+            lv = int(((h >> 3) & 0x1) * strength)
+            sp = self._glow_sprite(min(3, lv))
+            mg = (sp.get_width() - ts) // 2
+            surf.blit(sp, (sx - mg, sy - mg), special_flags=pygame.BLEND_ADD)
 
     def _weather_layer(self, kind: str) -> pygame.Surface:
         """取天气图案（雨丝 / 雪花）。
