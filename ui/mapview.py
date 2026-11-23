@@ -50,6 +50,9 @@ class MapView:
         self._smoke_list: list[Tile] = []
         # v3.5.2：城市光晕精灵（按 tile 与亮度档缓存）
         self._glow_cache: dict[tuple, pygame.Surface] = {}
+        # v3.5.3 A6：暗角层与开关（无障碍设置可关）
+        self._vignette_cache: dict[tuple, pygame.Surface] = {}
+        self._vignette_on = True
         # 缩略图：地形逐格重画在 128×128 上实测 98ms/帧、256×256 上 377ms/帧，
         # 是完整 App.draw 里最贵的一项（占 97%）。纯地形只依赖地图身份、缩略图
         # 尺寸与主题，烘成表面后命中帧不到 0.05ms。目标点/单位/视窗框是动态的，
@@ -435,9 +438,52 @@ class MapView:
             self._smoke_list = [t for t in self.state.map.iter_tiles() if t.smoke > 0]
         return self._smoke_list
 
+    def _shake_offset(self) -> tuple[int, int]:
+        """爆炸时的镜头震动偏移（v3.5.3 A8）。
+
+        **无状态设计**：偏移完全由「场上还有没有刚发生的爆炸」推导，
+        不维护计时器。这样不存在"忘了 tick 就永远在抖"或"暂停时抖动不衰减"
+        这类泄漏；爆炸事件本身过期后偏移自动归零。
+
+        幅度上限 3 px——超过这个量，地图格线会明显错位，玩家会以为是
+        渲染故障而不是冲击。动画关闭时 `anim.events` 为空，震动自动消失，
+        不需要额外的无障碍开关。
+        """
+        amp = 0.0
+        for e in self.state.anim.events:
+            if e.kind != "burst" or e.ttl <= 0:
+                continue
+            p = 1.0 - e.life / e.ttl
+            if p >= 0.35:
+                continue
+            # 前 35% 生命期线性衰减到 0
+            amp = max(amp, (1.0 - p / 0.35) * 3.0)
+        if amp <= 0.25:
+            return (0, 0)
+        # 用真实时间做双频振荡，避免整齐的来回摆
+        t = pygame.time.get_ticks() / 1000.0
+        return (int(round(amp * math.sin(t * 71.0))),
+                int(round(amp * 0.7 * math.cos(t * 53.0))))
+
     def draw(self, surf: pygame.Surface, hover: tuple[int, int] | None = None,
              reachable: dict | None = None, path: list | None = None,
              pending_target: Unit | None = None) -> None:
+        shake = self._shake_offset()
+        if shake != (0, 0):
+            # 临时把偏移加进镜头，让地形/单位/拾取一起位移；
+            # finally 保证异常路径也不会把镜头永久挪走。
+            self.ox += shake[0]
+            self.oy += shake[1]
+        try:
+            self._draw_frame(surf, hover, reachable, path, pending_target)
+        finally:
+            if shake != (0, 0):
+                self.ox -= shake[0]
+                self.oy -= shake[1]
+
+    def _draw_frame(self, surf: pygame.Surface, hover: tuple[int, int] | None = None,
+                    reachable: dict | None = None, path: list | None = None,
+                    pending_target: Unit | None = None) -> None:
         epoch = self._terrain_epoch()
         if self._chunk_epoch != epoch:
             self._chunks.clear()
@@ -485,30 +531,101 @@ class MapView:
 
         夜间压暗并偏蓝、雾天加白纱、雨雪加动态颗粒——让玩家**看一眼地图**
         就知道当前的侦察条件，而不必要读文字。
+
+        v3.5.3：色调与天气**拆开**了。原先合成一张静态层以求一次 blit
+        （v3.4.2 的优化），代价是天气永远不动。现在色调层仍是一次 blit，
+        天气层单独滚动——雨天多花约 1.4 ms，换来"雨在下"。
+        晴天只有色调层，成本与优化前完全相同。
         """
         env = environment_for(self.state)
         tint, alpha = env_tint(env)
         weather = env.weather.value if env.weather.value in ("rain", "snow") else ""
-        if alpha > 0 or weather:
-            # v3.4.2：色调与天气都是静态图案，原先分两张表面做**两次**全屏
-            # SRCALPHA blit。2560×1440 下合计 5.92ms（整帧的 53%）。合成一张
-            # 缓存表面后每帧只 blit 一次。键含尺寸/色调/天气/tile，不含地图
-            # 坐标——环境效果与镜头位置无关。
-            key = (tint, alpha, weather, self.rect.size, max(6, self.tile))
+        if alpha > 0:
+            key = (tint, alpha, self.rect.size)
             layer = self._env_cache.get(key)
             if layer is None:
                 layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-                if alpha > 0:
-                    layer.fill((*tint, alpha))
-                if weather:
-                    layer.blit(self._weather_layer(weather), (0, 0))
-                if len(self._env_cache) > 8:
+                layer.fill((*tint, alpha))
+                if len(self._env_cache) > 4:
                     self._env_cache.clear()
                 self._env_cache[key] = layer
             surf.blit(layer, self.rect.topleft)
+        if weather:
+            self._blit_weather(surf, weather)
         # v3.5.1 A4：城市灯火。必须画在色调层**之后**——否则刚点亮的
         # 暖黄会被那层深蓝压成脏灰，"夜里的城市"就看不出来了。
         self._draw_city_lights(surf)
+        # v3.5.3 A6：暗角在最上层，把视线收拢到战场中心
+        self._draw_vignette(surf)
+
+    def _blit_weather(self, surf: pygame.Surface, kind: str) -> None:
+        """滚动天气层（v3.5.3 A5）。
+
+        **为什么用「2 倍高 + 取窗口」而不是「预生成 N 帧」**：
+        视口 1500×920 时，8 帧全屏 SRCALPHA 要 44 MB，2560×1440 要 118 MB，
+        明显不可接受。改成 2 倍高度、内容在 y 方向以视口高为周期，
+        滚动时只取一个视口大小的窗口 blit——**一次 blit，成本与静态层相同**，
+        内存只翻一倍。
+
+        周期性的做法是先画上半幅、再平移视口高画一遍，保证 y=0 与 y=H
+        处图案衔接，循环时不会看到跳变。
+        """
+        layer = self._weather_layer(kind)
+        h = self.rect.height
+        w = self.rect.width
+        if layer.get_height() < h * 2:
+            return
+        # 真实时间驱动：天气是环境，与回合/暂停无关
+        t = pygame.time.get_ticks() / 1000.0
+        if kind == "rain":
+            off = int(t * 520) % max(1, h)
+        else:
+            off = int(t * 58) % max(1, h)
+        surf.blit(layer, self.rect.topleft, pygame.Rect(0, off, w, h))
+
+    def _draw_vignette(self, surf: pygame.Surface) -> None:
+        """地图区暗角（v3.5.3 A6）。
+
+        **为什么只在地图区内**：暗角的作用是把视线收拢到战场中心，
+        但如果盖到右侧信息面板与底部状态栏，会让文字对比度下降——
+        可读性优先于氛围。调用点在 `surf.set_clip(None)` 之前，
+        天然被裁剪在 mapview 内。
+
+        **为什么不用逐像素径向渐变**：1500×920 逐点算距离要 20 ms 以上。
+        这里用 12 层同心圆角矩形环，每环一条固定宽度的边——
+        一次性生成后每帧只是一次 blit（约 1.4 ms）。圆角半径取短边的
+        18%，四角因此比四边更暗，接近真实径向暗角的观感。
+        """
+        if not self._vignette_on:
+            return
+        key = self.rect.size
+        layer = self._vignette_cache.get(key)
+        if layer is None:
+            w, h = key
+            layer = pygame.Surface(key, pygame.SRCALPHA)
+            rings = 12
+            short = min(w, h)
+            step = max(2, int(short * 0.022))       # 每环宽度
+            rad = max(6, int(short * 0.18))         # 圆角半径
+            peak = 44                               # 最外环不透明度上限
+            for i in range(rings):
+                inset = i * step
+                rw = w - inset * 2
+                rh = h - inset * 2
+                if rw <= 2 or rh <= 2:
+                    break
+                # 越靠外越暗，平方衰减让过渡更柔
+                k = 1.0 - i / rings
+                a = int(peak * k * k)
+                if a <= 0:
+                    continue
+                pygame.draw.rect(layer, (0, 0, 0, a),
+                                 pygame.Rect(inset, inset, rw, rh),
+                                 width=step, border_radius=max(2, rad - inset))
+            if len(self._vignette_cache) > 3:
+                self._vignette_cache.clear()
+            self._vignette_cache[key] = layer
+        surf.blit(layer, self.rect.topleft)
 
     def _urban_tiles(self) -> list:
         """全图城市格，按地图身份缓存（v3.5.1 A4）。
@@ -611,49 +728,53 @@ class MapView:
             surf.blit(sp, (sx - mg, sy - mg), special_flags=pygame.BLEND_ADD)
 
     def _weather_layer(self, kind: str) -> pygame.Surface:
-        """取天气图案（雨丝 / 雪花）。
+        """取**可滚动**的天气层（v3.5.3 A5：2 倍高度、上下周期一致）。
 
-        图案用固定相位生成，因此是**静态**的——每帧重画一遍纯属浪费。
-        缓存成位图后每帧只是一次 blit。
+        图案仍是固定相位生成（不需要每帧重算），但高度是视口的两倍，
+        且下半幅是上半幅的复制——因此从任意 y 偏移取一个视口高的窗口，
+        图案都是无缝的，循环播放不会出现跳变。
+
+        代价只有内存翻倍，blit 次数仍是一次。
         """
         key = (kind, self.rect.width, self.rect.height, max(6, self.tile))
         cached = self._weather_cache.get(key)
         if cached is not None:
             return cached
-        layer = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        w = max(1, self.rect.width)
+        h = max(1, self.rect.height)
+        layer = pygame.Surface((w, h * 2), pygame.SRCALPHA)
         if kind == "rain":
             ts = max(6, self.tile)
             step = max(14, ts // 2)
-            for i in range(0, self.rect.width + step, step):
-                h = (i * 7919) % 97
-                for j in range(0, self.rect.height + step, step):
-                    k = (i * 31 + j * 17 + h) % 53
+            # 上半幅生成后整体复制到下半幅，保证周期衔接
+            for i in range(0, w + step, step):
+                hv = (i * 7919) % 97
+                for j in range(0, h + step, step):
+                    k = (i * 31 + j * 17 + hv) % 53
                     if k > 6:
                         continue
                     x = i + (k * 3) % step
-                    y = (j + h) % (self.rect.height + step)
+                    y = (j + hv) % (h + step)
                     pygame.draw.line(layer, (150, 190, 220, 60), (x, y), (x - 3, y + 11), 1)
         else:
             step = max(18, self.tile)
-            for i in range(0, self.rect.width + step, step):
-                for j in range(0, self.rect.height + step, step):
+            for i in range(0, w + step, step):
+                for j in range(0, h + step, step):
                     k = (i * 37 + j * 61) % 71
                     if k > 9:
                         continue
                     pygame.draw.circle(layer, (225, 238, 250, 95),
                                        (i + (k * 5) % step, j + (k * 7) % step), 1)
-        if len(self._weather_cache) > 8:
+        # 复制上半幅到下半幅：循环滚动的无缝前提。
+        # **必须先清空下半幅**：pygame 的 blit 默认是 alpha 混合，
+        # 直接复制会让"溢出到 y>h 的雨丝"与副本叠加成两倍浓度，
+        # 滚动到边界时浓度会突变（实测 y=240 的像素数比 y=0 多一倍）。
+        layer.fill((0, 0, 0, 0), pygame.Rect(0, h, w, h))
+        layer.blit(layer, (0, h), pygame.Rect(0, 0, w, h))
+        if len(self._weather_cache) > 2:
             self._weather_cache.clear()
         self._weather_cache[key] = layer
         return layer
-
-    def _draw_rain(self, surf: pygame.Surface) -> None:
-        """斜向雨丝：用固定相位的伪随机点，避免每帧跳动造成的视觉噪声。"""
-        surf.blit(self._weather_layer("rain"), self.rect.topleft)
-
-    def _draw_snow(self, surf: pygame.Surface) -> None:
-        """飘雪：稀疏的白点，越靠下越密（模拟近处视角）。"""
-        surf.blit(self._weather_layer("snow"), self.rect.topleft)
 
     # -- 叠层 -------------------------------------------------------------
     def _draw_overlay(self, surf: pygame.Surface) -> None:
@@ -1336,11 +1457,18 @@ class MapView:
                 pygame.draw.circle(layer, (*col, 240), head, max(1, int(self.tile * 0.07)))
 
             elif e.kind == "burst":
-                # 爆炸：扩散冲击环 + 火花射线 + 闪光核心
+                # 爆炸：爆闪白核 → 扩散冲击环 → 火花射线（v3.5.3 A8）
                 rad = max(2, int(self.tile * anim_mod.burst_radius(p, e.size)))
                 alpha = int(230 * (1.0 - p))
                 if alpha <= 3:
                     continue
+                # 爆闪：前 18% 生命期叠一个快速衰减的白核。没有它，爆炸
+                # 看起来像"一个环慢慢变大"，缺少"炸开"的瞬时冲击力。
+                if p < 0.18:
+                    fl = int(210 * (1.0 - p / 0.18))
+                    if fl > 3:
+                        pygame.draw.circle(layer, (255, 253, 245, fl), a,
+                                           max(2, int(rad * 0.75)))
                 pygame.draw.circle(layer, (*col, alpha), a, rad, max(1, int(self.tile * 0.07)))
                 inner = max(1, int(rad * 0.55))
                 pygame.draw.circle(layer, (255, 240, 210, int(alpha * 0.55)), a, inner)
