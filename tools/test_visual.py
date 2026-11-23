@@ -145,6 +145,71 @@ def test_city_glow() -> None:
     check(edge <= 6, f"外圈边缘衰减到接近 0（{edge} 级 ≤ 6）")
 
 
+def test_weather_scroll() -> None:
+    """天气层必须可无缝循环滚动（v3.5.3 A5）。
+
+    做法是 2 倍高 + 下半幅复制上半幅。如果谁把复制那行删了，
+    滚动到 y=H 附近会出现图案跳变——肉眼很明显但代码里看不出来，
+    所以用像素比对守住。
+    """
+    print("\n--- 天气滚动层 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.BLUE, seed=5)
+    mv = MapView(pygame.Rect(0, 0, 320, 240), st)
+    mv.tile = 26
+    for kind in ("rain", "snow"):
+        layer = mv._weather_layer(kind)
+        check(layer.get_height() == 480,
+              f"{kind} 层高为视口 2 倍（{layer.get_height()} = 240×2）")
+        # 上半幅与下半幅逐像素一致 → 滚动循环无缝
+        top = pygame.image.tobytes(layer.subsurface(pygame.Rect(0, 0, 320, 240)), "RGB")
+        bot = pygame.image.tobytes(layer.subsurface(pygame.Rect(0, 240, 320, 240)), "RGB")
+        check(top == bot, f"{kind} 上下两幅完全一致（循环无跳变）")
+
+
+def test_vignette_scope() -> None:
+    """暗角只能盖地图区，且幅度受限（v3.5.3 A6）。"""
+    print("\n--- 地图暗角 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.BLUE, seed=6)
+    mv = MapView(pygame.Rect(0, 0, 400, 300), st)
+    surf = pygame.Surface((400, 300))
+    mv._vignette_on = True
+    mv._draw_vignette(surf)
+    layer = next(iter(mv._vignette_cache.values()))
+    check(layer.get_size() == (400, 300), "暗角层尺寸等于地图视口（不外溢到 UI）")
+    # 中心必须完全透明，否则会压暗战场
+    mid = layer.get_at((200, 150))
+    check(mid[3] <= 2, f"暗角层中心透明（alpha {mid[3]} ≤ 2）")
+    # 最外环的不透明度上限
+    edge = layer.get_at((1, 150))
+    check(edge[3] <= 50, f"边缘暗度克制（alpha {edge[3]} ≤ 50）")
+    mv._vignette_on = False
+    surf.fill((0, 0, 0))
+    mv._draw_vignette(surf)
+    check(surf.get_at((200, 150))[:3] == (0, 0, 0), "关闭后不绘制任何东西")
+
+
+def test_shake_stateless() -> None:
+    """镜头震动必须无状态、有上限、可复原（v3.5.3 A8）。"""
+    print("\n--- 镜头震动 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.BLUE, seed=7)
+    mv = MapView(pygame.Rect(0, 0, 400, 300), st)
+    check(mv._shake_offset() == (0, 0), "无爆炸时不震动")
+    st.anim.add("burst", (5, 5), ttl=0.4)
+    off = mv._shake_offset()
+    check(off != (0, 0), f"有爆炸时产生偏移 {off}")
+    check(abs(off[0]) <= 3 and abs(off[1]) <= 3, "偏移不超过 3px（否则格线错位像故障）")
+    surf = pygame.Surface((400, 300))
+    ox0, oy0 = mv.ox, mv.oy
+    for _ in range(3):
+        mv.draw(surf)
+    check(mv.ox == ox0 and mv.oy == oy0, "绘制后镜头复原（异常路径也不漂移）")
+    st.anim.events.clear()
+    check(mv._shake_offset() == (0, 0), "爆炸过期后自动归零")
+
+
 def test_chunk_cache() -> None:
     print("\n--- 地形块缓存 ---")
     sc = load_scenario(MAP, ARMORY)
@@ -164,6 +229,9 @@ def main() -> int:
     test_terrain_has_material()
     test_unit_icon_stages()
     test_city_glow()
+    test_weather_scroll()
+    test_vignette_scope()
+    test_shake_stateless()
     test_chunk_cache()
 
     print("\n" + "=" * 46)
