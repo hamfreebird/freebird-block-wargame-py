@@ -592,9 +592,14 @@ class MapView:
         天然被裁剪在 mapview 内。
 
         **为什么不用逐像素径向渐变**：1500×920 逐点算距离要 20 ms 以上。
-        这里用 12 层同心圆角矩形环，每环一条固定宽度的边——
-        一次性生成后每帧只是一次 blit（约 1.4 ms）。圆角半径取短边的
-        18%，四角因此比四边更暗，接近真实径向暗角的观感。
+        这里用 12 层同心矩形环，每环一条固定宽度的边——
+        一次性生成后每帧只是一次 blit（约 0.2 ms）。
+
+        **为什么是直角而不是圆角**（v3.5.4）：最初给每环加了
+        `border_radius = 短边 × 18%`，想让四角比四边更暗、更接近径向。
+        实测结果相反——圆角把四角排除在暗化之外（四角 alpha = 0，
+        四边 = 44），整块地图看上去被"切成了圆角"，用起来像是在
+        一个圆角窗口里看方图。地图是方的，暗化边界就应该是方的。
         """
         if not self._vignette_on:
             return
@@ -606,7 +611,6 @@ class MapView:
             rings = 12
             short = min(w, h)
             step = max(2, int(short * 0.022))       # 每环宽度
-            rad = max(6, int(short * 0.18))         # 圆角半径
             peak = 44                               # 最外环不透明度上限
             for i in range(rings):
                 inset = i * step
@@ -620,8 +624,7 @@ class MapView:
                 if a <= 0:
                     continue
                 pygame.draw.rect(layer, (0, 0, 0, a),
-                                 pygame.Rect(inset, inset, rw, rh),
-                                 width=step, border_radius=max(2, rad - inset))
+                                 pygame.Rect(inset, inset, rw, rh), width=step)
             if len(self._vignette_cache) > 3:
                 self._vignette_cache.clear()
             self._vignette_cache[key] = layer
