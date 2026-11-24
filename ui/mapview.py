@@ -438,7 +438,7 @@ class MapView:
             self._smoke_list = [t for t in self.state.map.iter_tiles() if t.smoke > 0]
         return self._smoke_list
 
-    def _shake_offset(self) -> tuple[int, int]:
+    def _shake_offset(self, now: float | None = None) -> tuple[int, int]:
         """爆炸时的镜头震动偏移（v3.5.3 A8）。
 
         **无状态设计**：偏移完全由「场上还有没有刚发生的爆炸」推导，
@@ -460,8 +460,10 @@ class MapView:
             amp = max(amp, (1.0 - p / 0.35) * 3.0)
         if amp <= 0.25:
             return (0, 0)
-        # 用真实时间做双频振荡，避免整齐的来回摆
-        t = pygame.time.get_ticks() / 1000.0
+        # 用真实时间做双频振荡，避免整齐的来回摆。
+        # `now` 可注入：测试要断言"有爆炸时偏移非零"，若读真实时钟，
+        # 恰好 sin/cos 同时接近 0 的瞬间会得到 (0,0) 而误报。
+        t = pygame.time.get_ticks() / 1000.0 if now is None else now
         return (int(round(amp * math.sin(t * 71.0))),
                 int(round(amp * 0.7 * math.cos(t * 53.0))))
 
@@ -582,6 +584,202 @@ class MapView:
         else:
             off = int(t * 58) % max(1, h)
         surf.blit(layer, self.rect.topleft, pygame.Rect(0, off, w, h))
+
+    def _draw_vignette(self, surf: pygame.Surface) -> None:
+        """地图区暗角（v3.5.3 A6）。
+
+        **为什么只在地图区内**：暗角的作用是把视线收拢到战场中心，
+        但如果盖到右侧信息面板与底部状态栏，会让文字对比度下降——
+        可读性优先于氛围。调用点在 `surf.set_clip(None)` 之前，
+        天然被裁剪在 mapview 内。
+
+        **为什么不用逐像素径向渐变**：1500×920 逐点算距离要 20 ms 以上。
+        这里用 12 层同心矩形环，每环一条固定宽度的边——
+        一次性生成后每帧只是一次 blit（约 0.2 ms）。
+
+        **为什么是直角而不是圆角**（v3.5.4）：最初给每环加了
+        `border_radius = 短边 × 18%`，想让四角比四边更暗、更接近径向。
+        实测结果相反——圆角把四角排除在暗化之外（四角 alpha = 0，
+        四边 = 44），整块地图看上去被"切成了圆角"，用起来像是在
+        一个圆角窗口里看方图。地图是方的，暗化边界就应该是方的。
+        """
+        if not self._vignette_on:
+            return
+        key = self.rect.size
+        layer = self._vignette_cache.get(key)
+        if layer is None:
+            w, h = key
+            layer = pygame.Surface(key, pygame.SRCALPHA)
+            rings = 12
+            short = min(w, h)
+            step = max(2, int(short * 0.022))       # 每环宽度
+            peak = 44                               # 最外环不透明度上限
+            for i in range(rings):
+                inset = i * step
+                rw = w - inset * 2
+                rh = h - inset * 2
+                if rw <= 2 or rh <= 2:
+                    break
+                # 越靠外越暗，平方衰减让过渡更柔
+                k = 1.0 - i / rings
+                a = int(peak * k * k)
+                if a <= 0:
+                    continue
+                pygame.draw.rect(layer, (0, 0, 0, a),
+                                 pygame.Rect(inset, inset, rw, rh), width=step)
+            if len(self._vignette_cache) > 3:
+                self._vignette_cache.clear()
+            self._vignette_cache[key] = layer
+        surf.blit(layer, self.rect.topleft)
+
+    def _urban_tiles(self) -> list:
+        """全图城市格，按地图身份缓存（v3.5.1 A4）。
+
+        只在夜间用到，但每帧都要筛视口。全图 urban 通常几十到几百格，
+        遍历一遍约 0.05 ms，比维护块级索引简单得多，也够快。
+        """
+        key = (id(self.state.map), self.state.map_epoch)
+        if getattr(self, "_urban_key", None) != key:
+            self._urban_key = key
+            self._urban_list = [t for t in self.state.map.iter_tiles()
+                                if t.terrain is Terrain.URBAN]
+        return self._urban_list
+
+    def _glow_sprite(self, level: int) -> pygame.Surface:
+        """整格柔光 + 边缘外溢（v3.5.2）。
+
+        **为什么要换掉原来的光点**：v3.5.1 用 7×7 暖黄小点
+        `(255,214,148)` 加色叠加，与城市底色 (51,55,65) 差了近 200 级——
+        看上去像"在地图上贴了几颗黄色 LED"，而不是城市在夜里透出的光。
+
+        现在由三部分组成：
+
+        1. **格内完全均匀**——不做径向衰减。若每格画一个圆形亮斑，
+           成片的城市会变成规则点阵，比光点更难看（第一版实测就是这个结果）。
+        2. **格外柔和外溢**——精灵比格子大，外圈按立方衰减到接近 0。
+           真实的光会溢到墙外，城市边缘因此有过渡而不是硬切。
+        3. **幅度克制**——峰值增量 30–39 级、R:G:B ≈ 1 : 0.94 : 0.84，
+           与底色 (51,55,65) 同量级，观感是"这块地面比周围亮一点、暖一点"。
+
+        `BLEND_ADD` 只用 RGB、忽略 alpha，所以衰减必须体现在 RGB 值上：
+        外圈直接写字面很小的值，而不是靠 alpha 淡出。
+        """
+        key = (self.tile, level)
+        sp = self._glow_cache.get(key)
+        if sp is not None:
+            return sp
+        ts = self.tile
+        mg = max(3, ts // 8)             # 外溢宽度
+        size = ts + mg * 2
+        sp = pygame.Surface((size, size), pygame.SRCALPHA)
+        base = 30 + level * 3            # 峰值增量 30–39 级
+        r = base
+        g = int(base * 0.94)
+        b = int(base * 0.84)
+        rings = 6
+        half = size // 2
+        # 从外到内：立方衰减，最外圈接近 0
+        for i in range(rings, 0, -1):
+            rad = max(1, int(half * i / rings))
+            k = (rings - i + 1) / rings
+            v = int(base * k * k * k)
+            if v <= 0:
+                continue
+            pygame.draw.circle(sp, (v, int(v * 0.94), int(v * 0.84), 255),
+                               (half, half), rad)
+        # 格内覆盖为均匀（去掉圆斑感）
+        sp.fill((r, g, b, 255), pygame.Rect(mg, mg, ts, ts))
+        self._glow_cache[key] = sp
+        return sp
+
+    def _draw_city_lights(self, surf: pygame.Surface) -> None:
+        """夜间/晨昏的城市光晕（v3.5.2）。
+
+        三个时段强度不同：黎明 0.35、黄昏 0.55、夜间 1.0。
+        白天直接返回，零成本。
+
+        画在色调层之后——否则刚透出的那点微光会被深蓝压掉。
+        跳过有单位的格子：光晕盖在棋子上会让描边发灰。
+        """
+        env = environment_for(self.state)
+        tod = env.time_of_day
+        if tod is TimeOfDay.DAY:
+            return
+        strength = {TimeOfDay.DAWN: 0.35, TimeOfDay.DUSK: 0.55,
+                    TimeOfDay.NIGHT: 1.0}.get(tod, 0.0)
+        if strength <= 0:
+            return
+        ts = self.tile
+        if ts < 10:
+            return                      # 格子太小时光晕会糊成一片脏斑
+        r = self.rect
+        # 视口换算一次，循环里只做加减
+        left, top = r.left - self.ox, r.top - self.oy
+        right, bottom = r.right - self.ox, r.bottom - self.oy
+        for t in self._urban_tiles():
+            px = t.x * ts
+            py = t.y * ts
+            if px + ts < left or px > right or py + ts < top or py > bottom:
+                continue
+            if self.state.units_at(t.x, t.y):
+                continue
+            sx = int(r.x + self.ox + px)
+            sy = int(r.y + self.oy + py)
+            h = (t.x * 73856093 ^ t.y * 19349663) & 0xFFFF
+            # 亮度档 0–3：只做轻微抖动，避免整片完全相同
+            lv = int(((h >> 3) & 0x1) * strength)
+            sp = self._glow_sprite(min(3, lv))
+            mg = (sp.get_width() - ts) // 2
+            surf.blit(sp, (sx - mg, sy - mg), special_flags=pygame.BLEND_ADD)
+
+    def _weather_layer(self, kind: str) -> pygame.Surface:
+        """取**可滚动**的天气层（v3.5.3 A5：2 倍高度、上下周期一致）。
+
+        图案仍是固定相位生成（不需要每帧重算），但高度是视口的两倍，
+        且下半幅是上半幅的复制——因此从任意 y 偏移取一个视口高的窗口，
+        图案都是无缝的，循环播放不会出现跳变。代价只有内存翻倍，
+        blit 次数仍是一次。
+
+        **先画到独立的上半幅、再复制两次**，而不是"画进大层后清空下半幅
+        再 blit 自身"（v3.5.4 改法）。后者依赖零 alpha 处的混合行为，
+        不同 SDL 版本表现不一致——CI 的 Python 3.13 runner 上就因此失败。
+        复制两张不透明内容没有歧义。
+        """
+        key = (kind, self.rect.width, self.rect.height, max(6, self.tile))
+        cached = self._weather_cache.get(key)
+        if cached is not None:
+            return cached
+        w = max(1, self.rect.width)
+        h = max(1, self.rect.height)
+        top = pygame.Surface((w, h), pygame.SRCALPHA)
+        if kind == "rain":
+            ts = max(6, self.tile)
+            step = max(14, ts // 2)
+            for i in range(0, w + step, step):
+                hv = (i * 7919) % 97
+                for j in range(0, h + step, step):
+                    k = (i * 31 + j * 17 + hv) % 53
+                    if k > 6:
+                        continue
+                    x = i + (k * 3) % step
+                    y = (j + hv) % (h + step)
+                    pygame.draw.line(top, (150, 190, 220, 60), (x, y), (x - 3, y + 11), 1)
+        else:
+            step = max(18, self.tile)
+            for i in range(0, w + step, step):
+                for j in range(0, h + step, step):
+                    k = (i * 37 + j * 61) % 71
+                    if k > 9:
+                        continue
+                    pygame.draw.circle(top, (225, 238, 250, 95),
+                                       (i + (k * 5) % step, j + (k * 7) % step), 1)
+        layer = pygame.Surface((w, h * 2), pygame.SRCALPHA)
+        layer.blit(top, (0, 0))
+        layer.blit(top, (0, h))
+        if len(self._weather_cache) > 2:
+            self._weather_cache.clear()
+        self._weather_cache[key] = layer
+        return layer
 
     def _draw_vignette(self, surf: pygame.Surface) -> None:
         """地图区暗角（v3.5.3 A6）。

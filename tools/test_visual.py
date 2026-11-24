@@ -205,7 +205,9 @@ def test_shake_stateless() -> None:
     mv = MapView(pygame.Rect(0, 0, 400, 300), st)
     check(mv._shake_offset() == (0, 0), "无爆炸时不震动")
     st.anim.add("burst", (5, 5), ttl=0.4)
-    off = mv._shake_offset()
+    # 传入固定时刻：断言必须确定，不能依赖真实时钟（sin/cos 同时接近 0
+    # 的瞬间会得到 (0,0)，在 CI 上表现为随机失败）
+    off = mv._shake_offset(now=0.0)
     check(off != (0, 0), f"有爆炸时产生偏移 {off}")
     check(abs(off[0]) <= 3 and abs(off[1]) <= 3, "偏移不超过 3px（否则格线错位像故障）")
     surf = pygame.Surface((400, 300))
