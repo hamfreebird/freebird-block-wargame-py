@@ -139,8 +139,14 @@ def evaluate_detection(state: "GameState", observer: Unit, target: Unit) -> Dete
 
         ratio = d / eff
         # strength 越高，能在越远距离上达到「跟踪」
-        track_ratio = 0.35 + 0.30 * s.strength
-        class_ratio = 0.70 + 0.22 * s.strength
+        # 必须 clamp 到 1 以下：进入分档的前提是 ratio ≤ 1（否则前面已 return），
+        # 若 class_ratio ≥ 1，`elif ratio <= class_ratio` 恒真，CONTACT 永不可达。
+        # 实测 strength=1.40 时原式给 1.008，radar_e3 / radar_a50 / radar_kj500
+        # 三个官方传感器的"接触"档因此从未出现过。
+        track_ratio = min(0.96, 0.35 + 0.30 * s.strength)
+        class_ratio = min(0.98, 0.70 + 0.22 * s.strength)
+        if track_ratio > class_ratio:      # 极端 strength 下保持单调
+            track_ratio = class_ratio
         if ratio <= track_ratio:
             lvl = Detection.TRACKED
         elif ratio <= class_ratio:

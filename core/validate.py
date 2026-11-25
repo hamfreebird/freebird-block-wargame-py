@@ -529,7 +529,9 @@ def _check_events(rep: ValidationReport, scenario) -> None:
     armory = scenario.armory
     for i, ev in enumerate(events):
         if ev.turn > scenario.turn_limit:
-            rep.add("warn", "event-late",
+            # v3.5.5 F25：升为 error。增援永不触发是功能缺陷，不是权衡性提示
+            # （port_inland 那种"关卡设计偏好"才降级为提示）。
+            rep.add("error", "event-late",
                     f"事件 {i + 1}（{ev.label}）的回合 {ev.turn} 超出想定回合上限 "
                     f"{scenario.turn_limit}，永远不会触发")
         if ev.type == "reinforce":

@@ -27,14 +27,15 @@ class SettingsPanel:
     ROW_H = 26
     HEADER_H = 92
     FOOTER_H = 62
-    # 主题 / 字号 / 形状标识 / 图标包 / 音效 / 语言 / AI 指挥官 七个区块，
+    # 主题 / 字号 / 形状标识 / 动效 / 图标包 / 音效 / 语言 / AI 指挥官 八个区块，
     # 每块 34px。高度必须跟着字号档位走（`T.m`），否则放大后最后一块会压到键位列表上。
-    OPTIONS_ROWS = 7
+    OPTIONS_ROWS = 8
     OPTIONS_ROW_H = 34
     OPTIONS_H = OPTIONS_ROWS * OPTIONS_ROW_H
 
     def __init__(self, cfg: UserConfig, on_theme=None, on_sound=None, on_language=None,
-                 on_icons=None, on_font_scale=None, on_shape_cues=None, on_ai_mode=None):
+                 on_icons=None, on_font_scale=None, on_shape_cues=None,
+                 on_ai_mode=None, on_motion=None):
         self.cfg = cfg
         self.capturing: str = ""        # 正在等待按键的动作 ID
         self.scroll = 0
@@ -58,6 +59,7 @@ class SettingsPanel:
         self.on_icons = on_icons
         self.on_font_scale = on_font_scale
         self.on_shape_cues = on_shape_cues
+        self.on_motion = on_motion
         self.on_ai_mode = on_ai_mode
         # 选项控件
         self._theme_buttons: list[tuple[pygame.Rect, str]] = []
@@ -65,6 +67,7 @@ class SettingsPanel:
         self._icon_buttons: list[tuple[pygame.Rect, str]] = []
         self._scale_buttons: list[tuple[pygame.Rect, str]] = []
         self._shape_buttons: list[tuple[pygame.Rect, str]] = []
+        self._motion_buttons: list[tuple[pygame.Rect, str]] = []
         self._ai_buttons: list[tuple[pygame.Rect, str]] = []
         self._sound_btn = pygame.Rect(0, 0, 0, 0)
         self._vol_left = pygame.Rect(0, 0, 0, 0)
@@ -76,6 +79,17 @@ class SettingsPanel:
     # ------------------------------------------------------------------ #
     # 交互
     # ------------------------------------------------------------------ #
+    def reset_transient(self) -> None:
+        """清掉跨开关会残留的临时状态（v3.5.5 F6）。
+
+        面板实例在 App 里是复用的。`capturing` 表示"正在等玩家按新键"，
+        若带着它关闭再打开，下一次按键会被当作重绑定，静默改掉上一行的键位。
+        `scroll` / `focus_index` 也应回到初始，否则重开时会停在上次的随机位置。
+        """
+        self.capturing = ""
+        self.scroll = 0
+        self.focus_index = 0
+
     def handle_event(self, e: pygame.event.Event) -> bool:
         """处理事件；返回 True 表示事件已被面板消费。"""
         if e.type == pygame.KEYDOWN:
@@ -133,6 +147,10 @@ class SettingsPanel:
             for rect, sid in self._scale_buttons:
                 if rect.collidepoint(e.pos):
                     self._select_font_scale(sid)
+                    return True
+            for rect, mode in self._motion_buttons:
+                if rect.collidepoint(e.pos):
+                    self._select_motion(mode)
                     return True
             for rect, mode in self._shape_buttons:
                 if rect.collidepoint(e.pos):
@@ -224,6 +242,13 @@ class SettingsPanel:
             self.message = tr("settings.shape_cues") + "：" + tr(f"ui.shape.{mode}")
             self.message_color = T.GREEN
 
+    def _select_motion(self, mode: str) -> None:
+        if self.cfg.set_motion(mode):
+            if self.on_motion:
+                self.on_motion(mode)
+            self.message = tr("settings.motion") + "：" + tr(f"ui.motion.{mode}")
+            self.message_color = T.GREEN
+
     def _select_icons(self, pid: str) -> None:
         self.cfg.set_pref("icon_pack", "" if pid == "__none__" else pid)
         if self.on_icons:
@@ -274,7 +299,7 @@ class SettingsPanel:
         ``(种类, 参数)``：参数只对 ``key`` 有意义（动作 ID）。
         顶部 5 行各算一项，值用 ←→ 调；键位列表每项算一项，Enter 进入重绑定。
         """
-        items = [("theme", ""), ("font_scale", ""), ("shape", ""),
+        items = [("theme", ""), ("font_scale", ""), ("shape", ""), ("motion", ""),
                  ("icons", ""), ("sound", ""), ("volume", ""), ("language", ""),
                  ("ai_mode", "")]
         # 与 draw() 里的分栏顺序一致：左栏常规操作，右栏武器槽
@@ -307,6 +332,10 @@ class SettingsPanel:
             ids = [k for k, _ in T.SHAPE_MODES]
             cur = ids.index(T.shape_mode()) if T.shape_mode() in ids else 0
             self._select_shape_cues(ids[(cur + delta) % len(ids)])
+        elif kind == "motion":
+            ids = [k for k, _ in T.MOTION_MODES]
+            cur = ids.index(T.motion_mode()) if T.motion_mode() in ids else 0
+            self._select_motion(ids[(cur + delta) % len(ids)])
         elif kind == "icons":
             entries = ["__none__"] + [p.id for p in self._icon_packs]
             cur = str(self.cfg.pref("icon_pack", "") or "") or "__none__"
@@ -370,8 +399,8 @@ class SettingsPanel:
         而写死更窄的话短标签又白留一大截。
         """
         labels = [tr("settings.theme"), tr("settings.font_scale"), tr("settings.shape_cues"),
-                  tr("ui.settings_icon_pack"), tr("settings.sound"), tr("settings.language"),
-                  tr("settings.ai_commander")]
+                  tr("settings.motion"), tr("ui.settings_icon_pack"), tr("settings.sound"),
+                  tr("settings.language"), tr("settings.ai_commander")]
         lx = r.x + T.m(22)
         widest = max(T.text_width(lb, 11, bold=True) for lb in labels)
         return lx, max(r.x + T.m(100), lx + widest + T.m(14))
@@ -437,6 +466,15 @@ class SettingsPanel:
             b, sx = self._draw_choice(s, sx, y, tr(f"ui.shape.{mode}"),
                                       mode == T.shape_mode())
             self._shape_buttons.append((b, mode))
+        y += step
+
+        # -- 动效（无障碍：完整 / 减弱）--
+        mx = self._option_row(s, r, y, tr("settings.motion"))
+        self._motion_buttons = []
+        for mode, _label in T.MOTION_MODES:
+            b, mx = self._draw_choice(s, mx, y, tr(f"ui.motion.{mode}"),
+                                      mode == T.motion_mode())
+            self._motion_buttons.append((b, mode))
         y += step
 
         # -- 图标包 --
@@ -656,6 +694,23 @@ class SettingsPanel:
         if kind == "theme":
             for b, tid in self._theme_buttons:
                 if tid == T.current_theme().id:
+                    rect = b
+                    break
+        elif kind == "font_scale":
+            # v3.5.5 F17：`_focus_items` 早已列出这两项，但绘制分支缺失，
+            # 键盘用户停在"字号""形状标识"时完全看不到焦点框，只能盲按。
+            for b, sid in self._scale_buttons:
+                if sid == self.cfg.font_scale:
+                    rect = b
+                    break
+        elif kind == "shape":
+            for b, mode in self._shape_buttons:
+                if mode == T.shape_mode():
+                    rect = b
+                    break
+        elif kind == "motion":
+            for b, mode in self._motion_buttons:
+                if mode == T.motion_mode():
                     rect = b
                     break
         elif kind == "icons":

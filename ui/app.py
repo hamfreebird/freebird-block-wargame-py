@@ -272,6 +272,7 @@ class App:
         self._apply_theme(self.cfg.theme)
         self._apply_font_scale(self.cfg.font_scale)
         self._apply_shape_cues(self.cfg.shape_cues)
+        self._apply_motion(self.cfg.motion)
         self._apply_language(self.cfg.language)
         self.audio = AudioManager(enabled=self.cfg.sound_enabled,
                                   volume=self.cfg.volume)
@@ -708,18 +709,51 @@ class App:
                 on_font_scale=self._apply_font_scale,
                 on_shape_cues=self._apply_shape_cues,
                 on_ai_mode=self._apply_ai_mode,
+                on_motion=self._apply_motion,
             )
         self.show_settings = True
+
+    def _save_config_quietly(self) -> None:
+        """退出路径落盘：失败只提示，绝不阻断退出（v3.5.5 F5）。
+
+        与 `close_settings()` 的区别：那个是玩家主动确认，失败要显眼；
+        这个是关窗/退出的兜底，磁盘只读或目录不可写时不应卡住进程。
+        """
+        try:
+            self.cfg.save()
+        except Exception:
+            pass
 
     def close_settings(self) -> None:
         """关闭设置面板并保存配置。"""
         self.show_settings = False
+        # v3.5.5 F6：面板实例是复用的，若关闭时仍在按键捕获态，
+        # 下次打开后的第一个按键会被当成"给上一行的重绑定"，
+        # 静默改掉键位（实测 end_turn 从 space 变 z 且无任何提示）。
+        if self.settings_panel is not None:
+            self.settings_panel.reset_transient()
         try:
             self.cfg.save()
             self.keymap = build_reverse(self.cfg)
             self.set_status(tr("ui.st.keymap_saved"), 3)
         except ConfigError as exc:
             self.set_status(str(exc), 5)
+
+    def _apply_motion(self, mode: str) -> bool:
+        """切换动效档位（v3.5.5 F18/F19）。
+
+        `reduced` 同时影响两处：
+        - `AnimTrack.enabled` → 关闭爆炸/拖尾等动画与爆闪、震动
+        - `MapView` 读 `T.motion_reduced()` → 天气不滚动、暗角不绘制
+
+        切换后必须立即生效，否则玩家改完设置要重开对局才看到变化。
+        """
+        ok = T.set_motion_mode(mode)
+        if ok:
+            self.cfg.set_motion(mode)
+            if self.state is not None:
+                self.state.anim.enabled = (mode != "reduced")
+        return ok
 
     def _apply_ai_mode(self, mode: str) -> None:
         """切换对手 AI 的驱动方式。
@@ -949,7 +983,8 @@ class App:
                     T.TEXT, bold=True)
         T.draw_text(s, tr("ui.campaign_desc"),
                     (r.x + T.m(22), r.y + T.m(42)), 11, T.TEXT_FAINT)
-        T.hsep(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(64), T.BORDER)
+        T.hsep(s, r.x + T.m(20), r.right - T.m(20), r.y + T.m(64), T.BORDER,
+               bg=T.mix(T.PANEL, T.PURPLE, 0.15))
 
         self._campaign_rows: list[tuple[pygame.Rect, CampaignDef]] = []
         if not camps:
@@ -1782,6 +1817,8 @@ class App:
                                self.h - top_h() - bottom)
         if self.mapview is None:
             self.mapview = MapView(map_rect, self.state)
+            # 新对局的 AnimTrack 是新建的，按当前动效档位重新设置
+            self._apply_motion(self.cfg.motion)
         else:
             self.mapview.rect = map_rect
             self.mapview.state = self.state
@@ -2041,10 +2078,15 @@ class App:
             if w is None:
                 self.set_status(tr("ui.st.no_weapon"))
                 return
-            res = self.state.strike_facility(u, self.pending_facility, w)
+            # v3.5.5 F9：必须记录 salvo。对单位开火一直记（见 confirm_fire），
+            # 设施打击漏了——回放时 GameState 的 salvo_setting 回落到 1，
+            # 于是"实机打 3 发、回放打 1 发"，弹药与伤害全不同。
+            res = self.state.strike_facility(u, self.pending_facility, w,
+                                             salvo=self.state.salvo_setting)
             if res.ok:
                 self._record(CMD_FIRE_FACILITY, attacker=u.uid, weapon=w.id,
-                             x=self.pending_facility[0], y=self.pending_facility[1])
+                             x=self.pending_facility[0], y=self.pending_facility[1],
+                             salvo=self.state.salvo_setting)
             self.set_status(res.message, 3.5)
             self.pending_facility = None
             self.reachable = {}
@@ -2212,6 +2254,9 @@ class App:
                 self._scan_scenarios()
             return
         if e.type == pygame.QUIT:
+            # v3.5.5 F5：直接关窗也要落盘。此前唯一的保存点是"设置→完成"，
+            # 玩家改完主题/字号/键位后点右上角关闭，全部配置丢失。
+            self._save_config_quietly()
             self.running = False
         elif e.type == pygame.VIDEORESIZE:
             self.screen = pygame.display.set_mode((max(MIN_W, e.w), max(MIN_H, e.h)),
@@ -2780,6 +2825,8 @@ class App:
                 p.update(dt)
                 self.state = p.state
                 self.state.tick_fx(dt)
+                if self.mapview is not None:
+                    self.mapview.tick_clock(dt)
                 if self.state.sfx_events:
                     for name in self.state.sfx_events[:6]:
                         self._sfx(name)
@@ -2793,6 +2840,8 @@ class App:
             self._spectate_tick(dt)
             self.state = m.state
             self.state.tick_fx(dt)
+            if self.mapview is not None:
+                self.mapview.tick_clock(dt)
             if self.state.sfx_events:
                 for name in self.state.sfx_events[:6]:
                     self._sfx(name)
@@ -2823,6 +2872,9 @@ class App:
                          or self.campaign_pending or st.over)
         if not ui_paused:
             st.tick_fx(dt)
+            # v3.5.5 F13/F14：视觉时钟只在非暂停时推进，暂停即静止
+            if self.mapview is not None:
+                self.mapview.tick_clock(dt)
         # 消费音效信号队列
         if st.sfx_events:
             for name in st.sfx_events[:6]:
@@ -4544,6 +4596,7 @@ class App:
                 self.handle_event(e)
             self.update(dt)
             self.draw()
+        self._save_config_quietly()
         # 推理进程是我们起的，就得由我们收——不然关掉游戏后它还占着 1.4GB 内存
         if self.commander is not None:
             self.commander.stop()

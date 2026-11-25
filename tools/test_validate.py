@@ -108,7 +108,9 @@ def test_far_cover(sc) -> None:
     if far:
         check("机动" in far[0].message, f"提示需要机动接近：{far[0].message[:30]}")
     else:
-        check(True, "目标点仍在某单位射程内，无需提示")
+        # v3.5.5 F20：原为 check(True, ...)。校验器若不再产出
+        # objective-cover-far，"够不着 ≠ 不会打"这条门禁就被静默删除。
+        check(False, "未产出 objective-cover-far（该门禁已失效，需检查校验器）")
 
 
 # --------------------------------------------------------------------------- #

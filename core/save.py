@@ -19,7 +19,7 @@ import os
 from typing import Any, Callable
 
 from .engine import GameState, LogEntry
-from .enums import Altitude, Facility, Side
+from .enums import Altitude, Detection, Facility, Side
 from .loader import LoadError, load_scenario
 from .model import FireMission, Missile, Order, Unit, ensure_uid_above
 
@@ -231,8 +231,20 @@ def game_to_dict(state: GameState) -> dict[str, Any]:
                   or t.facility_hp < t.facility_max_hp or t.objective or t.fort > 0
                   or t.fort_owner is not Side.NEUTRAL or t.fort_build > 0 or t.fort_rubble],
         "missiles": [_missile_dict(m) for m in state.missiles],
-        "events": [{"turn": e.turn, "type": e.type, "fired": e.fired}
-                   for e in getattr(state, "events", [])],
+        # 事件按**索引**而不是 turn 存 fired：同回合多条事件（模组/编辑器可构造）
+        # 用 turn 作键会互相覆盖，一条触发后另一条被误标为已触发。
+        "events": [{"i": i, "turn": e.turn, "type": e.type, "fired": e.fired}
+                   for i, e in enumerate(getattr(state, "events", []))],
+        # 卫星情报：不存会让读档当回合的探测从「跟踪」直接塌到「未发现」，
+        # 玩家读档后对刚刚还在跟踪的目标无法开火（v3.5.5 F3）。
+        "sat": {
+            "recon": {sd.value: sorted(state.sat_recon.get(sd, ()))
+                      for sd in (Side.BLUE, Side.RED)},
+            "track": {str(uid): lvl.value for uid, lvl in state.sat_track.items()},
+        },
+        # 规则钩子的 fired：`once` 规则若不记录，读档后会重新执行增援/伤害效果（F4）
+        "rules_fired": [bool(getattr(r, "fired", False))
+                        for r in getattr(state, "rules", [])],
         "log": [{"turn": e.turn, "side": e.side.value if e.side else None,
                  "text": e.text, "kind": e.kind} for e in state.log[-150:]],
     }
@@ -451,12 +463,41 @@ def _restore_game(data: dict[str, Any], default_armory: str) -> GameState:
         ))
     state.missiles = missiles
 
-    # 4b) 想定事件：恢复已触发状态，避免读档后事件重复执行
-    fired_map = {int(d.get("turn", 0)): bool(d.get("fired", False))
-                 for d in data.get("events", []) if isinstance(d, dict)}
-    for ev in getattr(state, "events", []):
-        if ev.turn in fired_map:
-            ev.fired = fired_map[ev.turn]
+    # 4b) 想定事件：恢复已触发状态，避免读档后事件重复执行。
+    # 按索引匹配（同回合多条事件不会串台）；旧档没有 "i" 字段时回退到 turn。
+    ev_data = [d for d in data.get("events", []) if isinstance(d, dict)]
+    by_index = {int(d["i"]): bool(d.get("fired", False))
+                for d in ev_data if "i" in d}
+    by_turn = {int(d.get("turn", 0)): bool(d.get("fired", False))
+               for d in ev_data if "i" not in d}
+    for i, ev in enumerate(getattr(state, "events", [])):
+        if i in by_index:
+            ev.fired = by_index[i]
+        elif ev.turn in by_turn:
+            ev.fired = by_turn[ev.turn]
+
+    # 4c) 卫星情报与规则触发状态（v3.5.5 F3/F4：缺失时按默认值，旧档可读）
+    sat = data.get("sat") or {}
+    if isinstance(sat, dict):
+        recon = sat.get("recon") or {}
+        for sd in (Side.BLUE, Side.RED):
+            raw = recon.get(sd.value) or []
+            state.sat_recon[sd] = {int(u) for u in raw if isinstance(u, (int, str))}
+        track = sat.get("track") or {}
+        restored: dict[int, Detection] = {}
+        for uid, lvl in track.items():
+            try:
+                restored[int(uid)] = Detection(lvl)
+            except Exception:
+                continue
+        state.sat_track = restored
+
+    # 规则 fired 按索引还原：规则列表来自想定，顺序稳定
+    rf = data.get("rules_fired")
+    if isinstance(rf, list):
+        for i, rule in enumerate(getattr(state, "rules", [])):
+            if i < len(rf):
+                rule.fired = bool(rf[i])
 
     # 5) 全局计数与日志
     state.turn_count = int(data.get("turn", 1))

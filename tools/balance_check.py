@@ -224,7 +224,10 @@ def check_scenarios(rep: Report) -> None:
         path = os.path.join(maps_dir, fn)
         try:
             sc = load_scenario(path, armory)
-        except Exception:
+        except Exception as exc:                  # noqa: BLE001
+            # v3.5.5 F20：原为裸 continue。想定全部加载失败时
+            # findings/errors/warnings 全 0，main() 判绿。
+            rep.warnings.append(f"{fn}: 想定加载失败，已跳过（{exc}）")
             continue
         st = GameState(sc, Side.BLUE)
         stuck = []

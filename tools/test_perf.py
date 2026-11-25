@@ -171,18 +171,37 @@ def main() -> int:
     same = all(state.detection[Side.BLUE].get(k) is v for k, v in before.items())
     check(same, "重复解算结果稳定（增量缓存未污染结论）")
 
-    # -- 状态变化后结论随之更新 --
+    # -- 状态变化后缓存必须判废，且结论仍与全量一致 --
+    # v3.5.5 F7：原实现是 check(True, ...)，只把 changed 拼进消息，恒真。
+    # 但也不能简单改成 check(changed)：`Detection` 是 StrEnum（单例），
+    # 用 `is not` 比值即使档位变了也可能是同一个成员；而且"移动 3 格"
+    # 本就不保证跨档。真正该守的是两件事：
+    #   ① 位置世代递增（缓存判废机制真的被触发）
+    #   ② 判废后增量结果与全量遍历逐项一致（没有给出陈旧结论）
+    from core.model import pos_epoch
     moved = 0
+    epoch_before = pos_epoch()
     for u in state.units:
         if u.side is Side.RED and u.alive and u.domain is not Domain.AIR:
             u.x = max(0, u.x - 3)
             moved += 1
             break
     if moved:
+        check(pos_epoch() > epoch_before, "单位移动后位置世代递增（缓存会判废）")
         rules.build_detection_map(state)
-        changed = any(state.detection[Side.BLUE].get(k) is not v
-                      for k, v in before.items())
-        check(True, f"单位移动后重新解算（{changed} = 相关结论有变化）")
+        stale = 0
+        compared = 0
+        for side in (Side.BLUE, Side.RED):
+            index = rules._build_detection_index(state, side)
+            for tgt in state.units:
+                if not tgt.alive:
+                    continue
+                compared += 1
+                if rules._detection_level(state, side, tgt, index) \
+                        is not _full_detection_level(state, side, tgt):
+                    stale += 1
+        check(stale == 0,
+              f"移动后增量结论与全量一致（对比 {compared} 项，不一致 {stale} 项）")
 
     # -- 256×256 性能余量（v3.3 11.5）--
     print("  -- 256×256 合成大地图 --")
