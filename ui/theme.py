@@ -577,6 +577,11 @@ _FONT_CANDIDATES_CN = [
     "/Library/Fonts/Arial Unicode.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    # 纯 TTF 回退（v3.5.5 F21）：Noto/WQY 都是 TTC collection，
+    # pygame 2.6.1 在部分 Linux 平台上加载 TTC 会失败并静默回退内置字体
+    # （无 CJK 字形）。Droid Sans Fallback 是单文件 TTF，含完整 CJK。
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
 ]
 _FONT_CANDIDATES_BOLD = [
     r"C:\Windows\Fonts\msyhbd.ttc",

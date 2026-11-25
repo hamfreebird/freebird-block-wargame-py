@@ -59,7 +59,9 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq fonts-noto-cjk
+            sudo apt-get install -y -qq fonts-noto-cjk fonts-droid-fallback
+  # 纯 TTF 回退：pygame 在部分 Linux 平台加载 TTC 会静默失败（v3.5.5 F21）
+  fc-list :lang=zh | head -5 || true
           fi
           # macOS 自带 PingFang / Arial Unicode，theme.py 已列出其路径
 
