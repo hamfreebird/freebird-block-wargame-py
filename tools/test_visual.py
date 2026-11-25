@@ -219,6 +219,30 @@ def test_shake_stateless() -> None:
     check(mv._shake_offset() == (0, 0), "爆炸过期后自动归零")
 
 
+def test_motion_switch() -> None:
+    """「动效：减弱」必须真的关掉运动与装饰（v3.5.5 F18/F19）。"""
+    print("\n--- 动效开关 ---")
+    sc = load_scenario(MAP, ARMORY)
+    st = GameState(sc, Side.BLUE, seed=9)
+    mv = MapView(pygame.Rect(0, 0, 400, 300), st)
+    T.set_motion_mode("full")
+    check(not T.motion_reduced(), "完整档：motion_reduced 为假")
+    st.anim.add("burst", (5, 5), ttl=0.4)
+    check(mv._shake_offset(now=0.0) != (0, 0), "完整档：有爆炸时允许震动")
+    T.set_motion_mode("reduced")
+    check(T.motion_reduced(), "减弱档：motion_reduced 为真")
+    check(mv._shake_offset(now=0.0) == (0, 0), "减弱档：震动关闭")
+    # 暗角在减弱档下不绘制：用画面是否被改动来判定，而不是看缓存
+    surf = pygame.Surface((400, 300))
+    surf.fill((10, 10, 10))
+    before_px = pygame.image.tobytes(surf, "RGB")
+    mv._draw_vignette(surf)
+    after_px = pygame.image.tobytes(surf, "RGB")
+    check(before_px == after_px, "减弱档：暗角不改变画面（完全跳过）")
+    T.set_motion_mode("full")
+    check(T.motion_mode() == "full", "可恢复完整档")
+
+
 def test_chunk_cache() -> None:
     print("\n--- 地形块缓存 ---")
     sc = load_scenario(MAP, ARMORY)
@@ -241,6 +265,7 @@ def main() -> int:
     test_weather_scroll()
     test_vignette_scope()
     test_shake_stateless()
+    test_motion_switch()
     test_chunk_cache()
 
     print("\n" + "=" * 46)

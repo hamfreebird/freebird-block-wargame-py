@@ -505,6 +505,30 @@ _COLORBLIND_THEMES = frozenset({"deuteranopia", "protanopia"})
 
 _shape_mode: str = DEFAULT_SHAPE_MODE
 
+#: 动效档位（v3.5.5）。`reduced` 由渲染层读取，关闭运动与装饰性效果。
+MOTION_MODES: tuple[tuple[str, str], ...] = (
+    ("full", "完整"),
+    ("reduced", "减弱"),
+)
+_motion_mode: str = "full"
+
+
+def set_motion_mode(mode: str) -> bool:
+    global _motion_mode
+    if mode not in {k for k, _ in MOTION_MODES}:
+        return False
+    _motion_mode = mode
+    return True
+
+
+def motion_mode() -> str:
+    return _motion_mode
+
+
+def motion_reduced() -> bool:
+    """是否处于"减弱动效"档。渲染层用它决定要不要动。"""
+    return _motion_mode == "reduced"
+
 
 def set_shape_mode(mode: str) -> bool:
     global _shape_mode
@@ -553,6 +577,11 @@ _FONT_CANDIDATES_CN = [
     "/Library/Fonts/Arial Unicode.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    # 纯 TTF 回退（v3.5.5 F21）：Noto/WQY 都是 TTC collection，
+    # pygame 2.6.1 在部分 Linux 平台上加载 TTC 会失败并静默回退内置字体
+    # （无 CJK 字形）。Droid Sans Fallback 是单文件 TTF，含完整 CJK。
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
 ]
 _FONT_CANDIDATES_BOLD = [
     r"C:\Windows\Fonts\msyhbd.ttc",
@@ -967,14 +996,21 @@ def hline(surface: pygame.Surface, x1: int, x2: int, y: int, color=None) -> None
 
 
 def hsep(surface: pygame.Surface, x1: int, x2: int, y: int,
-         color=None, fade: int = 24) -> None:
+         color=None, fade: int = 24, bg=None) -> None:
     """两端渐隐的分隔线（v3.5.1 A7）。
 
     等宽实线会与面板边框"抢注意力"，看起来像表格网格。把两端各 24px
     做几级淡出，分隔仍在但退到背景里——这是界面设计里
     "分隔靠留白而不是靠线"的简化做法，成本只有 5 段线条。
+
+    **`bg` 必须传所在面板的真实底色**（v3.5.5 F16）。渐隐端点是
+    `mix(bg, 线色, a)`，以前硬编码 `_current.panel`：画在紫色底的战役
+    面板上时端点算出 `(15,21,30)` 而实际底色是 `(35,36,58)`，差 28 级，
+    分隔线两端会显出一条不属于该面板的暗色端帽。
     """
     base = color if color is not None else _current.border
+    if bg is None:
+        bg = _current.panel
     span = x2 - x1
     if span <= fade * 2:
         hline(surface, x1, x2, y, base)
@@ -984,7 +1020,7 @@ def hsep(surface: pygame.Surface, x1: int, x2: int, y: int,
     # 左右两端各画 steps 段，越靠外越接近面板色（即越淡）
     for i in range(steps):
         a = (i + 1) / (steps + 1)
-        c = mix(_current.panel, base, a)
+        c = mix(bg, base, a)
         lx = x1 + i * seg
         rx = x2 - (i + 1) * seg
         pygame.draw.line(surface, c, (lx, y), (lx + seg, y), 1)

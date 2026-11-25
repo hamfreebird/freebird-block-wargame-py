@@ -432,7 +432,12 @@ def _do_area_damage(state, eff: Effect, label: str) -> str:
         if not u.alive or u.side is side:
             continue
         if abs(u.x - eff.x) <= eff.radius and abs(u.y - eff.y) <= eff.radius:
-            u.hp = max(0.0, u.hp - eff.damage)
+            # v3.5.5 F10：damage 必须是非负有限值。原先直接
+            # `max(0.0, hp - damage)`，负 damage 等价于治疗且无上限，
+            # 实测能把 hp 65 的雷达打到 115（template.hp=65），
+            # hp_ratio>1 会污染战损加成。负值按 0 处理（治疗走 heal 效果）。
+            dmg = eff.damage if eff.damage > 0 else 0.0
+            u.hp = max(0.0, u.hp - dmg)
             if u.hp <= 0.0:
                 u.destroyed = True
                 # 统计与广播交给引擎的统一出口；脚本层只管改状态。

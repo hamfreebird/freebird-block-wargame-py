@@ -132,16 +132,21 @@ def test_continuity() -> None:
         prev = m
     check(worst < 0.05, f"硬度 0→0.45 扫描，最大单步跳变 {worst:.3f} < 0.05（无阈值）")
 
-    # 有界
-    lo, hi = 9.0, 0.0
+    # 有界（v3.5.5 F20）
+    # 原实现用 lo=9.0/hi=0.0 作哨兵并在异常时 continue：一旦 mult() 全抛异常，
+    # lo/hi 停在哨兵值，(0.50<=9.0 and 0.0<=1.46) 恒真，门禁静默失效。
+    # 改为先收集样本，空集直接失败。
+    vals = []
     for tid in T:
         for wid in ("m242_25", "m256_120", "tow2b", "m777_155", "gmmlrs", "jdam", "prsm"):
             try:
-                m = mult(wid, tid)
+                vals.append(mult(wid, tid))
             except Exception:                     # noqa: BLE001
                 continue
-            lo, hi = min(lo, m), max(hi, m)
-    check(0.50 <= lo and hi <= 1.46, f"全域乘数落在 [{lo:.2f}, {hi:.2f}]，未越界")
+    check(bool(vals), f"能取到相克乘数样本（{len(vals)} 项）")
+    if vals:
+        lo, hi = min(vals), max(vals)
+        check(0.50 <= lo and hi <= 1.46, f"全域乘数落在 [{lo:.2f}, {hi:.2f}]，未越界")
 
 
 # --------------------------------------------------------------------------- #

@@ -174,6 +174,10 @@ def main() -> int:
         full = os.path.join(PKG, name)
         if name.endswith(".ps1"):
             check_ps1(full, problems)
+            # v3.5.5 F22：docstring 承诺"打包脚本必须显式指定
+            # --distpath/--workpath"，但此前只对 .sh 执法，
+            # build_windows.ps1 删掉 --distpath 也无人报警。
+            check_pyinstaller_paths(full, problems)
         elif name.endswith(".bat"):
             check_bat(full, problems)
         elif name.endswith(".sh"):

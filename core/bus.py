@@ -119,12 +119,22 @@ class EventBus:
         return len(self._subs.get(event, ()))
 
     # -- 投递 -------------------------------------------------------------
+    #: 当前嵌套深度。订阅者/模组在回调里再次 emit 会叠加，
+    #: 超过上限直接拒绝——否则递归 200 层不会抛错，但会在 history 里
+    #: 留下上百条伪造的"已发生事实"，有副作用的订阅者会重复执行（F23）。
+    _depth: int = 0
+    MAX_DEPTH: int = 8
+
     def emit(self, event: str, state: Any, **fields: Any) -> GameEvent:
         """投递一个事件。
 
         事件名或必填字段对不上时**直接抛 KeyError**：投递方只有引擎自己，
         拼错一个字段名应当立刻被发现，而不是变成一条永远没人收到的空广播。
         """
+        if EventBus._depth >= EventBus.MAX_DEPTH:
+            raise RuntimeError(
+                f"事件递归过深（>{EventBus.MAX_DEPTH} 层），最后一个是 {event}；"
+                "检查是否有订阅者在回调里重复投递同一事件")
         required = CATALOGUE.get(event)
         if required is None:
             raise KeyError(f"未登记的事件：{event}"
@@ -136,6 +146,14 @@ class EventBus:
         ev = GameEvent(event, int(getattr(state, "turn_count", 0)), dict(fields))
         self.history.append(ev)
         self.counts[event] += 1
+        EventBus._depth += 1
+        try:
+            return self._dispatch(ev, event, state, fields)
+        finally:
+            EventBus._depth -= 1
+
+    def _dispatch(self, ev: GameEvent, event: str, state: Any,
+                  fields: dict) -> GameEvent:
 
         # 1) 模组钩子：位置参数与 v3.0 的签名保持兼容
         if self.mods is not None:

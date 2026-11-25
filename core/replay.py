@@ -95,7 +95,10 @@ def apply_command(state, cmd: Command) -> bool:
         if w is None:
             return False
         pos = (int(a.get("x", 0)), int(a.get("y", 0)))
-        res = state.strike_facility(attacker, pos, w)
+        # v3.5.5 F9：旧回放没有 salvo 字段，缺省 1（当时的默认行为）
+        salvo = a.get("salvo")
+        res = state.strike_facility(attacker, pos, w,
+                                    salvo=int(salvo) if salvo is not None else None)
         return bool(res.ok)
 
     if kind == CMD_END_TURN:

@@ -28,6 +28,11 @@ FONT_SCALE_IDS = ("standard", "large", "xlarge")
 DEFAULT_FONT_SCALE = "standard"
 SHAPE_MODE_IDS = ("auto", "on", "off")
 DEFAULT_SHAPE_MODE = "auto"
+#: 动效档位（v3.5.5 F18/F19）。reduced 关闭一切运动与装饰性视觉效果：
+#: 天气滚动、镜头震动、爆闪、地图暗角。这是无障碍需求（前庭敏感），
+#: 不是性能开关——性能已经由分档渲染处理。
+MOTION_MODE_IDS = ("full", "reduced")
+DEFAULT_MOTION_MODE = "full"
 
 #: 对手 AI 的驱动方式：``rules`` 纯规则启发式，``llm`` 本地大模型给决心。
 #: 默认关：它要额外的 1.1GB 模型与一个推理进程，不能替玩家做主。
@@ -260,6 +265,18 @@ class UserConfig:
         if mode not in SHAPE_MODE_IDS:
             return False
         self.prefs["shape_cues"] = mode
+        return True
+
+    @property
+    def motion(self) -> str:
+        """动效档位（full / reduced）。缺省 full，旧配置自动兼容。"""
+        v = str(self.prefs.get("motion", DEFAULT_MOTION_MODE))
+        return v if v in MOTION_MODE_IDS else DEFAULT_MOTION_MODE
+
+    def set_motion(self, mode: str) -> bool:
+        if mode not in MOTION_MODE_IDS:
+            return False
+        self.prefs["motion"] = mode
         return True
 
     @property

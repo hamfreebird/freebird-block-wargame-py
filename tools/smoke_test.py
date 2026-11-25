@@ -1060,17 +1060,37 @@ def main() -> int:
     # 上加载失败后静默回退内置字体（无 CJK 字形），这不是游戏逻辑错误。
     # 字形断言只在 Windows 上强制执行，其它平台打印 SKIP 明确记录。
     _cjk_files = [p for p in _T2._FONT_CANDIDATES_CN if os.path.isfile(p)]
-    if _cjk_files and os.name == "nt":
+    # v3.5.5 F21：原先限定 os.name == "nt"，于是 CI 里 8 组 Linux/macOS
+    # 全部 SKIP——而 CI 又专门 apt-get 装了 fonts-noto-cjk，装字体的成本
+    # 在付、门禁的收益没拿到。现在只要找到 CJK 字体文件就强制断言：
+    # 装得上字体却渲染成豆腐块，本身就是需要暴露的真实缺陷。
+    if _cjk_files:
         _tofu = _T2.render_text("\ue000", 16, (255, 255, 255))
         _han = _T2.render_text("卒", 16, (255, 255, 255))
         _has_glyph = (_tofu.get_size() != _han.get_size()
                       or pygame.image.tobytes(_tofu, "RGB")
                       != pygame.image.tobytes(_han, "RGB"))
-        check(_has_glyph, "字体：渲染环境确实含中文字形（不是豆腐块）")
+        if _has_glyph:
+            check(True, f"字体：渲染环境确实含中文字形（候选 {len(_cjk_files)} 个）")
+        elif os.name == "nt":
+            # Windows 是主要发布形态，且 msyh.ttc 实测可加载——必须通过
+            check(False, f"字体：找到 {len(_cjk_files)} 个候选但渲染成豆腐块"
+                         f"（首个：{_cjk_files[0]}）")
+        else:
+            # Linux/macOS：系统中文包几乎都是 TTC collection，
+            # pygame 2.6.1 的上游实现对 TTC 支持有限，加载失败会静默
+            # 回退内置字体。这是**上游库限制**，不是本项目代码缺陷，
+            # 因此不阻断 CI；但必须明确告警并打印诊断，不能静默 SKIP
+            # （F21 的原问题正是"装了字体、门禁永远跳过"）。
+            print(f"  [WARN] 字体：找到 {len(_cjk_files)} 个 CJK 候选但未能渲染汉字")
+            print(f"         首个候选：{_cjk_files[0]}")
+            print(f"         pygame {pygame.version.ver} / "
+                  f"平台 {sys.platform}")
+            print("         已知原因：系统中文包多为 TTC collection，"
+                  "pygame 上游对其支持有限")
+            print("         发布形态为 Windows 打包，此项不影响发布产物")
     else:
-        # 明确记录跳过原因，不再假装通过
-        reason = ("非 Windows：TTC 字体在 pygame 上可能静默回退内置字体"
-                  if os.name != "nt" else "未找到任何 CJK 字体文件")
+        reason = "未找到任何 CJK 字体文件"
         print(f"  [SKIP] 字体：{reason}，跳过字形检查")
 
     # 系统字体不可用时（Windows 注册表枚举异常等）仍要能取到字体，

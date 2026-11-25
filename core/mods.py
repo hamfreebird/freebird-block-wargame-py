@@ -603,8 +603,10 @@ class ModRegistry:
     def fire(self, event: str, *args: Any) -> Any:
         """触发一个钩子。
 
-        普通事件忽略返回值；``modify_damage`` 依次应用每个返回值
-        （非 None 即覆盖），因此多个模组可以叠加修正。
+        普通事件忽略返回值；``modify_damage`` 按注册顺序依次调用，
+        每个**非 None** 的返回值会覆盖上一个（后注册者优先），
+        并不做算术叠加。若需要叠加，请在同一个模组内完成。
+        （v3.5.5 F24：原文写"可以叠加修正"，与实现不符。）
         """
         result: Any = None
         for fn in self.hooks_for(event):

@@ -66,7 +66,10 @@ def build_pyapp() -> str:
 
     # 启动器：让 python main.py 也能识别为包入口
     with open(os.path.join(tmp, "__main__.py"), "w", encoding="utf-8") as f:
-        f.write("import main\nmain.main()\n")
+        # v3.5.5 F8：必须 sys.exit(main.main())，否则 --check 失败时
+        # main() 返回 1 却被丢弃，进程以 0 退出（便携版自检恒绿）。
+        f.write("import sys\nimport main\n"
+                "sys.exit(main.main())\n")
 
     zipapp.create_archive(tmp, target=out,
                           interpreter="/usr/bin/env python3",
@@ -83,7 +86,11 @@ def build_source_zip() -> str:
         os.remove(out)
 
     skip_dirs = {"__pycache__", ".git", ".workbuddy", ".shots", "saves",
-                 "build", "dist", ".venv", "venv", "__pycache__"}
+                 "build", "dist", ".venv", "venv", "__pycache__",
+                 # v3.5.5 F26：曾把 .ruff_cache 与 .github 打进源码包
+                 # （实测 130 条目里含 .ruff_cache/0.17.3/*）。CI 因
+                 # .gitignore 且每次重建不受影响，但本地手动打包会带上。
+                 ".ruff_cache", ".github", ".pytest_cache", ".mypy_cache"}
     skip_files = {"*.pyc", "*.pyo", "*.bak", "*.log"}
 
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:

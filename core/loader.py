@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,27 @@ SUB_CAPACITY = 2
 # --------------------------------------------------------------------------- #
 # 工具
 # --------------------------------------------------------------------------- #
+def _finite(value, where: str, lo: float | None = None,
+            hi: float | None = None) -> float:
+    """解析并校验有限实数（v3.5.5 F12）。
+
+    `json.load` 默认接受 `NaN` / `Infinity` 字面量，`float()` 也不会拒绝。
+    NaN 进入伤害链路会让 `max(0, nan)` 与比较运算全部失效，制造
+    「活着但 HP=0」的僵尸单位。这里在加载期就拒绝，报错信息带字段路径。
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise LoadError(f"{where} 不是数字: {value!r}")
+    if not math.isfinite(v):
+        raise LoadError(f"{where} 必须是有限数: {value!r}")
+    if lo is not None and v < lo:
+        raise LoadError(f"{where} 不能小于 {lo}: {v}")
+    if hi is not None and v > hi:
+        raise LoadError(f"{where} 不能大于 {hi}: {v}")
+    return v
+
+
 def _req(d: dict, key: str, where: str) -> Any:
     if key not in d:
         raise LoadError(f"{where}: 缺少必填字段 '{key}'")
@@ -111,8 +133,8 @@ def _parse_weapon(d: dict, where: str) -> Weapon:
         kind=kind,
         range_min=float(d.get("range_min", 0.0)),
         range_max=float(rmax),
-        pk=float(_req(d, "pk", where)),
-        damage=float(_req(d, "damage", where)),
+        pk=_finite(_req(d, "pk", where), where + ".pk", lo=0.0, hi=1.0),
+        damage=_finite(_req(d, "damage", where), where + ".damage", lo=0.0),
         ammo=int(d.get("ammo", 1)),
         guidance=_enum(Guidance, d.get("guidance", "optical"), where + ".guidance"),
         targets=targets,

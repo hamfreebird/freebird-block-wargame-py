@@ -3,7 +3,7 @@
 <img src="assets/icon/icon_256.png" align="right" width="128" alt="方块兵棋图标">
 
 [![CI](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml/badge.svg)](https://github.com/hamfreebird/freebird-block-wargame-py/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v3.5.4-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
+[![Release](https://img.shields.io/badge/release-v3.5.5-blue)](https://github.com/hamfreebird/freebird-block-wargame-py/releases)
 [![Contributors](https://img.shields.io/badge/contributors-hamfreebird-orange)](https://github.com/hamfreebird)
 
 基于 **Python + pygame** 的回合制现代联合作战推演。地图为 n×n 方块战场，每格承载海拔、地形、
@@ -267,6 +267,7 @@ powershell packaging/build_windows.ps1   # 生成 Windows 安装包
 - **v3.5.2**（已发布）—— 城市灯火改为低色差柔光（整格均匀 + 边缘外溢）· 光晕门禁
 - **v3.5.3**（已发布）—— 视觉 A 层收官：天气滚动动画 · 地图暗角 · 爆闪与镜头震动
 - **v3.5.4**（已发布）—— 修复地图暗角把四角切成圆角的问题
+- **v3.5.5**（已发布）—— 第五轮审计 30 条清零：重复定义门禁 · 卫星/规则存档 · 动效开关 · 逻辑时钟 · 六处门禁加固
 
 ---
 

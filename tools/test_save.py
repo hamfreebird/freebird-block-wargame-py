@@ -35,7 +35,7 @@ from core.enums import Side  # noqa: E402
 from core.loader import load_scenario  # noqa: E402
 from core import save as save_mod  # noqa: E402
 from core.save import (  # noqa: E402
-    SAVE_VERSION, SaveError, load_game, save_game,
+    SAVE_VERSION, SaveError, game_to_dict, load_game, save_game,
 )
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -255,6 +255,34 @@ def main() -> int:
         check(False, f"存档失败泄漏了 {type(exc).__name__}: {exc}")
     else:
         check(False, "缺少想定来源时竟然存档成功")
+
+    # ------------------------------------------------------------------ #
+    print("[7] 情报与规则状态往返（v3.5.5 F3/F4/F11）")
+    st2 = GameState(scenario, Side.BLUE, seed=7)
+    st2.scenario_path = scenario_path
+    st2.armory_path = ARMORY
+    st2.refresh_detection()
+    foe = next((u for u in st2.units if u.side is not Side.BLUE and u.alive), None)
+    if foe is not None:
+        from core.enums import Detection
+        st2.sat_recon[Side.BLUE].add(foe.uid)
+        st2.sat_track[foe.uid] = Detection.TRACKED
+        pth = os.path.join(tmpdir, "sat.json")
+        save_game(st2, pth)
+        back = load_game(pth)
+        if isinstance(back, tuple):
+            back = back[0]
+        check(foe.uid in back.sat_recon[Side.BLUE], "卫星侦察集合往返（F3）")
+        check(back.sat_track.get(foe.uid) is Detection.TRACKED,
+              "卫星跟踪等级往返（F3）")
+    else:
+        check(False, "该想定没有敌方单位，无法验证卫星情报往返")
+
+    # 规则 fired：官方想定无规则，这里直接验证字段与还原逻辑
+    raw2 = game_to_dict(st2)
+    check("rules_fired" in raw2, "存档包含规则触发状态（F4）")
+    check(all("i" in e for e in raw2.get("events", [])),
+          "事件按索引存档（F11，同回合多事件不串台）")
 
     print()
     shutil.rmtree(tmpdir, ignore_errors=True)

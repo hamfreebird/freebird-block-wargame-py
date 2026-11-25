@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import math
+
 import itertools
 from dataclasses import dataclass, field
 from typing import Any
@@ -464,6 +466,12 @@ class Unit:
         self.fired = self.shots_left <= 0
 
     def apply_damage(self, amount: float) -> float:
+        # v3.5.5 F12：NaN/无穷会让比较全为 False，走到 else 分支把 hp 置 0
+        # 却不置 destroyed——单位「既不活也不死」：仍占格、不计入 units_of、
+        # 也不进伤亡统计，kill_unit 不会被调用。非有限值一律按 0 处理
+        # （加载期已拒绝，这里是模组/钩子运行期的最后一道闸）。
+        if not math.isfinite(amount) or amount <= 0.0:
+            return 0.0
         # v3.4.4：浮点残值（如 0.1+0.2-0.3=5.55e-17）会让单位
         # 「活着但 hp≈0」——仍占格、仍计为存活、需额外一击。
         # 伤害达到（或几乎达到）当前 hp 时直接判毁。
