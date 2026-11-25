@@ -60,8 +60,8 @@ jobs:
           if [ "${{ runner.os }}" = "Linux" ]; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq fonts-noto-cjk fonts-droid-fallback
-  # 纯 TTF 回退：pygame 在部分 Linux 平台加载 TTC 会静默失败（v3.5.5 F21）
-  fc-list :lang=zh | head -5 || true
+            # 纯 TTF 回退：pygame 在部分 Linux 平台加载 TTC 会静默失败（v3.5.5 F21）
+            fc-list :lang=zh | head -5 || true
           fi
           # macOS 自带 PingFang / Arial Unicode，theme.py 已列出其路径
 
@@ -90,6 +90,9 @@ jobs:
 
       - name: 重复定义守卫（同名函数静默覆盖）
         run: python tools/check_dupes.py
+
+      - name: 工作流语法自检（run 块缩进 / YAML 解析）
+        run: python tools/check_workflows.py
 
       - name: 静态检查（未使用导入 / 语法错误，配置见 ruff.toml）
         run: |
