@@ -714,10 +714,12 @@ class App:
         self.show_settings = True
 
     def _save_config_quietly(self) -> None:
-        """退出路径落盘：失败只提示，绝不阻断退出（v3.5.5 F5）。
+        """退出路径落盘：失败静默，绝不阻断退出（v3.5.5 F5 / G29）。
 
         与 `close_settings()` 的区别：那个是玩家主动确认，失败要显眼；
         这个是关窗/退出的兜底，磁盘只读或目录不可写时不应卡住进程。
+        第六轮把原文"失败只提示"改为"静默"——实现是 `except: pass`，
+        没有 set_status 也没有日志，文档必须与实际一致。
         """
         try:
             self.cfg.save()
@@ -753,6 +755,8 @@ class App:
             self.cfg.set_motion(mode)
             if self.state is not None:
                 self.state.anim.enabled = (mode != "reduced")
+                if mode == "reduced":
+                    self.state.anim.clear()   # 已开始的爆闪立即停
         return ok
 
     def _apply_ai_mode(self, mode: str) -> None:
@@ -1822,6 +1826,8 @@ class App:
         else:
             self.mapview.rect = map_rect
             self.mapview.state = self.state
+            # G25：读档/下一关/换边都会换 GameState，必须重新应用动效档位
+            self._apply_motion(self.cfg.motion)
         self.mapview.fit()
         self._build_buttons()
         side_x = self.w - side_w()
@@ -2822,11 +2828,13 @@ class App:
         if self.mode == "replay":
             p = self.replay_player
             if p is not None:
+                was_paused = p.paused
                 p.update(dt)
                 self.state = p.state
-                self.state.tick_fx(dt)
-                if self.mapview is not None:
-                    self.mapview.tick_clock(dt)
+                if not was_paused:
+                    self.state.tick_fx(dt)
+                    if self.mapview is not None:
+                        self.mapview.tick_clock(dt)
                 if self.state.sfx_events:
                     for name in self.state.sfx_events[:6]:
                         self._sfx(name)
@@ -2837,11 +2845,13 @@ class App:
             if m is None:
                 self.stop_spectate()
                 return
+            was_paused = self.spectate_paused
             self._spectate_tick(dt)
             self.state = m.state
-            self.state.tick_fx(dt)
-            if self.mapview is not None:
-                self.mapview.tick_clock(dt)
+            if not was_paused:
+                self.state.tick_fx(dt)
+                if self.mapview is not None:
+                    self.mapview.tick_clock(dt)
             if self.state.sfx_events:
                 for name in self.state.sfx_events[:6]:
                     self._sfx(name)
@@ -2914,7 +2924,7 @@ class App:
             self.hover_tile = g
             if g:
                 u = self._pick_unit_at(*g)
-                if u and (u.side is self.side or st.known_level(self.side, u).level >= 2):
+                if u and (u.side is self.side or st.known_level(self.side, u).level >= Detection.CLASSIFIED.level):
                     self.hover_unit = u
                     self.hover_card = True
                     if u.side is not self.side:
@@ -3977,10 +3987,29 @@ class App:
         self._record(CMD_DATALINK, uid=u.uid)
         self._tutorial_note("datalink")
 
+    @staticmethod
+    def _display_damage(prof, target) -> float:
+        """面板显示的伤害必须与结算一致（G4，第六轮）。
+
+        规则对空有意做了修正：one_shot_kill 直接击落，大型机 ×2.2。
+        此前面板显示 prof.damage、日志写未修正值、实际掉血又是另一个数——
+        同一发弹药出现三个数字。这里让显示走同一套修正，规则本身不变。
+        """
+        d = float(prof.damage)
+        if target is None or target.domain is not Domain.AIR:
+            return d
+        if target.template.one_shot_kill:
+            return float(target.hp)
+        return d * 2.2
+
     def _salvo_options(self, u: Unit, w) -> list[int]:
         if w is None:
             return [1]
-        cap = max(1, min(int(w.max_salvo), u.ammo.get(w.id, 0)))
+        # G3（第六轮）：此前只按 max_salvo/备弹给选项，断补给时 UI 给
+        # 1..3 发并显示 90.8%，规则 salvo_limit=1 实际只发 1 发（54.8%）。
+        # 必须和规则用同一个上限函数。
+        cap = rules.salvo_limit(u, w)
+        cap = max(1, min(cap, int(w.max_salvo), u.ammo.get(w.id, 0)))
         return list(range(1, cap + 1))
 
     def _draw_salvo_row(self, s: pygame.Surface, r: pygame.Rect, u: Unit, w, y: int,
@@ -4055,7 +4084,7 @@ class App:
                             (r.x + T.m(10), yy), 11, T.TEXT_FAINT)
                 yy += T.m(14)
                 ic = " · 拦截风险 %.0f%%" % (prof.intercept_pk * 100) if prof.intercept_pk > 0.01 else ""
-                T.draw_text(s, tr("ui.damage_fmt") % (prof.damage, ic,), (r.x + T.m(10), yy), 11,
+                T.draw_text(s, tr("ui.damage_fmt") % (self._display_damage(prof, self.hover_unit), ic,), (r.x + T.m(10), yy), 11,
                             T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
                 if prof.damage_factors:
                     # 毁伤修正：这一发「为什么打得疼/不疼」，一眼能看出来。
@@ -4206,7 +4235,8 @@ class App:
                         (r.x + pad_x, yy), 11, T.TEXT_FAINT)
             yy += T.lh(11)
             ic = f" · 拦截风险 {prof.intercept_pk * 100:.0f}%" if prof.intercept_pk > 0.01 else ""
-            T.draw_text(s, T.ellipsize(tr("ui.structure_damage_fmt") % (prof.damage, ic,), 11, inner_w),
+            T.draw_text(s, T.ellipsize(tr("ui.structure_damage_fmt") % (
+                self._display_damage(prof, self.hover_unit), ic), 11, inner_w),
                         (r.x + pad_x, yy), 11,
                         T.AMBER if prof.intercept_pk > 0.2 else T.TEXT_DIM)
             yy += T.lh(11) + T.m(2)
@@ -4590,17 +4620,20 @@ class App:
 
     # ================================================================== #
     def run(self) -> None:
-        while self.running:
-            dt = self.clock.tick(60) / 1000.0
-            for e in pygame.event.get():
-                self.handle_event(e)
-            self.update(dt)
-            self.draw()
-        self._save_config_quietly()
-        # 推理进程是我们起的，就得由我们收——不然关掉游戏后它还占着 1.4GB 内存
-        if self.commander is not None:
-            self.commander.stop()
-        pygame.quit()
+        # G27（第六轮）：清理必须放 finally。POSIX 没有 Job Object，
+        # 异常路径绕过 stop() 会把 llama-server（约 1.4GB）留成孤儿进程。
+        try:
+            while self.running:
+                dt = self.clock.tick(60) / 1000.0
+                for e in pygame.event.get():
+                    self.handle_event(e)
+                self.update(dt)
+                self.draw()
+        finally:
+            self._save_config_quietly()
+            if self.commander is not None:
+                self.commander.stop()
+            pygame.quit()
 
 
 def main() -> int:

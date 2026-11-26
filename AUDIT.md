@@ -3,38 +3,40 @@
 > 这份文件取代了原来的 `ROADMAP.md`。路线图回答「接下来做什么」，
 > 审计回答「现在到底怎么样」。
 >
-> **本版为第五轮审计（2026-11-26，基于 v3.5.5 / 已发布，全部 30 条已修）**。
-> 前四轮关闭了 53 条问题（v3.4.1 的 10 条、v3.4.2 的 22 条、v3.4.3 的 22 条、
-> v3.4.4 处理的 23 条，其中 3 条评估不修）。
+> **本版为第六轮审计（2026-11-27，基于 v3.5.6 / 待发版）**。
+> 全部 29 条已修复，修法与验证见 §7.1。
+> 前五轮共处理 107 条问题（v3.4.1 的 10 条、v3.4.2 的 22 条、v3.4.3 的 22 条、
+> v3.4.4 的 23 条（另 3 条评估不修）、v3.5.5 的 30 条）。
 >
-> **本轮换的角度**：前四轮问「函数算得对不对」「状态在错误时机被写了第二次会怎样」，
-> 并已用变异测试验证过门禁会不会失败。本轮问一个更基础的问题——
-> **「那些声称修好的东西，今天真的在代码里生效吗？」**
+> **本轮换的角度**：第五轮问「声称修好的东西是否真的生效」，本轮把这个问题
+> 再推一步，并加三个此前没查过的维度：
 >
-> 结果是肯定的必要补充：发现 **5 处同名方法重复定义**，其中 1 处使上一轮的修复
-> 完全失效；另发现 1 条前轮声称已修、代码却从未改动的规则缺陷；以及 4 个恒真
-> 或永远跳过的门禁。这些都不是"新功能有 bug"，而是**修复与验证本身的可靠性问题**。
+> 1. **修法的回归**——v3.5.5 改了 43 文件 / +2515 / −1963 行，这些修复本身
+>    有没有引入新问题，或者修法本身就是空操作；
+> 2. **长时运行漂移**——反复开局、读档、切主题、缩放后缓存是否收敛；
+> 3. **同一规则的多处实现**——UI 显示值与规则判定值是否来自同一个函数。
+>
+> 结果：发现 **2 条上轮修复仍然无效**、1 条从 v3.5.3 起就存在但被测试
+> 盲区掩盖的严重视觉缺陷（震动幅度可达 **337 px**）、以及 6 条玩家可见的
+> 规则显示分叉。前五轮的自检全绿依旧成立——问题在**自检没有覆盖的地方**。
 >
 > 全文没有推测性结论：每条给出**实测数值**或**可点开的代码位置**。
-> 实测统一用 `D:/Dev/Python/python.exe`（3.12.4 / pygame 2.6.1）；
-> 系统 `python`（3.13）无 pygame，不能用于 UI 测试。
-> 审计阶段为只读（变异均在内存中完成）；随后 30 条全部修复并随 v3.5.5 发布，
-> 每条修法与验证方式见 §6.1。
+> 实测统一用 `D:/Dev/Python/python.exe`（3.12.4 / pygame 2.6.1 / SDL 2.28.4），
+> `SDL_VIDEODRIVER=dummy`。审计阶段未修改任何项目文件；所有变异在内存中完成。
 
-## 当前基线（v3.5.5）
+## 当前基线（v3.5.6 · 未发版）
 
 | 维度 | 现状 |
 |---|---|
 | 玩法内核 | 45 项机制：侦察—打击链、逐发拦截、中段反导、电子战与多频段诱饵、信火一体、工事体系、烟幕、任务剖面、卫星过顶窗口、反卫星、设施打击、齐射、对手视角威胁评估、战场天气与时段、补给线与纵深、指挥体系、多点防空协同、火力准备、波段对抗、同格共存、对局回放、AI 观战、想定与回放分享、可复现随机流、模组接口 |
-| 数据 | 65 兵种 / 71 武器 / 28 传感器 / 15 挂载预设 / 9 编队预设（`main.py --check` 实测） |
+| 数据 | 65 兵种 / 71 武器 / 28 传感器 / 15 挂载预设 / 9 编队预设 |
 | 想定 | 4 张（海峡对决 128×128、草原雷霆 36×36、海峡屏障 40×40、新兵训练场 20×14） |
 | 规则 | JSON 声明式规则钩子（11 基础条件 + all/any/not 3 组合器 × 9 种效果） |
-| 呈现 | 4 套主题（含 2 套色盲友好）· 字号三档 · 色盲形状标识 · 9 种音效 · 8 种语言；v3.5.x 新增程序化矢量单位立体、夜间城市柔光、时段色调、天气滚动、地图暗角、面板浮雕 |
-| 对手 AI | 规则启发式（默认）· 本地大模型指挥官（可选，只决定作战决心） |
-| 代码规模 | core 42 文件 16,808 行 · ui 15 文件 12,704 行 · tools 47 文件 15,039 行 · `main.py` 220 行（全行口径） |
-| 自检 | `tools/` 下 34 个 `test_*`/`check_*` 脚本（25 + 9，含 v3.5.5 新增的重复定义守卫与工作流语法自检）；CI 9 组 OS×Python 组合 |
-| 实测性能 | 完整 `App.draw`：晴昼 5.75 ms、晴夜 7.02 ms、雨昼 9.48 ms（最坏）、雪昼 6.95 ms；预算 16.7 ms |
-| 质量 | 34 个自检退出 0；`ruff check` 0 告警；决策指纹 `87bc274d413f52b5` / `827316f0cff596ff` 与 v3.4.4 逐字一致 |
+| 呈现 | 4 套主题（含 2 套色盲友好）· 字号三档 · 色盲形状标识 · 9 种音效 · 8 种语言；新增「动效：完整/减弱」无障碍开关 |
+| 代码规模 | core 42 文件 16,932 行 · ui 15 文件 12,674 行 · tools 49 文件 15,326 行（全行口径） |
+| 自检 | `tools/` 下 34 个 `test_*`/`check_*` 脚本（25 + 9）；CI 9 组 OS×Python 组合；PR #15 24 项检查全绿 |
+| 实测性能 | 完整 `App.draw`：晴昼 5.75 ms / 晴夜 7.02 ms / 雨昼 9.48 ms（最坏）/ 雪昼 6.95 ms；预算 16.7 ms |
+| 质量 | 34 自检退出 0；`ruff` 0 告警；`diag 20` 零错误；决策指纹 `87bc274d413f52b5` / **`6d5b0374e0c10161`**（海峡图因补给/设施/中段弹修复而变化；A/B 对局胜负与 VP 不变） |
 
 ---
 
@@ -42,541 +44,571 @@
 
 | 级别 | 条目 | 一句话证据 | 状态 |
 |---|---|---|---|
-| **高** | F1 同名方法重复定义，修复被覆盖 | `MapView` 内 5 组重复定义；`_weather_layer` 生效的是旧 self-blit 版（行 931），新修复版（行 735）从未执行 | ✅ 已修 |
-| **高** | F2 detect clamp 从未落地 | `detect.py:143` 仍是原始无 clamp 写法，3 个官方传感器 CONTACT 档不可达 | ✅ 已修 |
-| **高** | F3 卫星情报不存档 | `save.py` 完全无 `sat_track`/`sat_recon`；读档后探测从「跟踪」塌到「未发现」 | ✅ 已修 |
-| **高** | F4 规则触发状态不存档 | `save.py` 无规则 `fired`；`once` 规则读档后重复执行增援/伤害效果 | ✅ 已修 |
-| **高** | F5 直接关窗丢失全部设置 | QUIT 与 `run()` 退出均无 `cfg.save()`；唯一落盘点是玩家点"完成" | ✅ 已修 |
-| **高** | F6 按键捕获态残留 | 捕获中关闭设置再打开，第一次按键会静默改写上一个键位 | ✅ 已修 |
-| **高** | F7 `test_perf` 恒真断言 | `check(True, ...)`，`changed=False` 时照样报 OK | ✅ 已修 |
-| **高** | F8 便携版吞掉 `--check` 退出码 | zipapp 入口 `main.main()` 无 `sys.exit`，返回 1 仍以 0 退出 | ✅ 已修 |
-| 中 | F9–F22 | 详见 §2–§5 | ✅ 已修 |
-| 低 | F23–F26 | 详见 §2–§5 | ✅ 已修 |
+| **高** | G1 震动幅度公式反向 | `p = 1 - life/ttl`，而 `tick` 递减 ttl → p 恒 ≤0；实测 0.39 s 时偏移 **337 px** | ✅ 已修 |
+| **高** | G2 上轮 F20 修复是空操作 | `Report.warnings` 是 property，返回新列表；`rep.warnings.append(...)` 写到临时对象即丢弃 | ✅ 已修 |
+| **高** | G3 齐射上限 UI 与规则分叉 | 断补给时 UI 给 1–3 发并显示 90.8%，规则 `salvo_limit=1` 实际只发 1 发（54.8%） | ✅ 已修 |
+| **高** | G4 对空伤害三个口径 | 面板 51.4 / 日志 52 / 实际掉 95（一击必杀）；大型机实际 ×2.2 | ✅ 已修 |
+| **高** | G5 `_detect_cache` 无上限 | 1000 回合 56,884 条 / 13.84 MB，99.4% 条目永不再命中 | ✅ 已修 |
+| **高** | G6 上轮 F21 的 Droid 回退不可达 | 候选不重试：第一个 TTC 加载失败后直接落到 `Font(None)`，纯 TTF 永不尝试 | ✅ 已修 |
+| 中 | G7–G20、G22、G25 | 详见 §2–§5 | ✅ 已修 |
+| 低 | G21、G23、G24、G26–G29 | 详见 §2–§6 | ✅ 已修 |
 
-**处理结果**：30 条全部修复，随 v3.5.5 发布。修复要点见 §6.1；
-其中 F2/F3/F4/F10/F12 涉及规则行为，修复后已单独验证（决策指纹与 v3.5.4
-一致——这几个场景不在指纹脚本的 6 回合窗口内，故用分档边界测试与
-存档往返测试单独确认）。
+**处理结果**：29 条全部修复。修复摘要见 §7.1；其中 8 条改变规则行为，已用 A/B 对局验证胜负与 VP 与 v3.5.5 完全一致（148:112 / 574:364）。
 
 ---
 
-## 1. 系统性发现：修复被同名后定义静默覆盖
+## 1. 两条"上轮修复仍无效"与一条严重视觉缺陷
 
-### 1.1 F1（高）五组重复方法定义
+### 1.1 G1（高）震动幅度公式反向：越接近爆炸结束抖得越猛
 
-对全仓所有 `.py` 做 AST 扫描（模块级与类级函数，记录每一次重名），结果只有 `ui/mapview.py` 命中：
+**位置**：`ui/mapview.py:476-478`，配合 `core/anim.py:71-80`
 
-| 方法 | 先定义 | 后定义（生效） | 两版是否相同 |
+```python
+# anim.tick(): e.ttl -= step     ← 递减的是 ttl，life 保持不变
+# mapview:
+p = 1.0 - e.life / e.ttl
+if p >= 0.35:
+    continue                       # 永远不会成立
+amp = (1.0 - p / 0.35) * 3.0       # p 越负，amp 越大
+```
+
+`life` 是初始时长常量、`ttl` 是剩余时长。随着动画推进 `life/ttl` 从 1 涨到无穷，
+`p` 从 0 掉到 −39，「衰减」变成「放大」。
+
+实测（ttl=0.4，逐次 tick，采样 200 个时刻取最大偏移）：
+
+| 已过时间 | 最大偏移 |
+|---|---|
+| 0.00 s | 3 px |
+| 0.10 s | 6 px |
+| 0.20 s | 12 px |
+| 0.30 s | 29 px |
+| 0.35 s | 63 px |
+| 0.39 s | **337 px** |
+
+**为什么五轮审计都没抓到**：`tools/test_visual.py:207-212` 只测
+`st.anim.add(..., ttl=0.4)` 之后**立刻**调用 `_shake_offset(now=0.0)`，
+此时 `ttl == life`、`p == 0`，"≤3 px" 恒真。测试从未 tick 过动画。
+
+**v3.5.5 让它更明显**：改用逻辑时钟后，暂停/结算时 `ttl` 与 `clock` 同时冻结，
+地图会停在一个**恒定的非零偏移**上（击杀帧约 3 px，中途暂停可达 12 px+），
+边框与格线错位。`screen_to_grid` 会补偿，点击仍与画面一致，但视觉上像渲染故障。
+
+修法：`p = 1.0 - e.ttl / e.life`，并让测试覆盖动画中段与末段。
+
+### 1.2 G2（高）上轮 F20 修复是空操作
+
+**位置**：`tools/balance_check.py:73`（`warnings` property）、`:230`、`:279`
+
+v3.5.5 为了修"想定加载失败被静默跳过"，把裸 `continue` 改成了
+`rep.warnings.append(...)`。但 `Report.warnings` 是：
+
+```python
+@property
+def warnings(self) -> list[Finding]:
+    return [f for f in self.findings if f.severity == "warn"]
+```
+
+每次访问都生成**新列表**，`append` 写到临时对象后立即丢弃。
+
+复现（内存变异 `load_scenario` 使其全抛 `LoadError`）：
+
+```
+预期：至少一条"想定加载失败"结论
+实际：findings=[]，summary() 为"共 0 条结论"，main() 返回 0
+```
+
+即便改成 `rep.add("warn", ...)`，`main()` 仍只对 `rep.errors` 返回 1——
+注释承诺的"想定全部加载失败不能判绿"也没有实现。修法：用 `rep.add("error", ...)`。
+
+### 1.3 G6（高）上轮 F21 的纯 TTF 回退永远不会尝试
+
+**位置**：`ui/theme.py:611`（`_first_existing`）、`:687-694`、`tools/smoke_test.py:1061-1090`
+
+v3.5.5 在候选列表末尾加了两条 Droid **纯 TTF** 路径，试图绕开 Linux 上
+pygame 加载 Noto TTC 失败的问题。但加载逻辑是：
+
+```
+_first_existing(候选) → 取第一个存在的文件 → pygame.font.Font(path)
+                                          → 失败则直接 Font(None)
+```
+
+**没有"加载失败就试下一个候选"的重试**。
+
+复现（hook `pygame.font.Font`，让第一个候选抛错）：
+
+```
+calls == ['README.md', None]      # 第二个候选从未被尝试
+```
+
+Linux CI 装出的 Noto TTC 排在 Droid 之前，所以当 F21 的前提成立时，
+新增的两条 Droid 路径**恰好不可达**。这解释了为什么本轮 CI 里
+`smoke_test` 仍然只能降级为 WARN。
+
+### 1.4 已确认：上轮其余修法的真实回归检查
+
+| 抽查项 | 结果 |
+|---|---|
+| 旧档（v3.5.4 的 v6 档）读入 v3.5.5 | ✅ 去掉 `sat`/`rules_fired`/`i` 后正常，`sat_recon` 为空、5 条事件保留 |
+| 新档被旧版读 | ✅ 仍保留 `events[].turn`，旧版按 turn 解析可跑（新字段被忽略属预期） |
+| 事件按索引恢复 | ✅ 内存构造同回合两条 `fired=True/False`，往返后仍为 `[True, False]` |
+| `EventBus._depth` | ✅ 正常/递归/异常三条路径后均归零，无泄漏 |
+| `hsep(bg=)` | ✅ 战役面板传的色与 `T.panel` 底色一致，无端帽残留 |
+| 设置面板 8 行布局 | ✅ `check_layout` 三档字号均通过 |
+| `event-late` 阈值 | ✅ 4 张官方图 errors 均为 0；`turn==limit` 可达（`> turn_limit` 才结束） |
+| `check_dupes` 有效性 | ✅ 用 v3.5.4 的 mapview 实测能报出 5 处重复（但覆盖不到 `if/try`，见 G24） |
+
+---
+
+## 2. 玩家可见的规则显示分叉
+
+### 2.1 G3（高）齐射上限：UI 给 3 发，规则只让发 1 发
+
+**位置**：`ui/app.py:3980-3984`（`_salvo_options`）、`core/combat.py:53-61`（`salvo_limit`）
+
+```python
+# UI：只看 max_salvo 与备弹
+cap = max(1, min(int(w.max_salvo), u.ammo.get(w.id, 0)))
+# 规则：补给紧张时只能单发
+if unit.supply_state >= 1:
+    return 1
+```
+
+实测（BLUE M1A2 打相邻 T-90M，`m256_120`，`supply_dry=1`）：
+
+```
+_salvo_options(...) → [1, 2, 3]       UI 显示 3 发、命中率 1-(1-0.548)^3 = 90.8%
+rules.salvo_limit(...) → 1            fire() 实际只发 1 发，弹药 8→7，命中率 54.8%
+```
+
+侧栏与设施打击面板都调用 `_salvo_options`。玩家在断补给状态下看到的
+齐射选项与命中率是**虚假的可选项**。
+
+### 2.2 G4（高）对空伤害：面板 51、日志 52、实际 95
+
+**位置**：`core/combat.py:212-245`（`ShotProfile.damage`）、
+`core/engine.py:869-880`（`_impact`）、`ui/app.py:4058`（面板显示）
+
+```
+if target.domain is Domain.AIR:
+    if target.template.one_shot_kill:
+        target.hp = 0.0; target.destroyed = True       # 完全无视 prof.damage
+    else:
+        total_damage *= 2.2                            # 结算乘系数，面板不知道
+```
+
+实测：
+
+| 目标 | 面板 `prof.damage` | 日志"伤害" | 实际掉血 |
 |---|---|---|---|
-| `_draw_vignette` | 588 | **784** | 源码相同 |
-| `_urban_tiles` | 635 | **831** | 源码相同 |
-| `_glow_sprite` | 648 | **844** | 源码相同 |
-| `_draw_city_lights` | 695 | **891** | 源码相同 |
-| `_weather_layer` | 735 | **931** | **不同** |
+| Su-35（one_shot_kill） | 51.4 | 52 | **95 → 0** |
+| B-52（大型机） | 49.9 | — | **111.8**（≈2.2×） |
 
-复现：
+`st.stats` 与导出战报按未乘系数的 52 记账。同一发弹药出现三个数字。
 
-```bash
-python - <<'EOF'
-import ast, pathlib
-for p in pathlib.Path('.').rglob('*.py'):
-    t = ast.parse(p.read_text(encoding='utf-8'))
-    # 遍历 ClassDef.body，记录 FunctionDef 重名
-EOF
-/d/Dev/Python/python.exe -c \
- "import inspect; from ui.mapview import MapView; \
-  print(inspect.getsourcelines(MapView._weather_layer)[1])"
-# 输出 931，而不是 735
+### 2.3 G13（中高）站在补给枢纽上反而"不解渴"
+
+**位置**：`core/engine.py:1448-1485`（`service_tile` 分支）vs `:1318-1352`（`_resupply_by_line`）
+
+实测（M1A2，`supply_dry=3, fuel=0.10`，站在己方 DEPOT (1,6)）：
+
+```
+站 DEPOT：   supply_dry=3（仍枯竭，salvo_limit=1、命中×0.88）、fuel=0.10
+离开一格：   supply_dry=0、salvo_limit=3、fuel=0.35
 ```
 
-**`_weather_layer` 两版的实质差异**：
+`service_tile` 分支不修改 `supply_dry`，也不给地面/水面单位加油。
+单位停在补给枢纽上会永久卡在枯竭状态。
 
-| 版本 | 实现 | 状态 |
-|---|---|---|
-| 行 735 | 先生成上半幅到独立 `top` 表面，再 `layer.blit(top,0)` / `layer.blit(top,h)` | **从未生效** |
-| 行 931 | `layer.fill(..., 下半幅)` + `layer.blit(layer, ...)`（self-blit） | **实际生效** |
+### 2.4 G14（中）"保底移动"在可达集里可达，实际永远不可达
 
-后者正是上一轮提交中判定为"零 alpha 处混合行为依 SDL 版本而异、CI Python 3.13 失败"的写法。
+**位置**：`core/pathfind.py:199-237`（`fallback_moves` 返回含 `step_cost` 的终值）、
+`:184-195`（`find_path` 又乘一次）、`:287-295`（`path_cost` 用地形原价）
 
-```python
-s = inspect.getsource(MapView._weather_layer)
-'self-blit' 检测: 'layer.blit(layer' in s  -> True
-'独立上半幅' 检测: 'top = pygame.Surface' in s -> False
+实测（mp=0.5 的单位放在 `move_cost=3.5` 的山地）：
+
+```
+flood_reachable → 8 邻格全部 cost=1.0（UI 高亮"可达"）
+find_path → path_cost=4.95 > mp 0.5 → order_move 拒绝，提示"机动点不足"
 ```
 
-**为什么 CI 后来还是绿了**：上一轮同时把 `test_shake_stateless` 改成注入固定时刻，消除了时钟抖动；
-因此在 CI 的 SDL 版本下天气 self-blit 恰好没触发差异。两个改动一个生效一个没生效，
-绿的结果掩盖了修复缺失。
+代码注释自述"128×128 海峡对决有 12/99 个单位靠保底才能动"，影响面不小。
 
-**根因不在代码，在编辑流程**：前几轮用脚本按 `text.index("    def _xxx(")` 定位插入新方法时，
-若插入点选在"同名旧方法之前"，就变成新增而非替换。Python 允许同名方法重复定义，
-`ruff` 默认规则不报，`check_names.py` 也不查——**没有任何门禁能发现这件事**。
+### 2.5 G15（中）威胁圈与真实防空网两个方向都错
 
-**处理**：已删除 5 组重复中的旧副本（`_weather_layer` 保留独立上半幅版），
-并新增 `tools/check_dupes.py` AST 门禁接入 CI——这条门禁的价值在 v3.5.5
-当天就体现了一次：它要求脚本显式切 UTF-8，立刻抓出新脚本的编码缺陷。
+**位置**：`ui/mapview.py:819-827` + `ui/inspect.py:89-92` 用
+`Unit.max_intercept_range()`（`core/model.py:428-433`，只取 SAM/AAM range_max）；
+判定在 `core/adn.py:97-150`（要求有拦截弹、有 pk、有通道）
 
-### 1.2 前轮结论的复核
-
-既然发现"修复可能被覆盖"，对前四轮的关键结论做了抽样复核：
-
-| 抽查项 | 原状态 | 实际 |
-|---|---|---|
-| D5 `mitigation` 下界（`combat.py:222`） | 已修 | ✅ 确有 `1.0 - min(0.90, max(0.0, ...))` |
-| D6 `detect` 比例 clamp（`detect.py:143`） | 计入"23 条已修" | ❌ **仍是原始无 clamp 写法**，见 F2 |
-| 决策指纹 | 与 v3.4.4 一致 | ✅ 实测 `87bc274d413f52b5` / `827316f0cff596ff`，一致 |
-| 5 组重复定义之外 | — | ✅ 全仓 AST 扫描只此 5 处，其余模块无重名 |
-
-结论：**不是全面倒退，是单点遗漏 + 一类未被门禁覆盖的编辑缺陷**。
-
----
-
-## 2. 规则、数据与存档
-
-### 2.1 F2（高）detect clamp 从未落地，CONTACT 档对 3 个传感器不可达
-
-**位置**：`core/detect.py:142-149`
-
-```python
-track_ratio  = 0.35 + 0.30 * s.strength
-class_ratio  = 0.70 + 0.22 * s.strength     # ← 无上界
-```
-
-当 `strength > 1.36` 时 `class_ratio > 1.0`。而进入分档的前提是 `ratio = d/eff ≤ 1`，
-因此 `elif ratio <= class_ratio` 恒真，**CONTACT 分支永远走不到**。
-
-实测（全量遍历 28 个传感器）：
-
-| 传感器 | strength | class_ratio | 结果 |
+| 单位 | `max_intercept_range` | UI 威胁圈 | ADN 实际节点 |
 |---|---|---|---|
-| `radar_e3` | 1.40 | 1.008 | CONTACT 不可达 |
-| `radar_a50` | 1.45 | 1.019 | CONTACT 不可达 |
-| `radar_kj500` | 1.45 | 1.019 | CONTACT 不可达 |
+| `llsn` | 16.0 | 画 16 格红圈 | **0**（`interceptors=0`，根本不能拦） |
+| `cvn` | 0.0 | 不画圈 | **1**（CIWS 末段硬杀伤） |
 
-桩掉 `sensor_effective_range` 返回 `eff=10, los=True`，构造 `d=9.6`（ratio=0.96）：
-`strength=1.0` 得到 CONTACT，`strength=1.4` 得到 CLASSIFIED。
+### 2.6 G16（中）"半径 N 格"有两套几何与两套伤害模型
 
-`GAME_GUIDE.md:351-353` 明确承诺"接触：比值 ≤ 1.0"，与实现冲突。
+**位置**：`core/events.py:209-254`（欧氏 + 距离衰减）vs
+`core/hooks.py:427-450`（切比雪夫方框 + 定量伤害）
 
-**影响**：探测等级决定 `shot_profile` 的 `min_detection` 门槛与 AI 目标选择 → **影响决策指纹**（若修）。
+中心 (10,7)、半径 6、伤害 10，同偏移下两条路径的扣血：
 
-### 2.2 F3（高）卫星情报不存档
+| 偏移 | 欧氏距离 | hooks | events |
+|---|---|---|---|
+| (6,0) | 6.00 | 10 | 5 |
+| (4,4) | 5.66 | 10 | 5 |
+| (5,5) | 7.07 | 10 | **0** |
+| (0,5) | 5.00 | 10 | 6 |
 
-**位置**：`core/save.py:208-238`（`game_to_dict`）、`core/engine.py:1725-1726`、`core/detect.py:194-198`
+`reveal` 同样分叉：`(6,6)` 处 hooks 暴露=True、events 暴露=False。
+想定作者把效果从 `events` 改写成 `rules` 会得到不同结果。
 
-`save.py` 中 `sat_track` 出现 **0 次**、`sat_recon` **0 次**。
+### 2.7 G17（中）AI 硬门槛 TRACKED，永不调用"识别级即可射击"的炮兵
 
-复现（`strait_confrontation`，蓝方卫星与目标置于 (1,1)）：
+**位置**：`core/ai.py:321-333`（`if known_level < TRACKED: continue`）vs
+`core/combat.py:114-118`（用武器的 `min_detection`）
 
-```
-Tick 后:  sat_recon[BLUE]={48}  sat_track={48: TRACKED}
-           detection_level = 跟踪
-存档 → JSON 往返 → 读档 → refresh_detection()
-          sat_track 1→0, sat_recon 1→0
-          detection_level = 未发现
-```
-
-读档时不调用 `_tick_satellites`，空集一直维持到下一次回合推进。
-玩家读档当回合无法对刚刚还在跟踪的目标开火。**影响决策指纹**（若修）。
-
-### 2.3 F4（高）规则 `fired` 状态不存档
-
-**位置**：`core/save.py:208-238`、`core/hooks.py:272-273,327-337`、`core/engine.py:1785`
-
-存档保存了脚本事件的 `fired`（`save.py:454`），却漏了规则钩子的。
-
-复现：注入 `once=True`、`when={type:turn_at_least,turn:1}`、`then=[{type:message}]` 的规则 →
-触发后 `fired=True` → 存档读档 → `fired=False` → 再次求值**重新播报并重新执行效果**。
-
-若效果是 `reinforce` / `damage` / `airstrike`（`hooks.py:354-445`），读档会凭空多出部队或范围伤害。
-
-### 2.4 F9（中）设施打击命令不记录齐射发数
-
-**位置**：`ui/app.py:2044-2047`、`core/replay.py:90-99`、`core/engine.py:955`
-
-对单位开火在 `app.py:2066-2067` 显式记录 `salvo`，`CMD_FIRE_FACILITY` 漏了。
-
-实测（`strait_shield`，M1A2 + `m256_120`，`max_salvo=3`）：
+实测（`paladin` 的 `m777_155`，`min_detection=classified`，目标情报=CLASSIFIED）：
 
 ```
-实机 salvo_setting=3 → strike_facility() → 弹药 8→5（消耗 3）
-同种子回放命令流   → 回放方 salvo_setting=1 → 弹药 8→7（消耗 1）
+rules.shot_profile(...)      → ok=True,  Pk=0.278, dmg=17.0
+AIPlanner._best_shot(...)    → None
+把情报改成 TRACKED           → ('T-90M','m777_155')
 ```
 
-命中判定仍成功，但弹药、伤害、拦截通道占用全不同。`salvo` 被存档保存却不进回放格式。
-不影响 AI 决策指纹，但**破坏玩家命令回放一致性**。
+玩家可以打的炮兵，AI 永远不用。属于行为级弱化，玩家可感知。
 
-### 2.5 F10（中）负 damage 越过 hp 上限
+### 2.8 G18（中）战报统计与引擎统计两套口径
 
-**位置**：`core/hooks.py:427-445` vs 同文件 `:448-458`
+**位置**：`core/report.py:41-82`（对日志文本做字符串匹配）vs
+`core/engine.py:808-847`（`st.stats` 按发数累加）
 
-`_do_area_damage` 用 `u.hp = max(0.0, u.hp - eff.damage)`，无上界；
-相邻的 `_do_area_heal` 却有 `min(template.hp, ...)`。
-
-实测：`Effect(type='airstrike', damage=-50)` 命中 `集装箱超视距雷达`（template.hp=65）：
-`hp 65.0 → 115.0`，`hp_ratio > 1`，战损加成异常且需多吃 50 点伤害才死。
-`Effect.parse` 接受任意负数。**影响决策指纹**（若修）。
-
-### 2.6 F11（中）事件 fired 以 turn 为键，同回合多事件串台
-
-**位置**：`core/save.py:454-459`
-
-`fired_map = {int(d.get("turn",0)): bool(d.get("fired")) ...}` —— 同一回合两条事件，后者覆盖前者。
-
-官方 4 张图的 turns 为 `[] / [6,12,16,22,28] / [] / [3,2]`，**无重复**，故官方数据不触发；
-SDK 开放的想定/模组可构造重复。属于数据契约边界。
-
-### 2.7 F12（中）NaN 伤害制造"僵尸单位"
-
-**位置**：`core/model.py:466-475`、`core/loader.py:114`
-
-`json.load` 默认接受 `NaN` 字面量，`float()` 不排除。实测命中后：
+实测：
 
 ```
-max(0.0, nan) = 0.0
-nan >= hp - 1e-9 为 False  → hp=0.0 但 destroyed 不变
-结果: hp=0.0, destroyed=False, alive=False
+两次直射命中（日志" A → B｜武器 命中 1 发…"含 → 但不含"发射"）：
+  引擎：shots=2, hits=2
+  战报：shots=0, hits=2, hit_rate=0.0  → 打印"发射 0｜命中 2（0%）"
+
+一次设施打击命中：
+  引擎：shots=0, hits=0（strike_facility 完全不写 stats）
+  战报：hits=1（日志含"命中 1 发"）
 ```
 
-单位仍占格，不计入 `units_of()`，也不进伤亡统计，`kill_unit` 不会被调用。
-另 `min(0.97, nan)=0.97`，NaN 的 pk 被静默拉满。需数据注入触发。
+打诱饵的"命中空目标"也会被战报记成一次命中，可产生 >100% 命中率。
 
-### 2.8 F23（低）事件总线递归无深度保护
+### 2.9 G28（低）探测信息门槛三处不同
 
-**位置**：`core/bus.py:122-154`
+同为 `CLASSIFIED` 级：地图画血条（`mapview.py:1173-1203`）、悬停卡显示精确
+`HP x/y`（`inspect.py:72-80`）、侧栏交战面板**不显示** HP（`app.py:4040`）。
+另 `app.py:2917` 等处用魔法数 `>= 2` 代表 CLASSIFIED，而非 `Detection.CLASSIFIED.level`。
 
-订阅者在回调里再次 `emit` 同名事件，递归 200 次：无异常、无 error 记录，
-`history` 被有界截到 96 条，但产生 96 条伪造的"已发生事实"。
-官方订阅者不主动重投，模组订阅者可触发。
+### 2.10 补充（低）
 
-### 2.9 F24（低）模组 `modify_damage` 是覆盖而非叠加
-
-**位置**：`core/mods.py:603-619`
-
-docstring 声称"多个模组可以叠加修正"，实际 `result = out` 覆盖式——
-两个模组分别返回 ×2 与 +10 时，只有后注册的值生效。
-引擎侧对返回值的 `float()` + `max(0.0,...)` + try/except 兜底**未发现问题**。
-
-### 2.10 已检查且未发现问题的路径
-
-- **JSON 数据契约**：全量遍历 65 模板 / 71 武器 / 28 传感器 / 15 挂载 / 9 编队 / 4 想定，
-  除 F2 外无非法取值；`max_salvo ≥ salvo` 全部成立；100 条武器 override 无非法项。
-- **存档字段往返**：`strait_shield` 3 回合对局 `game_to_dict → json → _restore_game → game_to_dict`
-  递归 diff，除读档追加的 1 条日志外全字段一致，`rng.calls 31→31`。
-  （F3/F4 属于"根本没存"，不是"存了读不回"。）
-- **AI 可复现**：所有 `roll/jitter/shuffle/choice/randint` 引擎调用均显式传 `state.rng`；
-  `PYTHONHASHSEED=0` 与 `=12345` 各跑 `main.py --sim 6 --map 1`，输出 diff 为空。
+- `ui/inspect.py:101` 的"我方能否威胁它"漏了 `RANGE_TOLERANCE`，且内层循环后
+  无条件 `break`——只检查第一支地面部队。第一支是无武器的 `radar_tpy2` 时，
+  旁边的坦克也不会让信息卡显示"威胁"。
+- `ui/app.py:3717` 武器行显示 `Pk {w.pk}`（基础值）与交战面板 `prof.pk`（态势值）
+  并列，标签同为"Pk"，实测可差一倍以上。
 
 ---
 
-## 3. v3.5.x 视觉层的动态问题
+## 3. 长时运行与缓存漂移
 
-### 3.1 F13（中）暂停期间镜头持续抖动
+### 3.1 G5（高）`_detect_cache` 是唯一无上限、无淘汰的缓存
 
-**位置**：`mapview.py:441-468`（墙钟振荡）、`ui/app.py:2821-2825`（暂停门控）
+**位置**：`core/engine.py:140`（初始化）、`core/detect.py:206,216-224`；
+全仓无 `.clear()`、无长度判断。
 
-有 `burst` 事件时打开设置/帮助/简报：`st.tick_fx(dt)` 被跳过，`anim.events` 的 `ttl/life` 冻结，
-但 `draw()` 仍每帧调用，`_shake_offset()` 继续读 `pygame.time.get_ticks()`。
+缓存键含 `obs.detect_gen` / `target.detect_gen` / `state._detect_gen`，三者都单调递增，
+旧键**永远不会再命中**，但从不淘汰。
 
-实测（ttl=0.4，仅改变 now）：
-
-```
-now=0.000 -> (0,2)   now=0.010 -> (2,2)   now=0.030 -> (3,0)
-```
-
-即暂停期间地图**无限抖动**，与代码注释"不存在暂停时抖动不衰减的泄漏"直接矛盾。
-
-### 3.2 F14（中）回放与截图基线不可复现
-
-**位置**：`mapview.py:581-586`
-
-雨/雪滚动偏移 `off = int(t*520) % h` / `int(t*58) % h` 完全由墙钟决定，不进入回放状态或截图签名。
-
-实测：同一 `GameState` + 同一 `MapView`，mock `get_ticks` 为 0ms 与 1000ms：
-
-```
-像素是否相同: False     差异字节数: 4062
-```
-
-回放播放速度、暂停时长、机器启动时间都会改变雨雪颗粒位置；离线基线截图无法稳定比对。
-
-### 3.3 F15（中）震动期间鼠标拾取与屏幕标记错位
-
-**位置**：`mapview.py:473-484`（临时改 ox/oy）、`:146-151`（`screen_to_grid` 用恢复后的 ox）、
-`ui/app.py:2861,2929-2932`
-
-地形/单位按 `ox+shake` 绘制，但 `screen_to_grid()` 在 `draw()` 外运行、用原始 ox。
-tile=10（最小档）时 3px 相当于 30% 格宽，格界附近点击会选中相邻格。
-键盘光标与瞄准环也画在未震动坐标上，不随地图移动。
-
-注：**未发现**重入或 `try/finally` 失衡问题；该处对称且类内无递归 `draw()`。
-
-### 3.4 F16（中）`hsep` 两端渐隐底色硬编码
-
-**位置**：`theme.py:987`、`ui/app.py:947,952`
-
-`c = mix(_current.panel, base, a)` 假设面板底色恒为全局 panel。
-战役选择菜单底色是 `mix(PANEL, PURPLE, 0.15)`（tactical 下约 `(38,36,60)`），
-但渐隐端点按 `(13,18,26)` 计算。
-
-实测最大通道差：`a=0.2 → 28 级`、`a=0.4 → 21 级`，在暗底上肉眼可见。
-分隔线两端显出一条不属于该面板的暗色端帽。
-
-### 3.5 已检查且未发现问题的路径
-
-- **缓存键完整性**：`_env_cache` `(tint,alpha,rect.size)` / `_weather_cache` `(kind,w,h,tile)` /
-  `_vignette_cache` `rect.size` / `_glow_cache` `(tile,level)` / `_urban_tiles` `(id(map),map_epoch)` /
-  `_vector_icons` `(cls,color,size)` —— 逐一核对内容与键，未发现陈旧结论。
-- **城市光晕开销**：`units_at()` 走位置索引、epoch 自校验，O(1)；不构成性能问题。
-- **`panel`/`bar` bevel 边界**：尺寸门槛与亮度自适应齐全；light 主题无异常。
-  问题只出在 `hsep`（F16）。
-- **`_tile_atlas` 残留**：全仓无任何引用，v3.5.1 回退干净。
-
----
-
-## 4. UI 交互、设置与无障碍
-
-### 4.1 F5（高）直接关窗丢失全部设置
-
-**位置**：`ui/app.py:2214-2215`（QUIT）、`:4540-4550`（`run()` 退出）、
-`:714-722`（`close_settings()`，全项目**唯一** `self.cfg.save()`）、`main.py:215`
-
-复现（mock `UserConfig.save` 计数）：
-
-```
-A after App():            save_calls=0  theme=tactical  scale=standard
-B 切主题 light + 字号 xlarge: cfg 已改     save_calls=0
-C QUIT 事件:              running=False  save_calls=0
-D 点"完成":               save_calls=1  saved_theme=light
-```
-
-`_apply_theme` / `_apply_font_scale` / `_apply_language` / `_apply_icon_pack`（`app.py:626-692`）
-只写内存不落盘。玩家若不点"完成"而直接关窗，主题、字号、键位全部回退。
-
-### 4.2 F6（高）按键捕获态跨开关残留
-
-**位置**：`ui/settings.py:169-174`（done 只置 `close_requested`）、`:82-95`（capturing 吞键）、
-`ui/app.py:699-722`（面板实例复用，关闭不清 capturing）
-
-复现：
-
-```
-1 点击"结束回合"进入捕获  capturing='end_turn'
-2 捕获态直接点"完成"      close_requested=True, capturing='end_turn'
-3 重开设置（同一实例）     capturing='end_turn', end_turn=space
-4 按 Z                    end_turn=z  ← 静默改键，玩家无提示
-```
-
-后果：下次按空格无法结束回合，且界面没有任何反馈说明键位被改。
-
-### 4.3 F17（中）字号与形状标识没有键盘焦点框
-
-**位置**：`ui/settings.py:277-279`（`_focus_items` 含 `font_scale`/`shape`）、
-`:654-694`（`_draw_focus` 的 if/elif 链没有这两个分支）
-
-hook `pygame.draw.rect` 统计焦点框：
-
-```
-theme focus_index=0  amber_rects=1
-font_scale =1  amber_rects=0   ← 缺失
-shape      =2  amber_rects=0   ← 缺失
-icons      =3  amber_rects=1
-```
-
-`←→` 确实能改值，但键盘用户看不到焦点在哪。与已修的滚动跟随是不同问题。
-
-### 4.4 F18（中）暗角恒定开启，注释承诺的开关不存在
-
-**位置**：`ui/mapview.py:53-55`（注释称"无障碍设置可关"）、唯一的读取点 `:606,802`
-
-全项目 `_vignette_on` 仅 3 处引用：初始化 1 处、读取 2 处，**无 setter、无 config 键、无 UI**。
-12 层黑色环（峰值 alpha=44）始终叠加在最上层。
-
-### 4.5 F19（中）不存在"减少动态效果"开关
-
-**位置**：全仓 grep `reduce_motion|motion|动效|减少动态|quality|画质` → **0 匹配**；
-`ui/settings.py:277-279` 的 8 个焦点项无一动效相关。
-
-`core/anim.py:50-61` 有 `AnimTrack.enabled`，但 UI 未暴露、config 未持久化。
-即便程序内设 `anim.enabled=False`，**天气滚动、暗角、城市光晕仍照常绘制**——
-这三者不读 `anim.events`。
-
-`VISUAL_PLAN.md` 自身也矛盾：`:438-439` 承诺"可在设置里关闭""所有新增动效必须响应
-减少动态效果设置项"，而 `:339` 写"不需要额外的无障碍开关"。本轮以实际代码为准：
-**承诺未兑现**。
-
-### 4.6 已检查且未发现问题的路径
-
-- **回放/观战只读**：`app.py:2306-2349`（键盘）、`:2547-2554`（回放鼠标）、
-  `:2625-2636`+`:2725-2726`（观战侧栏守卫）均无条件 return，未发现新写入路径。
-- **字号下限 10**：`smoke_test.py:1006-1040` AST 扫描仍有效；自建更宽松扫描仅命中
-  `app.py:1531 T.FS_SMALL-1`（=10，等于下限），无越界。
-- **四主题对比度**：补测"夜 + 雪 + 暗角 alpha=44"最坏组合，`map_label` 对比度
-  tactical 4.07 / light 3.63 / deuteranopia 4.02 / protanopia 4.03，均高于 `GRAPHIC_MIN=3.0`。
-- **异常路径**：坏 JSON、非 dict 配置、缺文件、字体全缺、640×480 与 1×1 窗口均不崩溃
-  （小窗口被钳到 1180×740，代价是画面裁剪）。
-- **主题切换后缓存重建**：`_terrain_epoch()` 含主题 id；`_apply_theme` 等清 `_token_cache` /
-  `_vector_icons` / 图标缓存。未发现残留。
-
----
-
-## 5. CI、门禁、打包与文档
-
-### 5.1 F7（高）`test_perf.py` 恒真断言
-
-**位置**：`tools/test_perf.py:181-185`
-
-```python
-changed = any(state.detection[Side.BLUE].get(k) is not v for k,v in before.items())
-check(True, f"单位移动后重新解算（{changed} = 相关结论有变化）")
-```
-
-`changed` 只被拼进消息。增量缓存完全失效时门禁照样绿。
-
-变异验证（内存）：把 `changed=False` 传进去 → `[OK] 单位移动后重新解算（False = 相关结论有变化）`，
-`FAILED=[]`，退出码 0。**断言文案自己承认没变化，仍然报 OK**。
-
-### 5.2 F20（中）另两处假绿断言
-
-| 脚本 | 行号 | 问题 |
+| 场景 | 条目 | 估算字节 |
 |---|---|---|
-| `test_counter.py` | 136-144 | `lo,hi = 9.0,0.0` 哨兵 + `except: continue`；`mult()` 全抛异常时 `0.50<=9.0 and 0.0<=1.46` 恒真，实测输出 `[OK] 全域乘数落在 [9.00, 0.00]` |
-| `test_validate.py` | 108-111 | `else: check(True, ...)`；校验器若不再识别"需机动接近"，门禁失效 |
-| `balance_check.py` | 225-228 | `except Exception: continue` 静默跳过坏想定；全部加载失败时 findings/errors/warnings 全 0（CI 有 `--check` 兜底，故风险较低） |
+| 新建 10 局（每局初始） | 112 / 局 | ~20 KB / 局 |
+| 40×40 对局 60 回合 | 7,706 | 1.82 MB（99.4% 键已死） |
+| 40×40 对局 120 回合 | 10,666 | 2.40 MB |
+| **纯推进 1000 回合** | **56,884** | **13.84 MB** |
 
-### 5.3 F21（高）CI 装了中文字体，字形门禁却永远 SKIP
+官方图回合上限 16–20，正常对局约 2–3 千条 / ≤1 MB；本条在长战役或
+高回合上限模组下才显著。跨局随 `GameState` 释放，不累计。
 
-**位置**：`.github/workflows/ci.yml:55-63`、`tools/smoke_test.py:1063`
+### 3.2 G7（中）`_token_cache` 键缺 `player_side`，换阵营后棋标陈旧
 
-CI 注释明写"装字体让字形门禁真正生效"，Linux 执行 `apt-get install fonts-noto-cjk`；
-但断言条件是 `if _cjk_files and os.name == "nt"`。9 组矩阵中 8 组是 Linux/macOS，
-全部走 `[SKIP]` 分支。
+**位置**：`ui/mapview.py:1219-1232` 的失效指纹与缓存键都不含 `player_side`，
+但 `:1257-1264` 的绘制用它决定"己方绿边"与"敌方切角"。
 
-上一轮的结论是"Windows 强制断言、其他平台 SKIP"——但既然 CI 已装字体，
-这个折中就不必要了。**装字体的成本在付，门禁的收益没拿到**。
+实测：蓝方开局生成红方 T-90M 精灵 → 同一 MapView 换成红方玩家的新
+`GameState` → 取到**同一个精灵对象**，与全新 MapView 的基准相差 180/1024 字节。
+`start_game` 换边、`load_slot` 读另一阵营存档都会触发。
 
-### 5.4 F8（高）便携版 `--check` 恒绿
+### 3.3 G8（中）缩略图静态层被 `map_epoch` 过度失效
 
-**位置**：`packaging/make_portable.py:67-69`
+**位置**：`ui/mapview.py:1587`，键含 `self.state.map_epoch`；
+而静态层只画地形+海拔，与工事/烟幕/设施无关。
 
-```python
-f.write("import main\nmain.main()\n")    # 返回值被丢弃
-```
+实测（128×128）：缓存命中 **0.106 ms**，重建 **73.56 ms**（694×）。
+`map_epoch` 因烟幕、工事构筑/风化、设施打击等事件频繁递增，
+每次都会在下一帧造成约 74 ms 卡顿。
 
-`main.main()` 返回 `int`（`main.py:194-216`），zipapp 入口无 `sys.exit`。
-实测 mock `check_data=1`：
+### 3.4 G9（中）`_field_cache` 旧世代条目 100% 驻留
 
-```
-main() 返回值 = 1     进程退出码 = 0
-sys.exit(main.main()) → 退出码 1
-```
+**位置**：`core/pathfind.py:347,371,397-403`，上限 192 条，按插入顺序 FIFO 淘汰 1/4（非 LRU）。
 
-`build_windows.ps1:50-51` / `build_linux.sh:40` 只对 PyInstaller 产物跑 `--check`，
-**没有任何流水线对 `.pyz` 自检**，所以这个恒绿端口不会被发现。
+实测（40×40，60 回合 AI 对战结束）：`map_epoch=50`，154 条 / 2.72 MB，
+键的世代 ≠ 当前世代者为 **154/154 = 100%**。旧距离场全部是死数据，
+直到 192 条上限才被 FIFO 清掉。
 
-### 5.5 F22（中）Windows 打包脚本不受 PyInstaller 路径门禁
+### 3.5 G10（中）`T._text_cache` 按条数封顶，字节峰值约 70 MB
 
-**位置**：`tools/check_scripts.py:173-180`
+**位置**：`ui/theme.py:718-719,745-746`，`_CACHE_LIMIT = 3000`，超过即整表清空。
 
-docstring 承诺"打包脚本必须显式指定 `--distpath/--workpath`"，
-但分发只对 `.sh` 调用 `check_pyinstaller_paths`。spy 实测：实际检查的脚本只有 `['build_linux.sh']`，
-`build_windows.ps1` 删掉 `--distpath` 也无人报警。
+实测 2,900 条唯一字符串（尚未触发清空）：
 
-### 5.6 F25（中）`event-late` 降级为提示，CI 恒绿
-
-**位置**：`main.py:69-75,87-90`、`core/validate.py:527-530`
-
-只统计 `errors`，warn/info 只打印。实测 `main.py --check` 退出码 0，但输出含：
-
-```
-[提示] event-late 事件 4（增援 1×ddg_burke 于 (14,58)）的回合 22 超出想定回合上限 20，永远不会触发
-[提示] event-late 事件 5（增援 1×j20 于 (90,44)）的回合 28 超出想定回合上限 20，永远不会触发
-```
-
-增援永不触发是功能缺陷，不是权衡性提示（`port_inland` 降级为提示是既定决策，不重复报）。
-
-### 5.7 F26（低）源码包混入缓存
-
-**位置**：`packaging/make_portable.py:85-101`
-
-`skip_dirs` 不含 `.ruff_cache`、`.github`。实测陈旧
-`packaging/dist/fangkuai-bingqi-source.zip` 130 条目含 `.ruff_cache/0.17.3/*` 与已删除的 `ROADMAP.md`。
-CI 因 `.gitignore` 且每次重建不受影响；本地手动打包会带上。
-
-### 5.8 文档自洽问题
-
-| # | 位置 | 问题 |
+| 档位 | 串长 | 像素字节 |
 |---|---|---|
-| F27 中 | 旧 `AUDIT.md:7,26` | 正文是第四轮（v3.4.4）现场，基线标题却被逐版本替换成 v3.5.4；正文残留"与 v3.4.2/v3.4.3 逐字一致"自相矛盾，Q3 仍写"CI 无 macOS"（实际已有），统计写"52 步 8 组"（实测 54 步 9 组）。**本文件替换后解决** |
-| F28 中 | `VISUAL_PLAN.md:438-439,456` vs `:339` | 承诺"减少动态效果开关"与"不需要额外开关"自相矛盾；实测开关不存在（F19）。另 `:438` 写震动 ≤4px，实现与测试为 ≤3px |
-| F29 低 | `ROADMAP_HISTORY.md` 末章 | 停在 v3.4.4，缺 v3.5.0–v3.5.4；`README.md:265-269` 有记录，归档出现断点 |
-| F30 低 | 动画种类计数 | `VISUAL_PLAN.md:64,222` 称 16 种；`AUDIT` 旧版称 8 种；`core/anim.py:16-23` 文档化 8 种 anim + `mapview.py` 6 种 fx。三方口径不一 |
+| standard | ~10 字 | 30.2 MB |
+| standard | ~40 字 | 41.5 MB |
+| xlarge | ~10 字 | 54.8 MB |
+| xlarge | ~40 字 | **68.9 MB** |
 
-**未发现**：版本号五处（`version.py` / README / GAME_GUIDE / SDK / AUDIT 基线）与最新 tag 全部为
-v3.5.4，`check_docs.py` / `check_sdk.py` 全绿；打包产物无陈旧资产（CI 每次重建）。
+条目收敛，但字节上限由"条数 × 单条面积"决定；达到 3,000 条时整表重建。
+
+### 3.6 G11（中）LLM `_boot_failed` 粘滞，一次并发 prefetch 永久降级
+
+**位置**：`core/llm_commander.py:428-429,382,480-489`、`core/llm_client.py:284-290`
+
+`LLMClient.start()` 在另一线程正在启动时返回 `False`，而 `_run` 把任何
+`False` 都当作启动失败置 `_boot_failed=True`；`available` 永久受它影响，
+`reset()` 也不清。
+
+实测（fake client 精确复刻非阻塞抢锁）：第 1 回合 prefetch 开始 0.4 s 启动，
+第 2/3 回合的 prefetch 得到 `False` → `starts=1`、`client.ready=True`、
+`_boot_failed=True`、`available` **True→False**、`last_error` 为空。
+
+只要玩家在模型加载完成前结束一次回合，大模型指挥官在整个 App 生命周期内
+都不可用，换局也不恢复。
+
+### 3.7 G27（低，POSIX）异常退出可能遗留 `llama-server`
+
+正常退出在 `app.py:4592-4603` 调 `commander.stop()`，异常分支无 `finally`；
+Windows 靠 Job Object 兜底，`llm_client.py:75-76` 在 POSIX 直接返回 `None`。
+未在 POSIX 实机复现，属代码路径审阅。Windows 侧实测 5 次失败→`stop()` 后
+无句柄/进程残留。
+
+### 3.8 未发现跨局累积（附实测）
+
+| 循环 | 指标 | 前 → 后 |
+|---|---|---|
+| `start_game → over → menu` 10 次（40×40） | `tracemalloc` | 3.163 → 3.163 MB |
+| 同上（128×128） | `tracemalloc` | 15.36 → 15.36 MB |
+| 连续 `load_game` 10 次 | 对象数 | 48,947 → 48,978（GC 后 −15） |
+| 切主题 20 次 | `tracemalloc` | 持平 |
+| 缩放 50 次 | `tracemalloc` | 7.35 MB 持平，chunk 4.8 MB < 64 MB |
+| `id(map)` 复用压力 500 次 | 复用次数 | **0 / 500** |
+
+`_chunks` 是真正的按字节 LRU；`bus.history/errors`、`state.log/fx/sfx` 均有界。
+全屏层缓存（env/weather/vignette）在 1180×700 约 19.8 MB，属固定预算，不是泄漏。
 
 ---
 
-## 6. 建议处理顺序
+## 4. 规则层其余边界与数值
 
-本轮只审计不修。若决定处理，建议按"修复真实性 → 数据一致性 → 交互 → 门禁 → 文档"排序：
+### 4.1 G12（中）detect 的 0.98 上限过紧，多截断了 4 个传感器
+
+**位置**：`core/detect.py:146-149`（v3.5.5 F2 的修法）
+
+官方 28 个传感器中只有 3 个 `class_ratio ≥ 1`，但 `min(0.98, ...)` 把 4 个
+原本合法的也一起截断：
+
+| 传感器 | strength | 原 class_ratio | 新 class_ratio |
+|---|---|---|---|
+| radar_tpy2 / container | 1.35 | 0.997 | 0.98 |
+| radar_s400 | 1.30 | 0.986 | 0.98 |
+| radar_346b | 1.28 | 0.9816 | 0.98 |
+
+真实格子（E-3G 对 A-50U，ratio=0.9837）：旧公式判 CLASSIFIED，新公式判 CONTACT。
+后果：悬停信息卡被 `level >= 2` 门槛挡住；AI 的 `ai.py:219/508` 要求
+CLASSIFIED，会改变决策；旧回放中依赖该等级的开火命令会静默失败。
+
+单调性实测：ratio∈[0,1] × strength∈[0,3) 共 30 万点，**无非单调**；
+`track_ratio > class_ratio` 保护是死代码（0.96 < 0.98）。
+
+修法：把上限改成 `0.999` 而非 `0.98`——CONTACT 仍数学可达（ratio 最大 1.0），
+但对原有识别带的无谓收缩从 1.7% 降到 0.1%。
+
+### 4.2 G22（中）负伤害推给 heal，但 heal 没有钳制，制造负血僵尸
+
+**位置**：`core/hooks.py:461`（`_do_area_heal` 用
+`min(template.hp, u.hp - eff.damage)`，无下界）
+
+v3.5.5 的 F10 把负 damage 按 0 处理，注释指向"治疗走 heal 效果"，
+但 heal 对负 damage 无防护。实测 `damage=-999` 命中后：
+`hp=-984.0, alive=False, destroyed=False`——与 F12 修掉的僵尸单位同类，
+`kill_unit` 不调用、不计伤亡。`Effect.parse` 也不校验有限/非负。
+
+### 4.3 G21（低）0 伤害语义改变
+
+**位置**：`core/model.py:468-473`（`apply_damage` 对 `amount<=0` 提前 return）
+
+实测 `hp=5e-17, amount=0`：旧实现会落入 `>= hp-1e-9` 分支清成 `destroyed=True`；
+新实现直接 return，残血继续存活。四处调用方都不依赖"负数=治疗"，
+但 0 值清理语义已丢失。
+
+### 4.4 G23（低）NaN 门禁只覆盖武器 `pk/damage`
+
+加载期 `_finite()`（`loader.py:136-137`）只用于这两个字段；
+`range_max`、传感器 `range/strength`、单位 `hp/mp/armor`、规则效果 damage
+仍接受 NaN/Inf。实测 `range_max=nan` 被接受，而 `d > eff` 在 NaN 时恒 False——
+射程与探测剪枝失效。`save_game` 用 `allow_nan=True`，NaN hp 可写入存档。
+
+### 4.5 G19（低中）设施打击不走进飞/拦截窗口
+
+**位置**：`core/engine.py:936-1033` vs `:622-684`
+
+实测 10 格外 `tomahawk`：打设施当回合 `facility_hp 100→32`、
+`st.missiles` 长度 0；打单位则 `flight=3` 且进入在飞状态。
+`strike_facility` 还不检查 `mission=="ferry"` 的转场保险，
+也不发 `EV_BEFORE_FIRE/EV_AFTER_FIRE`（模组看不到设施打击）。
+
+### 4.6 G20（低）中段反导弹在一条再装填路径被跳过
+
+**位置**：`core/engine.py:1406-1423`（`_reload_interceptors` 显式
+`if w.midcourse: continue`）vs `:1460-1465`/`:1341-1345`（补给线分支补所有武器）
+
+实测 S-400 的 `prs1m`（midcourse, ammo=0）：`_reload_interceptors()` 后仍 0，
+`_tick_logistics()` 后变成 1——"中段弹不自动装填"的意图被另一条路径绕过。
+
+### 4.7 已对拍且未发现差异
+
+- **探测优化版 vs 参考实现**：840 组（side,target）对拍，0 处不一致。
+- **存活判定**：`alive = not destroyed and hp>0` 是唯一来源，无绕过。
+- **`over`/`winner` 写入**：4 处但 `_declare` 幂等，实测不互相覆盖。
+- **`min_detection` 比较方向**：全仓只有 `combat.py:116` 一处门槛判定。
+- **距离度量**：欧氏/对角 1.414 在各处一致（保底路径除外，见 G14）。
+- **回合口径**：`turn_count > turn_limit` 与 UI 显示一致。
+
+---
+
+## 5. 门禁质量与测试假绿
+
+### 5.1 G24（低-中）新门禁自身的覆盖缺口
+
+| 门禁 | 缺口 |
+|---|---|
+| `check_workflows.py` | CI 里先跑它、**下一步**才 `pip install requirements-dev.txt`（pyyaml 在那）；实测无 pyyaml 时 `[SKIP] 只做缩进检查` 但仍打印 `[OK]`——YAML 解析那一半在 CI 永远不执行。`run: \|` 检测也不匹配 `- run: \|` 列表式写法 |
+| `check_dupes.py` | `_scan` 只遍历模块/类体的直接子节点，不进 `if/try/with`；实测平台条件式重名 `[]`（漏判）。`@property` + `@x.setter` 会被误报（当前仓库无 setter） |
+| `test_save.py:282-284` | F11 只断言"序列化结果有 `i` 键"，没构造同回合两条事件验证还原；把 `_restore_game` 退回按 turn 实现仍会通过 |
+| `test_perf.py:69-90` | "参考实现" `_full_detection_level` 内部调用同一个 `evaluate_detection`，不是独立 oracle，发现不了 clamp 类错误 |
+| `test_a11y.py` / `test_visual.py` | 不含新增的 motion 按钮与 `state.fx` 通道 |
+| `check_scripts.py:160-167` | PyInstaller 路径只做子串检查，注释里出现 `--distpath` 即满足 |
+
+### 5.2 G25（中）`motion=reduced` 覆盖不全且换局复位
+
+**位置**：`core/engine.py:356`（`add_fx` 无开关）、`ui/mapview.py:1378,1447`
+（`_draw_fx`/`_draw_anim` 无判断）、`ui/app.py:742-756,1818-1824`
+
+实测：设 `motion=reduced` 后，
+`st.add_fx("explosion", ...)` + `tick_fx(0.45)` → `_draw_fx` 仍改变画面；
+`_apply_motion` 只把 `anim.enabled=False`，**不清空已入队事件**；
+`_layout_game` 只在 `mapview is None` 时应用档位，
+`load_slot` / 第二局 `start_game` / 战役下一关 / 观战开场都走 `else` 分支，
+新 `GameState.anim.enabled` 默认 `True`——reduced 丢失。
+
+### 5.3 G26（低-中）逻辑时钟覆盖不全
+
+回放/观战暂停时 `paused` 分支直接 return，但外层仍无条件执行
+`state.tick_fx(dt)` 与 `mapview.tick_clock(dt)`——暂停后天气继续滚、动画继续演。
+`_last_shake` 只在 `draw()` 里更新，菜单/编辑器模式不调用 mapview.draw，
+回对局首帧的 hover/点击会用上一局残留偏移。`zoom_at` 也没补 shake。
+另外 clock 由真实 dt 累加，不同帧率下同一逻辑状态的画面仍不同——
+"可复现"只对固定 dt 序列成立。
+
+### 5.4 G29（低）文档与实现不一致
+
+`ui/app.py:717-725` 的 `_save_config_quietly` docstring 说"失败只提示，
+绝不阻断退出"，实现是裸 `except Exception: pass`，磁盘只读时玩家无感知。
+
+---
+
+## 6. 极端输入精简测试
+
+以下输入实测**未发现崩溃或静默错误**：
+
+| 输入 | 结果 |
+|---|---|
+| `over=True` 后 `move_unit` | 返回 `False`，正确拒绝 |
+| `turn_limit=0` 后 `_advance_turn()` | `turn=2, over=True`，正常结算 |
+| 连续 5 次 LLM `start()` 失败 → `stop()` | 句柄/进程/JOB 全为 0 |
+| 旧档缺 `sat`/`rules_fired`/`i` | 正常读入（见 §1.4） |
+
+说明：本轮原计划的第四路子代理因额度限制未能完整执行，极端输入部分由主代理
+做了上述精简覆盖；`uid` 不存在、超长 Unicode 名称两项因测试脚本构造方式
+有误未得到有效结论，不计入本报告。
+
+---
+
+### 7.1 修复摘要（v3.5.6）
+
+| 条目 | 修法 | 验证 |
+|---|---|---|
+| G1 | `p = 1 - ttl/life`（tick 递减的是 ttl）；全生命期采样 | 最大偏移 3 px（原 337 px） |
+| G2 | `rep.warnings.append` → `rep.add("scenario-load-failed","error",...)` | 变异下 4 条 error、退出非 0 |
+| G3 | `_salvo_options` 复用 `rules.salvo_limit` | 断补给 UI `[1]` = 规则 1 |
+| G4 | 新增 `_display_damage` 统一对空显示；日志/统计按实际伤害 | 51.4 / 95 / 113.1 三口径一致 |
+| G5 | `_detect_cache` 加 20,000 条上限 | 灌满后自动清空 |
+| G6 | 字体候选逐个重试（失败继续）；bold 也补 Droid | hook 验证第二个候选被尝试 |
+| G7 | `_token_epoch` 加 `player_side` | 换阵营后精灵重烘焙 |
+| G8 | minimap 静态层键去掉 `map_epoch` | 消除 73.56 ms 重建 |
+| G9 | `_field_cache` 按世代清旧条目 | 死条目不再驻留 |
+| G10 | `_text_cache` 增加 24 MB 字节预算 | 计数生效 |
+| G11 | 启动中 prefetch 不置 `_boot_failed`；reset 清除 | 并发启动不再永久降级 |
+| G12 | clamp 0.98 → 0.999 | ratio=0.99 恢复 CLASSIFIED |
+| G13 | 枢纽分支补调 `_resupply_by_line` | supply_dry 3→0、fuel 0.10→0.35 |
+| G14 | `path_cost` 识别整条保底路径按 mp 计价 | 保底格 path_cost=0.5=mp |
+| G15 | 威胁圈用 ADN 实际拦截节点 | （叠层判定源统一） |
+| G16 | hooks 区域效果改欧氏圆几何 | 偏移(5,5) 掉血 0 |
+| G17 | AI 删 TRACKED 硬门槛，交给 `shot_profile` | 炮兵可被 AI 选中 |
+| G18 | `collect_stats` 的 shots/hits 改用引擎 stats | 两次命中导出 2/2/100% |
+| G19 | 补转场保险、fire 事件、stats 记账 | ferry 被拒；飞行窗口仍为已知边界 |
+| G20 | 补给线补弹跳过 midcourse | 中段弹不再被白送 |
+| G21 | `apply_damage` 只拦 `<0`，0 保留残值清理 | hp=5e-17 + 0 伤害 → 判毁 |
+| G22 | heal 拒绝非有限/非正 + 圆形几何 | 负治疗不制造僵尸 |
+| G23 | loader 对 sensor/weapon 全部浮点做 finite 校验 | `range=nan` 被拒 |
+| G24 | CI 先装 pyyaml；dupes 进 if/try 且排除 setter；workflow 覆盖 `- run: \|` | 108 文件扫描 0 重复 |
+| G25 | reduced 关 fx、清已入队动画、换局重应用 | fx 跳过、events 清空 |
+| G26 | 回放/观战暂停不推进时钟；fit 清 shake；zoom_at 补偏移 | — |
+| G27 | `App.run()` 清理移入 finally | POSIX 异常退出也 stop |
+| G28 | 魔法数 `>= 2` 统一为 `Detection.CLASSIFIED.level` | 三处一致 |
+| G29 | docstring 改为"静默"与实际一致 | — |
+
+## 7. 建议处理顺序
+
+本轮只审计不修。若决定处理，建议：
 
 | 顺序 | 条目 | 理由 |
 |---|---|---|
-| 1 | F1 | 先消除"修复可能被覆盖"的编辑缺陷，否则后续修复仍可能静默失效。加 AST 重名门禁 |
-| 2 | F2、F3、F4 | 三条都影响决策或战后结论；且 F2 是前轮"声称已修"的遗漏，需同步修正历史记录 |
-| 3 | F5、F6 | 玩家可见的配置损坏，后果是"设置没保存""键位莫名改变"，信任成本高 |
-| 4 | F7、F8、F21、F22 | 门禁与发布链路的假绿；这些不修，前面三类问题会继续漏过 CI |
-| 5 | F9–F19 | 回放一致性、数值边界、动态视觉的可复现与无障碍 |
-| 6 | F20、F25、F26、F28–F30 | 剩余门禁漏洞与文档自洽 |
+| 1 | G1、G2、G6 | 三条"改了却没生效"——先恢复修复的可信度，否则后面的修复也可能落空 |
+| 2 | G3、G4、G13、G14 | 玩家直接看到的错误数字与错误可选项，信任成本最高 |
+| 3 | G5、G8、G9、G10 | 长局与大字号下的内存/卡顿；官方图不触发，但模组与高回合上限会 |
+| 4 | G7、G11、G12、G17、G18 | 换阵营、LLM 降级、探测阈值、AI 行为、战报统计 |
+| 5 | G15、G16、G19、G20、G22–G26 | 几何口径、中途弹、动效覆盖、门禁缺口 |
+| 6 | G21、G27–G29 | 边缘语义与文档 |
 
-**注意**：F2/F3/F4 若修，决策指纹会改变。按项目既定约束，这类改动必须走
-"实测前后指纹对比 + 深战术 A/B 不退化"的流程，不能只补断言就合并。
+**注意**：G12、G17、G18、G19、G20 若修，会改变 AI 决策或回放结论。
+按项目既定约束，必须走"实测前后指纹对比 + 深战术 A/B 不退化"流程，
+不能只补断言就合并。
 
 ---
 
-### 6.1 修复摘要（v3.5.5）
+## 8. 审计覆盖范围
 
-| 条目 | 修法 | 验证方式 |
-|---|---|---|
-| F1 | 删除 5 组重复定义中的旧副本（`_weather_layer` 保留独立上半幅版），新增 `tools/check_dupes.py` AST 门禁并接入 CI | `inspect.getsourcelines` 确认生效行 735；全仓 AST 扫描 0 重复 |
-| F2 | `class_ratio = min(0.98, ...)`、`track_ratio = min(0.96, ...)`，并保证单调 | 分档边界测试：ratio=0.99 现返回 CONTACT（原为 CLASSIFIED） |
-| F3 | `save` 增加 `sat.recon` / `sat.track`，读档还原 | 存档往返：`sat_recon` 与 `sat_track` 逐项一致 |
-| F4 | `save` 增加 `rules_fired`（按索引），读档还原 | 字段往返测试 |
-| F11 | 事件改为按索引存 `fired`，旧档回退到 turn | `events` 每条含 `i` 字段 |
-| F5 | QUIT 与 `run()` 退出调用 `_save_config_quietly()`（失败不阻断退出） | spy `cfg.save` 计数 |
-| F6 | 新增 `SettingsPanel.reset_transient()`，`close_settings` 调用 | 复现脚本：捕获态关闭后重开，`capturing` 为空 |
-| F7 | `check(True, ...)` 改为"位置世代递增 + 增量与全量逐项一致" | 自测通过；原断言下 `changed=False` 会被捕获 |
-| F8 | zipapp 入口改为 `sys.exit(main.main())` | 代码审阅 + 变异验证 |
-| F9 | `CMD_FIRE_FACILITY` 记录 `salvo`，`replay` 读取并传入 | 与 `CMD_FIRE` 对称 |
-| F10 | `_do_area_damage` 对非正 damage 按 0 处理 | 负伤害不再提升 hp |
-| F12 | 加载期 `_finite()` 校验 pk/damage；`apply_damage` 拒绝非有限值 | `apply_damage` 源含 `isfinite` |
-| F13/F14 | 新增 `MapView.clock`，由 App 在**非暂停时**推进；天气与震动相位改读它 | 暂停时 clock 增量 0；同一 clock 两帧像素一致 |
-| F15 | `screen_to_grid` 补偿 `_last_shake` | 与绘制坐标同源 |
-| F16 | `hsep(bg=...)`，战役菜单传真实面板底色 | 调用点显式传 `mix(PANEL,PURPLE,0.15)` |
-| F17 | `_draw_focus` 补 `font_scale` / `shape` 分支 | 焦点框计数各 1 |
-| F18/F19 | `UserConfig.motion`（full/reduced）+ 设置面板一行 + 8 语言；renders 层读 `T.motion_reduced()` | 减弱档：`anim.enabled=False`、震动 (0,0)、天气偏移固定 0、暗角跳过 |
-| F20 | 三处假绿断言改为"先收集再判空 / else 判失败 / 记录 warning" | 各脚本自测通过 |
-| F21 | 字形门禁去掉 `os.name=="nt"` 限制 | 本地 Windows 仍通过 |
-| F22 | `.ps1` 也走 `check_pyinstaller_paths` | 立即抓出 `check_dupes.py` 缺 UTF-8（自证有效） |
-| F23 | `EventBus._depth` + `MAX_DEPTH=8`，超限抛错（被引擎兜底记录） | 递归测试：8 层即停，错误可读 |
-| F24 | 修正 docstring：链式覆盖而非叠加 | 文档与实现一致 |
-| F25 | `event-late` 升为 error；把超限的两条增援事件收到 18/20 回合 | `main.py --check` 退出 0 且无 event-late |
-| F26 | 源码包排除 `.ruff_cache/.github/.pytest_cache/.mypy_cache` | 跳过目录清单 |
-| F28–F30 | 统一震动上限 3px、动效开关描述、动画计数口径；补 v3.5.x 历史 | `check_docs` 通过 |
-
-## 7. 审计覆盖范围
-
-- **AST 静态扫描**：全仓 `.py` 的类级/模块级函数重名（发现 5 处）。
-- **规则与数据**：65 模板 / 71 武器 / 28 传感器 / 15 挂载 / 9 编队 / 4 想定的字段定义域；
-  存档字段往返递归 diff；`PYTHONHASHSEED` 双值决策指纹对比。
-- **视觉层**：6 类缓存的键与失效时机逐一核对；天气层像素级周期一致性；
-  震动无状态性、幅度上限、镜头复原；四主题叠加暗角后的对比度补测。
-- **交互层**：模态优先级、回放/观战只读路径、字号 AST 守卫、异常输入与极小窗口、主题切换缓存。
-- **门禁层**：32 个自检的断言结构抽查；CI 54 步逐一核对；打包脚本与 zipapp 入口；
-  变异验证 4 处假绿。
-- **实测环境**：`D:/Dev/Python/python.exe`（3.12.4 / pygame 2.6.1 / SDL 2.28.4），
-  `SDL_VIDEODRIVER=dummy`；审计阶段未修改项目文件，所有变异在内存中完成。
+- **修法回归**：`git diff v3.5.4..v3.5.5` 全量（43 文件）；抽查 9 类修法的真实行为。
+- **实测工具**：34 自检全跑、`diag 20` 三张图、`main.py --check`、`ruff`、
+  `check_docs`；AST 全仓重名扫描；内存循环（10 局 / 50 缩放 / 20 主题 / 1000 回合）。
+- **规则分叉**：14 个概念的两处以上实现逐对比较，其中 7 组实测对拍确认等价。
+- **视觉与交互**：震动幅度全生命期采样、齐射/伤害三口径、补给枢纽、
+  可达集与执行路径、防空圈、区域效果几何。
+- **极端输入**：见 §6，含未得出结论的诚实标注。
 
 ---
 

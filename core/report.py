@@ -44,8 +44,14 @@ def collect_stats(state: GameState) -> dict[str, Any]:
     交战明细按「开火 → 命中 / 拦截 / 脱靶」三类结果归类，
     统计的是**事件条数**而非弹药数——便于快速判断态势而非精算战果。
     """
-    shots = 0            # 发射事件数
-    hits = 0             # 命中事件数
+    # G18（第六轮）：shots/hits 此前靠匹配日志文本，含"→"但不含"发射"
+    # 的直射日志被漏记（实测两次命中导出为"发射 0｜命中 2（0%）"）。
+    # 引擎 stats 按实际发数记账，是唯一权威；其余指标仍按事件条数统计。
+    per_side = getattr(state, "stats", {}) or {}
+    shots = sum(int(d.get("shots", 0)) for d in per_side.values()
+                if isinstance(d, dict))
+    hits = sum(int(d.get("hits", 0)) for d in per_side.values()
+               if isinstance(d, dict))
     kills = 0            # 击毁事件数
     intercepts = 0       # 拦截事件数
     misses = 0           # 未命中事件数
@@ -54,10 +60,6 @@ def collect_stats(state: GameState) -> dict[str, Any]:
 
     for e in state.log:
         t = e.text
-        if "发射" in t and "→" in t:
-            shots += 1
-        if "命中" in t and "未命中" not in t:
-            hits += 1
         if "击毁" in t:
             kills += 1
         if "拦截" in t:

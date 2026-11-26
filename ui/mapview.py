@@ -91,6 +91,8 @@ class MapView:
     # 坐标
     # ------------------------------------------------------------------ #
     def fit(self) -> None:
+        # G26：换图/换 state 后清掉上一局残留的震动偏移
+        self._last_shake = (0, 0)
         md = self.state.map
         sx = (self.rect.width - 8) / md.width
         sy = (self.rect.height - 8) / md.height
@@ -136,8 +138,10 @@ class MapView:
         if new == old:
             return
         # 保持光标下的地图点不变
-        gx = (pos[0] - self.rect.x - self.ox) / old
-        gy = (pos[1] - self.rect.y - self.oy) / old
+        # G26：与 screen_to_grid 同源，震动窗口内缩放锚点也要补偿
+        sx, sy = self._last_shake
+        gx = (pos[0] - self.rect.x - self.ox - sx) / old
+        gy = (pos[1] - self.rect.y - self.oy - sy) / old
         self.tile = new
         self.ox = pos[0] - self.rect.x - gx * new
         self.oy = pos[1] - self.rect.y - gy * new
@@ -473,7 +477,9 @@ class MapView:
         for e in self.state.anim.events:
             if e.kind != "burst" or e.ttl <= 0:
                 continue
-            p = 1.0 - e.life / e.ttl
+            # G1（第六轮）：tick 递减的是 ttl、life 是初始时长常量。
+            # 原式 1-life/ttl 随时间变负，"衰减"变成"放大"，末段可达 337px。
+            p = 1.0 - e.ttl / e.life
             if p >= 0.35:
                 continue
             # 前 35% 生命期线性衰减到 0
@@ -1218,7 +1224,10 @@ class MapView:
     # -- 棋子精灵缓存 -----------------------------------------------------
     def _token_epoch(self) -> tuple:
         """棋子精灵的失效指纹（主题色或形状标识变化时必须重画）。"""
-        return (self.tile, T.current_theme().id, T.shape_cues())
+        # G7（第六轮）：敌我切角依赖 player_side。此前换阵营后复用旧精灵，
+        # 实测 180/1024 字节差异——敌我标识会反过来。
+        return (self.tile, T.current_theme().id, T.shape_cues(),
+                self.state.player_side.value if self.state else None)
 
     def _token_sprite(self, u: Unit, w: int, h: int) -> pygame.Surface | None:
         """取棋子的缓存底板；缓存未命中时烘焙一张。"""
@@ -1376,6 +1385,9 @@ class MapView:
     # 特效
     # ------------------------------------------------------------------ #
     def _draw_fx(self, surf: pygame.Surface) -> None:
+        # G25：减弱动效时连 state.fx 通道也关掉（此前只关 anim）
+        if T.motion_reduced():
+            return
         # 没有特效时直接跳过：清空一张 1600×900 的 SRCALPHA 表面本身就要
         # 0.6ms，而绝大多数帧这一层是空的（爆炸只在结算瞬间出现）
         if not self.state.fx:
@@ -1584,7 +1596,10 @@ class MapView:
         # 164×164，实际显示时缩放（v3.4.3）。
         base = self._minimap_base
         base_cell = max(1, min(base / md.width, base / md.height))
-        key = (id(md), md.width, md.height, self.state.map_epoch, T.current_theme().id)
+        # G8（第六轮）：静态层只画地形+海拔，与 map_epoch（烟幕/工事/设施）
+        # 无关。此前每次战斗事件都重建，实测 73.56ms vs 命中 0.106ms。
+        # 换地图时 id(md) 变化已足够判废。
+        key = (id(md), md.width, md.height, T.current_theme().id)
         layer = self._minimap_layers.get(key)
         if layer is None:
             layer = pygame.Surface((base, base), pygame.SRCALPHA)

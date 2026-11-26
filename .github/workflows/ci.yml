@@ -92,7 +92,11 @@ jobs:
         run: python tools/check_dupes.py
 
       - name: 工作流语法自检（run 块缩进 / YAML 解析）
-        run: python tools/check_workflows.py
+        run: |
+          # G24：pyyaml 在 requirements-dev.txt，原先下一步才装，
+          # 导致 YAML 解析那一半在 CI 永远 SKIP。
+          python -m pip install -q -r requirements-dev.txt
+          python tools/check_workflows.py
 
       - name: 静态检查（未使用导入 / 语法错误，配置见 ruff.toml）
         run: |

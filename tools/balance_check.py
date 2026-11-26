@@ -227,7 +227,13 @@ def check_scenarios(rep: Report) -> None:
         except Exception as exc:                  # noqa: BLE001
             # v3.5.5 F20：原为裸 continue。想定全部加载失败时
             # findings/errors/warnings 全 0，main() 判绿。
-            rep.warnings.append(f"{fn}: 想定加载失败，已跳过（{exc}）")
+            # G2（第六轮）：Report.warnings 是 property，返回的是新列表——
+            # append 写到临时对象即丢弃。必须用 rep.add() 才会进入 findings。
+            # add(kind, severity, subject, message, hint)——severity 必须是
+            # info/warn/error 之一，不能把 kind 和 severity 传反。
+            rep.add("scenario-load-failed", "error", fn,
+                    f"想定加载失败，无法体检：{exc}",
+                    "修复 JSON 或移除该文件，不要让它被静默跳过")
             continue
         st = GameState(sc, Side.BLUE)
         stuck = []

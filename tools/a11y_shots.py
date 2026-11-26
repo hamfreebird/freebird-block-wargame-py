@@ -38,7 +38,7 @@ sys.path.insert(0, _ROOT)
 
 import pygame  # noqa: E402
 
-from core.enums import Side  # noqa: E402
+from core.enums import Detection, Side  # noqa: E402
 from ui import theme as T  # noqa: E402
 from ui.app import App  # noqa: E402
 
@@ -60,7 +60,7 @@ def pick_engage_pair(app: App):
         if not (u.template.weapons and u.has_ammo()):
             continue
         for e in app.state.enemies_of(Side.BLUE):
-            if e.alive and app.state.known_level(Side.BLUE, e).level >= 2:
+            if e.alive and app.state.known_level(Side.BLUE, e).level >= Detection.CLASSIFIED.level:
                 return u, e
     return None, None
 

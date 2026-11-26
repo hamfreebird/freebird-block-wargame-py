@@ -45,6 +45,8 @@
 """
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -431,7 +433,10 @@ def _do_area_damage(state, eff: Effect, label: str) -> str:
     for u in list(state.units):
         if not u.alive or u.side is side:
             continue
-        if abs(u.x - eff.x) <= eff.radius and abs(u.y - eff.y) <= eff.radius:
+        # G16（第六轮）：events 的空袭用欧氏圆 + 距离衰减，这里却是
+        # 切比雪夫方框 + 定量伤害——同一个"半径 6 格"在 (5,5) 一个命中
+        # 一个不命中。统一为圆形几何；伤害模型差异属效果类型设计，保留。
+        if math.hypot(u.x - eff.x, u.y - eff.y) <= eff.radius:
             # v3.5.5 F10：damage 必须是非负有限值。原先直接
             # `max(0.0, hp - damage)`，负 damage 等价于治疗且无上限，
             # 实测能把 hp 65 的雷达打到 115（template.hp=65），
@@ -457,8 +462,13 @@ def _do_area_heal(state, eff: Effect) -> str:
     for u in list(state.units):
         if not u.alive or u.side is not side:
             continue
-        if abs(u.x - eff.x) <= eff.radius and abs(u.y - eff.y) <= eff.radius:
-            u.hp = min(u.template.hp, u.hp + eff.damage)
+        # G22（第六轮）：负治疗会把 hp 打到负数却 leave destroyed=False，
+        # 制造"既不活也不死"的僵尸。非有限/非正治疗一律跳过。
+        heal = eff.damage
+        if not math.isfinite(heal) or heal <= 0.0:
+            continue
+        if math.hypot(u.x - eff.x, u.y - eff.y) <= eff.radius:   # G16 几何统一
+            u.hp = min(u.template.hp, u.hp + heal)
             hit += 1
     return f"规则修复 ({eff.x},{eff.y}) 半径 {eff.radius:.0f}，修复 {hit} 个单位"
 
