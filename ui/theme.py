@@ -588,6 +588,8 @@ _FONT_CANDIDATES_BOLD = [
     r"C:\Windows\Fonts\simhei.ttf",
     r"C:\Windows\Fonts\Dengb.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
 ]
 # 韩文（谚文）字体：中文字体（微软雅黑等）没有 Hangul 字形，
 # lang=ko 时若仍用中文候选，按钮上的「한국어」会渲染成三个豆腐块。
@@ -684,12 +686,17 @@ class Fonts:
                 except Exception:
                     font = None
         if font is None:
-            path = _first_existing(tuple(_FONT_CANDIDATES_BOLD if bold else _FONT_CANDIDATES_CN))
-            if path:
+            # G6（第六轮）：此前只取"第一个存在"的文件，加载失败就直接落到
+            # Font(None)。Linux 上 Noto TTC 加载失败时，排在后面的纯 TTF
+            # 回退永远不会被尝试。改为逐个尝试，失败继续下一个。
+            for path in (_FONT_CANDIDATES_BOLD if bold else _FONT_CANDIDATES_CN):
+                if not os.path.isfile(path):
+                    continue
                 try:
                     font = pygame.font.Font(path, size)
+                    break
                 except Exception:
-                    font = None
+                    continue
         if font is None and _sysfont_available():
             try:
                 font = pygame.font.SysFont("microsoftyahei,simhei,arial", size, bold=bold)
@@ -717,6 +724,9 @@ def fonts() -> Fonts:
 # --------------------------------------------------------------------------- #
 _text_cache: dict[tuple, pygame.Surface] = {}
 _CACHE_LIMIT = 3000
+#: G10（第六轮）：此前只按条数封顶，xlarge + 40 字实测 2,900 条占 68.9 MB。
+_TEXT_CACHE_BYTES = 24 * 1024 * 1024
+_text_cache_bytes = 0
 
 
 # v3.4.2：原正则只覆盖 CJK 与全角，漏掉日文假名与韩文谚文。
@@ -742,8 +752,10 @@ def render_text(s: str, size: int, color: tuple[int, int, int],
     key = (s, size, color, bold, mono, hangul)
     surf = _text_cache.get(key)
     if surf is None:
-        if len(_text_cache) > _CACHE_LIMIT:
+        global _text_cache_bytes
+        if len(_text_cache) > _CACHE_LIMIT or _text_cache_bytes > _TEXT_CACHE_BYTES:
             _text_cache.clear()
+            _text_cache_bytes = 0
         if hangul and any(_HANGUL_CHARS.search(ch) is None
                           and "\u3400" <= ch <= "\u9fff" for ch in s):
             # v3.4.3：汉谚混排。malgun 缺大量简体字形（膛/战/术/红/东），
@@ -753,6 +765,7 @@ def render_text(s: str, size: int, color: tuple[int, int, int],
         else:
             surf = fonts().get(size, bold, mono, hangul).render(s, True, color)
         _text_cache[key] = surf
+        _text_cache_bytes += surf.get_width() * surf.get_height() * 4
     return surf
 
 

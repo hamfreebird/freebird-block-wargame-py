@@ -143,8 +143,11 @@ def evaluate_detection(state: "GameState", observer: Unit, target: Unit) -> Dete
         # 若 class_ratio ≥ 1，`elif ratio <= class_ratio` 恒真，CONTACT 永不可达。
         # 实测 strength=1.40 时原式给 1.008，radar_e3 / radar_a50 / radar_kj500
         # 三个官方传感器的"接触"档因此从未出现过。
-        track_ratio = min(0.96, 0.35 + 0.30 * s.strength)
-        class_ratio = min(0.98, 0.70 + 0.22 * s.strength)
+        # G12（第六轮）：0.98 过紧，把 radar_tpy2/s400/346b/container 四个
+        # 原本 class_ratio<1 的传感器一起降级。收紧到 0.999 既保证 CONTACT
+        # 数学可达（ratio 最大 1.0），又把无谓收缩从 1.7% 降到 0.1%。
+        track_ratio = min(0.998, 0.35 + 0.30 * s.strength)
+        class_ratio = min(0.999, 0.70 + 0.22 * s.strength)
         if track_ratio > class_ratio:      # 极端 strength 下保持单调
             track_ratio = class_ratio
         if ratio <= track_ratio:
@@ -171,6 +174,10 @@ def evaluate_detection(state: "GameState", observer: Unit, target: Unit) -> Dete
 def detection_level(state: "GameState", viewer_side, target: Unit) -> Detection:
     """指定阵营对目标单位的探测等级（聚合全部己方传感器与情报来源）。"""
     return _detection_level(state, viewer_side, target, None)
+
+
+#: 探测缓存条数上限（G5，第六轮）。官方图一局约 2–3 千条，留足余量。
+_DETECT_CACHE_LIMIT = 20000
 
 
 def _detection_level(state: "GameState", viewer_side, target: Unit,
@@ -221,6 +228,12 @@ def _detection_level(state: "GameState", viewer_side, target: Unit,
             r = evaluate_detection(state, obs, target)
             lvl = r.level
             if cache is not None:
+                # G5（第六轮）：此前是唯一无上限、无淘汰的缓存。键含三个
+                # 单调递增的世代，旧键永不再命中——1000 回合实测 56,884 条 /
+                # 13.84 MB，99.4% 是死数据。整表清空与 _los_cache 同口径；
+                # 只影响缓存命中率，重算结论不变。
+                if len(cache) >= _DETECT_CACHE_LIMIT:
+                    cache.clear()
                 cache[ck] = lvl
         if lvl.level > best.level:
             best = lvl

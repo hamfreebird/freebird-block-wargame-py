@@ -426,10 +426,21 @@ class Unit:
         return 1.25 if self.mission == "ferry" else 1.0
 
     def max_intercept_range(self) -> float:
+        """UI 威胁圈用的"实际能拦多远"（G15，第六轮）。
+
+        此前只看武器标称射程：llsn 画 16 格圈却根本没有拦截弹，
+        cvn 有 CIWS 硬杀伤却不画圈。判定口径与 AirDefenseNetwork 对齐：
+        SAM/AAM 要有弹药且 intercept_pk>0（排除中段弹），CIWS 按 1 格。
+        """
         r = 0.0
         for w in self.template.weapons:
-            if w.kind in (WeaponKind.SAM, WeaponKind.AAM):
-                r = max(r, w.range_max)
+            if (w.kind in (WeaponKind.SAM, WeaponKind.AAM)
+                    and not w.midcourse and not w.ciws
+                    and self.template.intercept_pk > 0):
+                if self.ammo.get(w.id, 0) > 0:
+                    r = max(r, w.range_max)
+            elif w.ciws and self.ammo.get(w.id, 0) > 0:
+                r = max(r, 1.0)
         return r
 
     def reset_turn(self, turn: int) -> None:
@@ -470,7 +481,9 @@ class Unit:
         # 却不置 destroyed——单位「既不活也不死」：仍占格、不计入 units_of、
         # 也不进伤亡统计，kill_unit 不会被调用。非有限值一律按 0 处理
         # （加载期已拒绝，这里是模组/钩子运行期的最后一道闸）。
-        if not math.isfinite(amount) or amount <= 0.0:
+        # G21（第六轮）：原 `<= 0` 让 0 伤害也提前返回，破坏了 v3.4.4
+        # 的浮点残值清理（hp=5e-17 时 0 伤害本应判毁）。只拦负数/非有限值。
+        if not math.isfinite(amount) or amount < 0.0:
             return 0.0
         # v3.4.4：浮点残值（如 0.1+0.2-0.3=5.55e-17）会让单位
         # 「活着但 hp≈0」——仍占格、仍计为存活、需额外一击。

@@ -44,7 +44,9 @@ def _check_block_scalars(path: str) -> list[str]:
         lines = f.read().splitlines()
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if not (stripped.startswith("run: |") or stripped.startswith("run: >")):
+        # G24：`- run: |` 列表式写法此前完全漏判
+        if not (stripped.startswith("run: |") or stripped.startswith("run: >")
+                or stripped.startswith("- run: |") or stripped.startswith("- run: >")):
             continue
         base = _indent(line)
         body_indent: int | None = None

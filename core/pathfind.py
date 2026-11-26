@@ -285,6 +285,13 @@ def flood_reachable(state: "GameState", unit: Unit,
 
 
 def path_cost(state: "GameState", unit: Unit, path: list[tuple[int, int]]) -> float:
+    # G14（第六轮）：find_path 对保底格放宽预算，但本函数不知道保底格，
+    # 于是 UI 高亮"可达"、move_unit 却用 4.95 > mp 拒绝。整条路径都是
+    # 保底格时按"刚好用尽机动点"计价，与 find_path 的放宽语义一致。
+    if len(path) > 1 and unit.mp > 0:
+        fb = fallback_moves(state, unit)
+        if all(step in fb for step in path[1:]):
+            return unit.mp
     total = 0.0
     for i in range(1, len(path)):
         (px, py), (x, y) = path[i - 1], path[i]
@@ -369,6 +376,11 @@ def _build_field(state: "GameState", unit: Unit, goal: tuple[int, int],
         if cache is None:
             cache = state._field_cache = {}
         ck = (goal, movement_profile(unit), round(limit, 1), state.map_epoch)
+        # G9（第六轮）：键含世代但旧条目从不清，实测 154/154 全是死数据。
+        # 世代变化时只清旧条目，保留本世代工作集。
+        if len(cache) > 32:
+            for old_key in [k for k in cache if k[-1] != state.map_epoch]:
+                del cache[old_key]
         hit = cache.get(ck)
         if hit is not None:
             return hit

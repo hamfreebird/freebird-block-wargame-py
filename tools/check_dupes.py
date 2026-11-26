@@ -33,12 +33,26 @@ def _scan(body: list, where: str, path: str, out: list) -> None:
     seen: dict[str, int] = {}
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            prev = seen.get(node.name)
-            if prev is not None:
-                out.append((path, f"{where}{node.name}", prev, node.lineno))
-            seen[node.name] = node.lineno
+            # G24：`@x.setter` 与 `@x.deleter` 是刻意的同名重载，不能误报。
+            is_overload = any(
+                isinstance(d, ast.Attribute) and d.attr in ("setter", "deleter")
+                for d in node.decorator_list)
+            if not is_overload:
+                prev = seen.get(node.name)
+                if prev is not None:
+                    out.append((path, f"{where}{node.name}", prev, node.lineno))
+                seen[node.name] = node.lineno
         elif isinstance(node, ast.ClassDef):
             _scan(node.body, f"{where}{node.name}.", path, out)
+        elif isinstance(node, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
+            # G24：平台条件式重名最危险，此前完全漏判
+            _scan(node.body, where, path, out)
+            for field in ("orelse", "finalbody"):
+                sub = getattr(node, field, None)
+                if sub:
+                    _scan(sub, where, path, out)
+            for handler in getattr(node, "handlers", ()):
+                _scan(handler.body, where, path, out)
 
 
 def main() -> int:

@@ -844,7 +844,8 @@ class GameState:
                 total_damage += dmg
                 hits += 1
         st_att["hits"] += hits
-        st_att["damage"] += int(total_damage)
+        # 统计在总伤害统计之后累加（G4）：对空一击必杀/大型机 ×2.2
+        # 都属于实际伤害，此前记的是修正前的值，战报与面板对不上。
 
         self.add_fx("tracer", (attacker.x, attacker.y), (target.x, target.y),
                     ttl=0.55, color=(255, 220, 120))
@@ -868,6 +869,7 @@ class GameState:
 
         if target.domain is Domain.AIR:
             if target.template.one_shot_kill:
+                total_damage += target.hp       # 实际掉血计入统计与日志
                 target.hp = 0.0
                 target.destroyed = True
                 self.add_fx("explosion", (target.x, target.y), None, ttl=1.6, color=(255, 170, 70),
@@ -877,6 +879,7 @@ class GameState:
                 target.apply_damage(total_damage)
         else:
             target.apply_damage(total_damage)
+        st_att["damage"] += int(total_damage)   # G4：按实际伤害记账
         target.suppressed = max(target.suppressed, 1)
         target.revealed_until = self.turn_count + 1
         self.add_fx("explosion", (target.x, target.y), None, ttl=0.8, color=(255, 140, 60),
@@ -947,9 +950,14 @@ class GameState:
         if tile is None:
             return FireResult(False, "目标地块无效")
 
+        # G19（第六轮）：转场保险此前只对单位开火生效，设施打击绕过了。
+        if attacker.mission == "ferry":
+            return FireResult(False, "转场剖面：武器保险关闭，无法射击")
         prof = rules.facility_strike_profile(self, attacker, tile, weapon)
         if not prof.ok:
             return FireResult(False, prof.reason)
+        # 模组此前完全看不到设施打击（fire 钩子只在单位开火时发）。
+        self.mods.fire(_mods.EV_BEFORE_FIRE, self, attacker, None, weapon)
 
         ammo_left = attacker.ammo.get(weapon.id, 0)
         n = max(1, min(int(salvo or self.salvo_setting),
@@ -996,6 +1004,12 @@ class GameState:
                              f"{attacker.name} 对 {name} 的打击未奏效（Pk {prof.pk * 100:.0f}%）", "combat")
             return FireResult(True, "未命中")
 
+        self.mods.fire(_mods.EV_AFTER_FIRE, self, attacker, None, weapon,
+                       FireResult(True, "设施打击", hits=hits, damage=total))
+        st_attacker = self.stats.get(attacker.side)
+        if st_attacker is not None:
+            st_attacker["hits"] += hits
+            st_attacker["damage"] += int(total)
         self.bus.emit("facility_struck", self, tile=tile,
                       damage=round(total, 1), by=attacker)
 
@@ -1340,6 +1354,10 @@ class GameState:
 
         rate = 2 if u.domain in (Domain.SEA, Domain.SUB) else 1
         for w in u.template.weapons:
+            # G20（第六轮）：中段拦截弹由 _reload_interceptors 专用通道管理，
+            # 补给线此前会把它也补满，绕过"中段弹不自动装填"的设计。
+            if getattr(w, "midcourse", False):
+                continue
             cur = u.ammo.get(w.id, 0)
             if cur < w.ammo:
                 u.ammo[w.id] = min(w.ammo, cur + rate)
@@ -1460,9 +1478,15 @@ class GameState:
                 # 弹药补充
                 rate = 2 if u.domain in (Domain.SEA, Domain.SUB) else 1
                 for w in u.template.weapons:
+                    if getattr(w, "midcourse", False):
+                        continue
                     cur = u.ammo.get(w.id, 0)
                     if cur < w.ammo:
                         u.ammo[w.id] = min(w.ammo, cur + (w.ammo if u.domain is Domain.AIR else rate))
+                # G13（第六轮）：枢纽分支此前不更新 supply_dry、也不给
+                # 地面/水面单位加油，站在 DEPOT 上反而永久枯竭。
+                if u.domain is not Domain.AIR:
+                    self._resupply_by_line(u)
                 # 战损修复：机库/船坞的备件也要有来源，但比野战充足
                 if u.hp < u.template.hp:
                     if u.spares <= 0:

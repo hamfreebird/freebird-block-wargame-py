@@ -425,10 +425,16 @@ class LLMCommander:
              schema: dict, ctx: dict) -> None:
         t0 = time.perf_counter()
         try:
-            if not self.client.ready and not self.client.start():
-                self._boot_failed = True
-                self.last_error = self.client.last_error
-                return
+            # G11（第六轮）：另一个 prefetch 正在启动时 start() 返回 False，
+            # 此前被当成永久启动失败——玩家在模型加载完成前结束一回合，
+            # 指挥官就永久降级。启动中直接等下一次，不置失败标志。
+            if not self.client.ready:
+                if getattr(self.client, "status", None) == "booting":
+                    return
+                if not self.client.start():
+                    self._boot_failed = True
+                    self.last_error = self.client.last_error
+                    return
             obj = self.client.chat_json(system, user, schema)
             directive = parse_directive(obj, ctx, model=self.client.describe(), turn=turn)
         except LLMError as exc:
@@ -490,6 +496,7 @@ class LLMCommander:
             self._worker = None
             self._worker_gen = -1
             self._worker_turn = -1
+            self._boot_failed = False   # G11：换局后允许重新尝试启动
 
 
 __all__ = [

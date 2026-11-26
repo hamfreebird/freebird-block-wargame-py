@@ -321,7 +321,10 @@ class AIPlanner:
         for enemy in state.enemies_of(self.side):
             if not enemy.alive:
                 continue
-            if state.known_level(self.side, enemy).level < Detection.TRACKED.level:
+            # G17（第六轮）：写死 TRACKED 让 AI 永远不用 m777 这类
+            # "识别级即可射击"的炮兵。shot_profile 已按武器 min_detection
+            # 判定，这里删掉硬门槛；未探测目标仍会被 p.ok=False 拒绝。
+            if state.known_level(self.side, enemy) is Detection.NONE:
                 continue
             if enemy.domain is Domain.SPACE and not any(w.asat for w in unit.usable_weapons()):
                 continue

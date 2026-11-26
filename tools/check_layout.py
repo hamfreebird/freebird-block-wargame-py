@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
 
-from core.enums import Side  # noqa: E402
+from core.enums import Detection, Side  # noqa: E402
 from ui.app import App  # noqa: E402
 
 
@@ -172,7 +172,7 @@ def _check_all_screens(app: App) -> list[str]:
     sel = next((u for u in app.state.units_of(Side.BLUE)
                 if u.template.weapons and u.has_ammo()), None)
     tgt = next((e for e in app.state.enemies_of(Side.BLUE)
-                if e.alive and app.state.known_level(Side.BLUE, e).level >= 2), None)
+                if e.alive and app.state.known_level(Side.BLUE, e).level >= Detection.CLASSIFIED.level), None)
     if sel is not None and tgt is not None:
         app.select_unit(sel)
         app.pending_target = tgt

@@ -109,9 +109,12 @@ class Armory:
 def _parse_sensor(d: dict, where: str) -> Sensor:
     return Sensor(
         kind=_enum(SensorKind, _req(d, "kind", where), where + ".kind"),
-        range_max=float(_req(d, "range", where)),
-        strength=float(d.get("strength", 1.0)),
-        counter_stealth=float(d.get("counter_stealth", 0.0)),
+        # G23（第六轮）：NaN 会让距离剪枝 `d > eff` 恒 False，
+        # 传感器变成全图接触。所有参与比较的浮点必须有限。
+        range_max=_finite(_req(d, "range", where), where + ".range", lo=0.0),
+        strength=_finite(d.get("strength", 1.0), where + ".strength", lo=0.0),
+        counter_stealth=_finite(d.get("counter_stealth", 0.0),
+                                where + ".counter_stealth", lo=0.0),
         note=d.get("note", ""),
     )
 
@@ -131,8 +134,8 @@ def _parse_weapon(d: dict, where: str) -> Weapon:
         id=str(_req(d, "id", where)),
         name=str(_req(d, "name", where)),
         kind=kind,
-        range_min=float(d.get("range_min", 0.0)),
-        range_max=float(rmax),
+        range_min=_finite(d.get("range_min", 0.0), where + ".range_min", lo=0.0),
+        range_max=_finite(rmax, where + ".range", lo=0.0),
         pk=_finite(_req(d, "pk", where), where + ".pk", lo=0.0, hi=1.0),
         damage=_finite(_req(d, "damage", where), where + ".damage", lo=0.0),
         ammo=int(d.get("ammo", 1)),
